@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -27,10 +27,27 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Loader2, MapPin } from "lucide-react";
+import { Loader2, MapPin, X } from "lucide-react";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+
+export const AREA_TIPOS_PADRAO = [
+  "Area Publica",
+  "Canteiro",
+  "Viela",
+  "Praca",
+  "Lote",
+  "Fundo de Vale",
+  "Laterais",
+  "Rotatoria",
+  "Linha Ferrea",
+  "Campo de Futebol",
+  "Rua Projetada",
+  "Jardim",
+];
+
+const CUSTOM_VALUE = "__custom__";
 
 interface NewAreaModalProps {
   open: boolean;
@@ -41,8 +58,8 @@ interface NewAreaModalProps {
 }
 
 const newAreaSchema = z.object({
-  tipo: z.string().min(1, "Tipo é obrigatório"),
-  endereco: z.string().min(1, "Endereço é obrigatório"),
+  tipo: z.string().min(1, "Tipo e obrigatorio"),
+  endereco: z.string().min(1, "Endereco e obrigatorio"),
   bairro: z.string().optional(),
   metragem_m2: z.string().optional(),
   lote: z.string().min(1, "Selecione um lote"),
@@ -53,11 +70,13 @@ type NewAreaFormData = z.infer<typeof newAreaSchema>;
 
 export function NewAreaModal({ open, onOpenChange, lat, lng, defaultServico = "rocagem" }: NewAreaModalProps) {
   const { toast } = useToast();
+  const [showCustomTipo, setShowCustomTipo] = useState(false);
+  const [customTipo, setCustomTipo] = useState("");
   
   const form = useForm<NewAreaFormData>({
     resolver: zodResolver(newAreaSchema),
     defaultValues: {
-      tipo: "area publica",
+      tipo: "Area Publica",
       endereco: "",
       bairro: "",
       metragem_m2: "",
@@ -66,7 +85,6 @@ export function NewAreaModal({ open, onOpenChange, lat, lng, defaultServico = "r
     },
   });
 
-  // Buscar endereço automaticamente via reverse geocoding
   useEffect(() => {
     if (!open || !lat || !lng) return;
 
@@ -79,7 +97,6 @@ export function NewAreaModal({ open, onOpenChange, lat, lng, defaultServico = "r
           const data = await response.json();
           const address = data.address || {};
           
-          // Extrair informações do endereço
           const road = address.road || address.street || "";
           const suburb = address.suburb || address.neighbourhood || address.quarter || "";
           const houseNumber = address.house_number || "";
@@ -93,10 +110,10 @@ export function NewAreaModal({ open, onOpenChange, lat, lng, defaultServico = "r
           form.setValue("bairro", suburb || address.city_district || "");
         }
       } catch (error) {
-        console.error("Erro ao buscar endereço:", error);
+        console.error("Erro ao buscar endereco:", error);
         toast({
           title: "Aviso",
-          description: "Não foi possível buscar o endereço automaticamente. Preencha manualmente.",
+          description: "Nao foi possivel buscar o endereco automaticamente. Preencha manualmente.",
           variant: "default",
         });
       }
@@ -105,33 +122,32 @@ export function NewAreaModal({ open, onOpenChange, lat, lng, defaultServico = "r
     fetchAddress();
   }, [open, lat, lng, form, toast]);
 
-  // Resetar formulário ao fechar
   const handleOpenChange = (newOpen: boolean) => {
     if (!newOpen) {
       form.reset({
-        tipo: "area publica",
+        tipo: "Area Publica",
         endereco: "",
         bairro: "",
         metragem_m2: "",
         lote: "1",
         servico: defaultServico,
       });
+      setShowCustomTipo(false);
+      setCustomTipo("");
     }
     onOpenChange(newOpen);
   };
 
   const createAreaMutation = useMutation({
     mutationFn: async (data: NewAreaFormData) => {
-      // Sanitizar e transformar dados antes de enviar
       const metragem = data.metragem_m2 && data.metragem_m2.trim() !== "" 
         ? parseFloat(data.metragem_m2) 
         : undefined;
       
       const lote = parseInt(data.lote);
       
-      // Validar valores transformados
       if (metragem !== undefined && (isNaN(metragem) || metragem <= 0)) {
-        throw new Error("Metragem deve ser um número positivo");
+        throw new Error("Metragem deve ser um numero positivo");
       }
       
       if (isNaN(lote) || lote < 1 || lote > 2) {
@@ -150,20 +166,19 @@ export function NewAreaModal({ open, onOpenChange, lat, lng, defaultServico = "r
         status: "Pendente",
       });
     },
-    onSuccess: (newArea) => {
-      // Invalidar cache de todas as áreas (rocagem e jardins)
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/areas/light"] });
       queryClient.invalidateQueries({ queryKey: ["/api/areas"] });
       toast({
-        title: "Área Cadastrada",
-        description: `Área "${form.getValues("endereco")}" foi cadastrada com sucesso!`,
+        title: "Area Cadastrada",
+        description: `Area "${form.getValues("endereco")}" foi cadastrada com sucesso!`,
       });
       handleOpenChange(false);
     },
     onError: (error: any) => {
       toast({
         title: "Erro ao Cadastrar",
-        description: error.message || "Não foi possível cadastrar a área.",
+        description: error.message || "Nao foi possivel cadastrar a area.",
         variant: "destructive",
       });
     },
@@ -173,22 +188,33 @@ export function NewAreaModal({ open, onOpenChange, lat, lng, defaultServico = "r
     createAreaMutation.mutate(data);
   };
 
+  const handleTipoSelectChange = (value: string, fieldOnChange: (val: string) => void) => {
+    if (value === CUSTOM_VALUE) {
+      setShowCustomTipo(true);
+      setCustomTipo("");
+      fieldOnChange("");
+    } else {
+      setShowCustomTipo(false);
+      setCustomTipo("");
+      fieldOnChange(value);
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-[500px] z-[9999]" data-testid="modal-new-area">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <MapPin className="w-5 h-5" />
-            Cadastrar Nova Área
+            Cadastrar Nova Area
           </DialogTitle>
           <DialogDescription>
-            Preencha as informações da área de serviço que será cadastrada no sistema.
+            Preencha as informacoes da area de servico que sera cadastrada no sistema.
           </DialogDescription>
         </DialogHeader>
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-            {/* Coordenadas (readonly) */}
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
                 <FormLabel htmlFor="lat">Latitude</FormLabel>
@@ -212,13 +238,12 @@ export function NewAreaModal({ open, onOpenChange, lat, lng, defaultServico = "r
               </div>
             </div>
 
-            {/* Endereço */}
             <FormField
               control={form.control}
               name="endereco"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Endereço *</FormLabel>
+                  <FormLabel>Endereco *</FormLabel>
                   <FormControl>
                     <Input
                       placeholder="Ex: Av. Jorge Casoni, 123"
@@ -231,7 +256,6 @@ export function NewAreaModal({ open, onOpenChange, lat, lng, defaultServico = "r
               )}
             />
 
-            {/* Bairro */}
             <FormField
               control={form.control}
               name="bairro"
@@ -250,7 +274,6 @@ export function NewAreaModal({ open, onOpenChange, lat, lng, defaultServico = "r
               )}
             />
 
-            {/* Tipo e Lote */}
             <div className="grid grid-cols-2 gap-3">
               <FormField
                 control={form.control}
@@ -258,23 +281,52 @@ export function NewAreaModal({ open, onOpenChange, lat, lng, defaultServico = "r
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Tipo</FormLabel>
-                    <Select
-                      onValueChange={field.onChange}
-                      defaultValue={field.value}
-                    >
-                      <FormControl>
-                        <SelectTrigger data-testid="select-tipo">
-                          <SelectValue />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="area publica">Área Pública</SelectItem>
-                        <SelectItem value="praça">Praça</SelectItem>
-                        <SelectItem value="canteiro">Canteiro</SelectItem>
-                        <SelectItem value="rotatória">Rotatória</SelectItem>
-                        <SelectItem value="jardim">Jardim</SelectItem>
-                      </SelectContent>
-                    </Select>
+                    {showCustomTipo ? (
+                      <div className="flex gap-1">
+                        <FormControl>
+                          <Input
+                            placeholder="Digite o tipo"
+                            value={customTipo}
+                            onChange={(e) => {
+                              setCustomTipo(e.target.value);
+                              field.onChange(e.target.value);
+                            }}
+                            data-testid="input-tipo-custom"
+                          />
+                        </FormControl>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => {
+                            setShowCustomTipo(false);
+                            field.onChange("Area Publica");
+                          }}
+                          data-testid="button-tipo-back"
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ) : (
+                      <Select
+                        onValueChange={(val) => handleTipoSelectChange(val, field.onChange)}
+                        value={field.value}
+                      >
+                        <FormControl>
+                          <SelectTrigger data-testid="select-tipo">
+                            <SelectValue placeholder="Selecione o tipo" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {AREA_TIPOS_PADRAO.map((tipo) => (
+                            <SelectItem key={tipo} value={tipo}>
+                              {tipo}
+                            </SelectItem>
+                          ))}
+                          <SelectItem value={CUSTOM_VALUE}>+ Outro (digitar)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    )}
                     <FormMessage />
                   </FormItem>
                 )}
@@ -288,11 +340,11 @@ export function NewAreaModal({ open, onOpenChange, lat, lng, defaultServico = "r
                     <FormLabel>Lote</FormLabel>
                     <Select
                       onValueChange={field.onChange}
-                      defaultValue={field.value}
+                      value={field.value}
                     >
                       <FormControl>
                         <SelectTrigger data-testid="select-lote">
-                          <SelectValue />
+                          <SelectValue placeholder="Selecione" />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
@@ -306,13 +358,12 @@ export function NewAreaModal({ open, onOpenChange, lat, lng, defaultServico = "r
               />
             </div>
 
-            {/* Metragem */}
             <FormField
               control={form.control}
               name="metragem_m2"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Metragem (m²)</FormLabel>
+                  <FormLabel>Metragem (m2)</FormLabel>
                   <FormControl>
                     <Input
                       type="number"
@@ -348,7 +399,7 @@ export function NewAreaModal({ open, onOpenChange, lat, lng, defaultServico = "r
                     Cadastrando...
                   </>
                 ) : (
-                  "Cadastrar Área"
+                  "Cadastrar Area"
                 )}
               </Button>
             </DialogFooter>

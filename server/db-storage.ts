@@ -142,6 +142,7 @@ export class DbStorage implements IStorage {
     if (data.bairro !== undefined) updateData.bairro = data.bairro;
     if (data.metragem_m2 !== undefined) updateData.metragem_m2 = data.metragem_m2;
     if (data.lote !== undefined) updateData.lote = data.lote;
+    if (data.tipo !== undefined) updateData.tipo = data.tipo;
     if (data.ultimaRocagem !== undefined) updateData.ultimaRocagem = data.ultimaRocagem;
     if (data.status !== undefined) updateData.status = data.status;
     if (data.proximaPrevisao !== undefined) updateData.proximaPrevisao = data.proximaPrevisao;

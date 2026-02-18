@@ -797,6 +797,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         bairro: z.string().optional(),
         metragem_m2: z.number().optional(),
         lote: z.number().optional(),
+        tipo: z.string().optional(),
         ultimaRocagem: z.string().min(1).optional(),
         status: z.enum(["Pendente", "Em Execução", "Concluído"]).optional(),
         registradoPor: z.string().optional(),
