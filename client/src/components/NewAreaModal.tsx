@@ -317,7 +317,7 @@ export function NewAreaModal({ open, onOpenChange, lat, lng, defaultServico = "r
                             <SelectValue placeholder="Selecione o tipo" />
                           </SelectTrigger>
                         </FormControl>
-                        <SelectContent>
+                        <SelectContent className="z-[10001]">
                           {AREA_TIPOS_PADRAO.map((tipo) => (
                             <SelectItem key={tipo} value={tipo}>
                               {tipo}
@@ -347,7 +347,7 @@ export function NewAreaModal({ open, onOpenChange, lat, lng, defaultServico = "r
                           <SelectValue placeholder="Selecione" />
                         </SelectTrigger>
                       </FormControl>
-                      <SelectContent>
+                      <SelectContent className="z-[10001]">
                         <SelectItem value="1">Lote 1</SelectItem>
                         <SelectItem value="2">Lote 2</SelectItem>
                       </SelectContent>
