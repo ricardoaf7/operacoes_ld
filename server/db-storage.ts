@@ -1,5 +1,5 @@
 import { drizzle } from "drizzle-orm/neon-serverless";
-import { eq, inArray, or, ilike, and, sql, gt, desc } from "drizzle-orm";
+import { eq, inArray, or, ilike, and, sql, gt, lt, desc } from "drizzle-orm";
 import { Pool, neonConfig } from "@neondatabase/serverless";
 import ws from "ws";
 import type { ServiceArea, Team, AppConfig, ExportHistory, InsertExportHistory } from "@shared/schema";
@@ -472,6 +472,29 @@ export class DbStorage implements IStorage {
       .where(eq(serviceAreas.executando, true))
       .returning();
     
+    return result.length;
+  }
+
+  async resetStaleExecutando(todayDateStr: string): Promise<number> {
+    const todayStart = new Date(todayDateStr + 'T00:00:00-03:00');
+    const result = await this.db
+      .update(serviceAreas)
+      .set({
+        executando: false,
+        executandoDesde: null,
+        updatedAt: new Date()
+      })
+      .where(
+        and(
+          eq(serviceAreas.executando, true),
+          or(
+            lt(serviceAreas.executandoDesde, todayStart),
+            sql`${serviceAreas.executandoDesde} IS NULL`
+          )
+        )
+      )
+      .returning();
+
     return result.length;
   }
 

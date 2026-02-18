@@ -1009,48 +1009,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Reset automático de "executando" à meia-noite (horário de Brasília)
-  function getNextMidnightBrasilia(): number {
-    // Usar Intl para obter hora atual em Brasília de forma confiável
-    const formatter = new Intl.DateTimeFormat('pt-BR', {
+  // Reset automático de "executando" - verifica periodicamente se há áreas
+  // marcadas em dias anteriores (horário de Brasília) e reseta automaticamente.
+  // Usa setInterval ao invés de setTimeout para sobreviver a reinícios do servidor.
+  function getTodayBrasilia(): string {
+    const formatter = new Intl.DateTimeFormat('en-CA', {
       timeZone: 'America/Sao_Paulo',
       year: 'numeric', month: '2-digit', day: '2-digit',
-      hour: '2-digit', minute: '2-digit', second: '2-digit',
-      hour12: false,
     });
-    
-    const parts = formatter.formatToParts(new Date());
-    const getPart = (type: string) => parts.find(p => p.type === type)?.value || '0';
-    
-    const brasiliaHour = parseInt(getPart('hour'));
-    const brasiliaMinute = parseInt(getPart('minute'));
-    const brasiliaSecond = parseInt(getPart('second'));
-    
-    // Milissegundos restantes até meia-noite em Brasília
-    const msUntilMidnight = ((23 - brasiliaHour) * 3600 + (59 - brasiliaMinute) * 60 + (60 - brasiliaSecond)) * 1000;
-    
-    return msUntilMidnight;
+    return formatter.format(new Date());
   }
-  
-  function scheduleExecutandoReset() {
-    const msUntilMidnight = getNextMidnightBrasilia();
-    const hoursUntil = Math.round(msUntilMidnight / 3600000 * 10) / 10;
-    
-    console.log(`⏰ Reset de "executando" agendado para meia-noite (Brasília) em ~${hoursUntil}h`);
-    
-    setTimeout(async () => {
-      try {
-        const count = await storage.resetAllExecutando();
-        console.log(`🔄 Reset automático: ${count} áreas tiveram "executando" resetado à meia-noite (Brasília)`);
-      } catch (error) {
-        console.error("❌ Erro no reset automático de executando:", error);
+
+  async function checkAndResetStaleExecutando() {
+    try {
+      const todayStr = getTodayBrasilia();
+      const count = await storage.resetStaleExecutando(todayStr);
+      if (count > 0) {
+        console.log(`Reset automatico: ${count} areas tiveram "executando" resetado (marcadas antes de ${todayStr})`);
       }
-      // Agendar próximo reset (adiciona 1 min de margem para garantir que já é o dia seguinte)
-      setTimeout(() => scheduleExecutandoReset(), 60000);
-    }, msUntilMidnight);
+    } catch (error) {
+      console.error("Erro no reset automatico de executando:", error);
+    }
   }
-  
-  scheduleExecutandoReset();
+
+  checkAndResetStaleExecutando().then(() => {
+    console.log(`Reset executando: verificacao inicial concluida (hoje Brasilia: ${getTodayBrasilia()})`);
+  });
+  setInterval(checkAndResetStaleExecutando, 5 * 60 * 1000);
 
   // Estatísticas de roçagem - metragem mensal, médias, meta
   app.get("/api/stats/rocagem", async (req, res) => {

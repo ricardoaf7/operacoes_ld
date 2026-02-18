@@ -28,6 +28,7 @@ export interface IStorage {
   // Executando (em execução diária)
   toggleExecutando(id: number, executando: boolean): Promise<ServiceArea | undefined>;
   resetAllExecutando(): Promise<number>;
+  resetStaleExecutando(todayDateStr: string): Promise<number>;
   
   // Export History
   getLastExport(scope: string, type: 'full' | 'incremental'): Promise<ExportHistory | null>;
@@ -423,6 +424,21 @@ export class MemStorage implements IStorage {
         area.executando = false;
         area.executandoDesde = null;
         count++;
+      }
+    }
+    return count;
+  }
+
+  async resetStaleExecutando(todayDateStr: string): Promise<number> {
+    let count = 0;
+    const allAreas = [...this.rocagemAreas, ...this.jardinsAreas];
+    for (const area of allAreas) {
+      if (area.executando) {
+        if (!area.executandoDesde || area.executandoDesde.substring(0, 10) < todayDateStr) {
+          area.executando = false;
+          area.executandoDesde = null;
+          count++;
+        }
       }
     }
     return count;
