@@ -163,52 +163,139 @@ interface PdfResponse {
   loteFilter: string;
 }
 
+function formatMetragem(val: number): string {
+  return val.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+}
+
+function formatDateBR(dateStr: string): string {
+  return new Date(dateStr + 'T12:00:00').toLocaleDateString('pt-BR');
+}
+
 function generatePdf(data: PdfResponse, loteLabel: string) {
   const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
-  
-  const fromFormatted = new Date(data.periodo.from + 'T12:00:00').toLocaleDateString('pt-BR');
-  const toFormatted = new Date(data.periodo.to + 'T12:00:00').toLocaleDateString('pt-BR');
-  const totalFormatted = data.totalMetragem.toLocaleString('pt-BR', { minimumFractionDigits: 0 });
+
+  const fromFormatted = formatDateBR(data.periodo.from);
+  const toFormatted = formatDateBR(data.periodo.to);
+  const totalFormatted = formatMetragem(data.totalMetragem);
   const generatedAt = new Date().toLocaleString('pt-BR');
-  
+
+  const lotes = Array.from(new Set(data.areas.map(a => a.lote))).sort((a, b) => a - b);
+
+  const groupedByLote: Record<number, Record<string, PdfAreaData[]>> = {};
+  for (const lote of lotes) {
+    const loteAreas = data.areas.filter(a => a.lote === lote);
+    loteAreas.sort((a, b) => {
+      const hasA = !!a.ultimaRocagem;
+      const hasB = !!b.ultimaRocagem;
+      if (hasA !== hasB) return hasA ? -1 : 1;
+      if (hasA && hasB) {
+        const dateA = new Date(a.ultimaRocagem).getTime();
+        const dateB = new Date(b.ultimaRocagem).getTime();
+        if (dateA !== dateB) return dateA - dateB;
+      }
+      return a.endereco.localeCompare(b.endereco, 'pt-BR');
+    });
+    const byDate: Record<string, PdfAreaData[]> = {};
+    for (const area of loteAreas) {
+      const dateKey = area.ultimaRocagem || 'sem-data';
+      if (!byDate[dateKey]) byDate[dateKey] = [];
+      byDate[dateKey].push(area);
+    }
+    groupedByLote[lote] = byDate;
+  }
+
   doc.setFontSize(16);
   doc.setFont('helvetica', 'bold');
   doc.text('CMTU-LD - Relatorio de Rocagem', pageWidth / 2, 15, { align: 'center' });
-  
+
   doc.setFontSize(10);
   doc.setFont('helvetica', 'normal');
   doc.text(`Periodo: ${fromFormatted} a ${toFormatted}`, pageWidth / 2, 22, { align: 'center' });
   doc.text(`Lote: ${loteLabel}  |  Total de areas: ${data.count}  |  Metragem total: ${totalFormatted} m2`, pageWidth / 2, 28, { align: 'center' });
-  
-  const tableData = data.areas.map((area, index) => [
-    (index + 1).toString(),
-    `Lote ${area.lote}`,
-    area.endereco || '-',
-    area.bairro || '-',
-    area.metragem ? area.metragem.toLocaleString('pt-BR') + ' m2' : '-',
-    area.ultimaRocagem ? new Date(area.ultimaRocagem + 'T12:00:00').toLocaleDateString('pt-BR') : '-',
-  ]);
-  
+
+  const headColumns = ['#', 'Local (Endereco)', 'Bairro', 'Metragem', 'Data da Rocagem'];
+  const tableBody: any[][] = [];
+  const subtotalRowIndices: number[] = [];
+  const loteHeaderIndices: number[] = [];
+  const grandTotalIndex: number[] = [];
+
+  let globalIndex = 0;
+
+  for (const lote of lotes) {
+    loteHeaderIndices.push(tableBody.length);
+    const loteMetragemTotal = data.areas.filter(a => a.lote === lote).reduce((s, a) => s + (a.metragem || 0), 0);
+    const loteAreaCount = data.areas.filter(a => a.lote === lote).length;
+    tableBody.push([
+      { content: `LOTE ${lote}  -  ${loteAreaCount} areas  -  ${formatMetragem(loteMetragemTotal)} m2`, colSpan: 5, styles: { fontStyle: 'bold', fillColor: [41, 128, 185], textColor: 255, fontSize: 9, halign: 'left' } },
+    ]);
+
+    const dateGroups = groupedByLote[lote];
+    const dates = Object.keys(dateGroups).sort((a, b) => {
+      if (a === 'sem-data') return 1;
+      if (b === 'sem-data') return -1;
+      return new Date(a).getTime() - new Date(b).getTime();
+    });
+
+    for (const dateKey of dates) {
+      const areasForDate = dateGroups[dateKey];
+      for (const area of areasForDate) {
+        globalIndex++;
+        tableBody.push([
+          globalIndex.toString(),
+          area.endereco || '-',
+          area.bairro || '-',
+          area.metragem ? formatMetragem(area.metragem) + ' m2' : '-',
+          dateKey !== 'sem-data' ? formatDateBR(dateKey) : '-',
+        ]);
+      }
+
+      const dayMetragem = areasForDate.reduce((s, a) => s + (a.metragem || 0), 0);
+      subtotalRowIndices.push(tableBody.length);
+      tableBody.push([
+        { content: `Subtotal ${dateKey !== 'sem-data' ? formatDateBR(dateKey) : 'Sem data'}: ${areasForDate.length} areas  -  ${formatMetragem(dayMetragem)} m2`, colSpan: 5, styles: { fontStyle: 'bold', fillColor: [220, 230, 241], textColor: [30, 30, 30], fontSize: 8, halign: 'right' } },
+      ]);
+    }
+
+    subtotalRowIndices.push(tableBody.length);
+    tableBody.push([
+      { content: `Total Lote ${lote}: ${loteAreaCount} areas  -  ${formatMetragem(loteMetragemTotal)} m2`, colSpan: 5, styles: { fontStyle: 'bold', fillColor: [180, 210, 240], textColor: [0, 0, 0], fontSize: 9, halign: 'right' } },
+    ]);
+  }
+
+  if (lotes.length > 1) {
+    grandTotalIndex.push(tableBody.length);
+    tableBody.push([
+      { content: `TOTAL GERAL: ${data.count} areas  -  ${totalFormatted} m2`, colSpan: 5, styles: { fontStyle: 'bold', fillColor: [41, 128, 185], textColor: 255, fontSize: 10, halign: 'center' } },
+    ]);
+  }
+
   autoTable(doc, {
     startY: 33,
-    head: [['#', 'Lote', 'Local (Endereco)', 'Bairro', 'Metragem', 'Data da Rocagem']],
-    body: tableData,
+    head: [headColumns],
+    body: tableBody,
     margin: { left: 14, right: 14 },
     styles: { fontSize: 8, cellPadding: 2 },
     headStyles: { fillColor: [41, 128, 185], textColor: 255, fontStyle: 'bold', fontSize: 9 },
     alternateRowStyles: { fillColor: [245, 245, 245] },
     columnStyles: {
       0: { halign: 'center', cellWidth: 12 },
-      1: { halign: 'center', cellWidth: 20 },
-      2: { cellWidth: 'auto' },
-      3: { cellWidth: 55 },
-      4: { halign: 'right', cellWidth: 30 },
-      5: { halign: 'center', cellWidth: 32 },
+      1: { cellWidth: 'auto' },
+      2: { cellWidth: 55 },
+      3: { halign: 'right', cellWidth: 30 },
+      4: { halign: 'center', cellWidth: 32 },
+    },
+    didParseCell: (hookData: any) => {
+      if (hookData.section === 'body') {
+        const rowIndex = hookData.row.index;
+        if (loteHeaderIndices.includes(rowIndex) || subtotalRowIndices.includes(rowIndex) || grandTotalIndex.includes(rowIndex)) {
+          hookData.cell.styles.fillColor = hookData.cell.styles.fillColor;
+        }
+      }
     },
   });
-  
+
   const totalPages = doc.getNumberOfPages();
   for (let i = 1; i <= totalPages; i++) {
     doc.setPage(i);
@@ -217,8 +304,8 @@ function generatePdf(data: PdfResponse, loteLabel: string) {
     doc.text(`Pagina ${i} de ${totalPages}`, pageWidth - 15, pageHeight - 8, { align: 'right' });
     doc.text(`Gerado em: ${generatedAt}`, 15, pageHeight - 8);
   }
-  
-  const loteSlug = loteLabel.toLowerCase().replace(/\s+/g, '_');
+
+  const loteSlug = loteLabel.toLowerCase().replace(/\s+/g, '_').replace(/[()]/g, '');
   const dateSlug = `${data.periodo.from}_a_${data.periodo.to}`;
   doc.save(`rocagem_${loteSlug}_${dateSlug}.pdf`);
 }
