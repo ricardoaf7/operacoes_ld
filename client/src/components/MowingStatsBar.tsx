@@ -171,6 +171,191 @@ function formatDateBR(dateStr: string): string {
   return new Date(dateStr + 'T12:00:00').toLocaleDateString('pt-BR');
 }
 
+function buildDailyData(areas: PdfAreaData[], lotes: number[]) {
+  const allDates = new Set<string>();
+  areas.forEach(a => { if (a.ultimaRocagem) allDates.add(a.ultimaRocagem); });
+  const sortedDates = Array.from(allDates).sort();
+
+  const dataByLote: Record<number, Record<string, number>> = {};
+  for (const lote of lotes) {
+    dataByLote[lote] = {};
+    for (const d of sortedDates) dataByLote[lote][d] = 0;
+  }
+  areas.forEach(a => {
+    if (a.ultimaRocagem && dataByLote[a.lote]) {
+      dataByLote[a.lote][a.ultimaRocagem] += (a.metragem || 0);
+    }
+  });
+
+  return { dates: sortedDates, dataByLote };
+}
+
+function buildMonthlyData(areas: PdfAreaData[], lotes: number[]) {
+  const allMonths = new Set<string>();
+  areas.forEach(a => {
+    if (a.ultimaRocagem) allMonths.add(a.ultimaRocagem.substring(0, 7));
+  });
+  const sortedMonths = Array.from(allMonths).sort();
+
+  const dataByLote: Record<number, Record<string, number>> = {};
+  for (const lote of lotes) {
+    dataByLote[lote] = {};
+    for (const m of sortedMonths) dataByLote[lote][m] = 0;
+  }
+  areas.forEach(a => {
+    if (a.ultimaRocagem && dataByLote[a.lote]) {
+      const monthKey = a.ultimaRocagem.substring(0, 7);
+      dataByLote[a.lote][monthKey] += (a.metragem || 0);
+    }
+  });
+
+  return { months: sortedMonths, dataByLote };
+}
+
+const LOTE_COLORS: Record<number, { bar: string; barLight: string; label: string }> = {
+  1: { bar: '#2980b9', barLight: '#5dade2', label: 'Lote 1' },
+  2: { bar: '#e67e22', barLight: '#f0b27a', label: 'Lote 2' },
+};
+
+function drawBarChart(
+  title: string,
+  labels: string[],
+  dataByLote: Record<number, Record<string, number>>,
+  lotes: number[],
+  formatLabel: (key: string) => string,
+  canvasWidth: number,
+  canvasHeight: number,
+): string {
+  const canvas = document.createElement('canvas');
+  canvas.width = canvasWidth;
+  canvas.height = canvasHeight;
+  const ctx = canvas.getContext('2d')!;
+
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+
+  const margin = { top: 70, right: 30, bottom: 80, left: 90 };
+  const chartW = canvasWidth - margin.left - margin.right;
+  const chartH = canvasHeight - margin.top - margin.bottom;
+
+  ctx.fillStyle = '#1a1a2e';
+  ctx.font = 'bold 22px Arial';
+  ctx.textAlign = 'center';
+  ctx.fillText(title, canvasWidth / 2, 35);
+
+  if (lotes.length > 1) {
+    let legendX = canvasWidth / 2 - 100;
+    for (const lote of lotes) {
+      const color = LOTE_COLORS[lote] || LOTE_COLORS[1];
+      ctx.fillStyle = color.bar;
+      ctx.fillRect(legendX, 48, 16, 12);
+      ctx.fillStyle = '#333';
+      ctx.font = '14px Arial';
+      ctx.textAlign = 'left';
+      ctx.fillText(color.label, legendX + 22, 59);
+      legendX += 110;
+    }
+  }
+
+  let maxVal = 0;
+  for (const lote of lotes) {
+    for (const key of labels) {
+      const val = dataByLote[lote]?.[key] || 0;
+      if (val > maxVal) maxVal = val;
+    }
+  }
+  if (maxVal === 0) maxVal = 1000;
+  maxVal = Math.ceil(maxVal / 1000) * 1000;
+
+  ctx.strokeStyle = '#ddd';
+  ctx.lineWidth = 1;
+  ctx.fillStyle = '#666';
+  ctx.font = '12px Arial';
+  ctx.textAlign = 'right';
+  const gridLines = 5;
+  for (let i = 0; i <= gridLines; i++) {
+    const y = margin.top + chartH - (i / gridLines) * chartH;
+    const val = (i / gridLines) * maxVal;
+    ctx.beginPath();
+    ctx.moveTo(margin.left, y);
+    ctx.lineTo(margin.left + chartW, y);
+    ctx.stroke();
+    ctx.fillText(formatMetragem(val), margin.left - 8, y + 4);
+  }
+
+  ctx.strokeStyle = '#333';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(margin.left, margin.top);
+  ctx.lineTo(margin.left, margin.top + chartH);
+  ctx.lineTo(margin.left + chartW, margin.top + chartH);
+  ctx.stroke();
+
+  const groupCount = labels.length;
+  const groupWidth = chartW / groupCount;
+  const barsPerGroup = lotes.length;
+  const barPadding = groupWidth * 0.15;
+  const totalBarSpace = groupWidth - barPadding * 2;
+  const barWidth = Math.min(totalBarSpace / barsPerGroup - 2, 50);
+  const barGap = barsPerGroup > 1 ? (totalBarSpace - barWidth * barsPerGroup) / (barsPerGroup - 1) : 0;
+
+  for (let gi = 0; gi < groupCount; gi++) {
+    const key = labels[gi];
+    const groupX = margin.left + gi * groupWidth;
+
+    for (let li = 0; li < lotes.length; li++) {
+      const lote = lotes[li];
+      const val = dataByLote[lote]?.[key] || 0;
+      const barH = (val / maxVal) * chartH;
+      const barX = groupX + barPadding + li * (barWidth + barGap);
+      const barY = margin.top + chartH - barH;
+
+      const color = LOTE_COLORS[lote] || LOTE_COLORS[1];
+      ctx.fillStyle = color.bar;
+      ctx.fillRect(barX, barY, barWidth, barH);
+
+      if (val > 0 && barH > 18) {
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 10px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText(formatMetragem(val), barX + barWidth / 2, barY + 14);
+      }
+    }
+
+    ctx.save();
+    ctx.fillStyle = '#333';
+    ctx.font = '11px Arial';
+    ctx.textAlign = 'right';
+    const labelX = groupX + groupWidth / 2;
+    const labelY = margin.top + chartH + 12;
+    ctx.translate(labelX, labelY);
+    ctx.rotate(-Math.PI / 4);
+    ctx.fillText(formatLabel(key), 0, 0);
+    ctx.restore();
+  }
+
+  ctx.fillStyle = '#666';
+  ctx.font = '13px Arial';
+  ctx.textAlign = 'center';
+  ctx.save();
+  ctx.translate(18, margin.top + chartH / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.fillText('Metragem (m\u00B2)', 0, 0);
+  ctx.restore();
+
+  return canvas.toDataURL('image/png');
+}
+
+function addPdfHeader(doc: jsPDF, pageWidth: number, fromFormatted: string, toFormatted: string, loteLabel: string, count: number, totalFormatted: string) {
+  doc.setFontSize(16);
+  doc.setFont('helvetica', 'bold');
+  doc.text('CMTU-LD - Relatorio de Rocagem', pageWidth / 2, 15, { align: 'center' });
+  doc.setFontSize(10);
+  doc.setFont('helvetica', 'normal');
+  doc.text(`Periodo: ${fromFormatted} a ${toFormatted}`, pageWidth / 2, 22, { align: 'center' });
+  doc.text(`Lote: ${loteLabel}  |  Total de areas: ${count}  |  Metragem total: ${totalFormatted} m2`, pageWidth / 2, 28, { align: 'center' });
+}
+
 function generatePdf(data: PdfResponse, loteLabel: string) {
   const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
   const pageWidth = doc.internal.pageSize.getWidth();
@@ -182,6 +367,57 @@ function generatePdf(data: PdfResponse, loteLabel: string) {
   const generatedAt = new Date().toLocaleString('pt-BR');
 
   const lotes = Array.from(new Set(data.areas.map(a => a.lote))).sort((a, b) => a - b);
+
+  const { dates: dailyDates, dataByLote: dailyByLote } = buildDailyData(data.areas, lotes);
+  const { months: monthlyMonths, dataByLote: monthlyByLote } = buildMonthlyData(data.areas, lotes);
+
+  addPdfHeader(doc, pageWidth, fromFormatted, toFormatted, loteLabel, data.count, totalFormatted);
+
+  if (dailyDates.length > 0) {
+    const chartW = Math.max(800, dailyDates.length * 60);
+    const dailyImg = drawBarChart(
+      'Comparativo Diario - Metragem Rocada por Dia',
+      dailyDates,
+      dailyByLote,
+      lotes,
+      (key) => formatDateBR(key),
+      chartW,
+      420,
+    );
+    const imgW = pageWidth - 28;
+    const imgH = (pageHeight - 42);
+    doc.addImage(dailyImg, 'PNG', 14, 33, imgW, imgH);
+  }
+
+  if (monthlyMonths.length > 0) {
+    doc.addPage();
+    addPdfHeader(doc, pageWidth, fromFormatted, toFormatted, loteLabel, data.count, totalFormatted);
+
+    const monthNames: Record<string, string> = {
+      '01': 'Jan', '02': 'Fev', '03': 'Mar', '04': 'Abr',
+      '05': 'Mai', '06': 'Jun', '07': 'Jul', '08': 'Ago',
+      '09': 'Set', '10': 'Out', '11': 'Nov', '12': 'Dez',
+    };
+    const chartW = Math.max(600, monthlyMonths.length * 120);
+    const monthlyImg = drawBarChart(
+      'Comparativo Mensal - Metragem Rocada por Mes',
+      monthlyMonths,
+      monthlyByLote,
+      lotes,
+      (key) => {
+        const [y, m] = key.split('-');
+        return `${monthNames[m] || m}/${y}`;
+      },
+      chartW,
+      420,
+    );
+    const imgW = pageWidth - 28;
+    const imgH = (pageHeight - 42);
+    doc.addImage(monthlyImg, 'PNG', 14, 33, imgW, imgH);
+  }
+
+  doc.addPage();
+  addPdfHeader(doc, pageWidth, fromFormatted, toFormatted, loteLabel, data.count, totalFormatted);
 
   const groupedByLote: Record<number, Record<string, PdfAreaData[]>> = {};
   for (const lote of lotes) {
@@ -205,15 +441,6 @@ function generatePdf(data: PdfResponse, loteLabel: string) {
     }
     groupedByLote[lote] = byDate;
   }
-
-  doc.setFontSize(16);
-  doc.setFont('helvetica', 'bold');
-  doc.text('CMTU-LD - Relatorio de Rocagem', pageWidth / 2, 15, { align: 'center' });
-
-  doc.setFontSize(10);
-  doc.setFont('helvetica', 'normal');
-  doc.text(`Periodo: ${fromFormatted} a ${toFormatted}`, pageWidth / 2, 22, { align: 'center' });
-  doc.text(`Lote: ${loteLabel}  |  Total de areas: ${data.count}  |  Metragem total: ${totalFormatted} m2`, pageWidth / 2, 28, { align: 'center' });
 
   const headColumns = ['#', 'Local (Endereco)', 'Bairro', 'Metragem', 'Data da Rocagem'];
   const tableBody: any[][] = [];
