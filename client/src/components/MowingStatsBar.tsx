@@ -1,4 +1,8 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
+import * as pdfjsLib from 'pdfjs-dist';
+import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
+
+pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { ChevronDown, ChevronUp, TrendingUp, Target, Calendar, BarChart3, AlertCircle, Pencil, Check, X, FileDown, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -400,7 +404,7 @@ function addLoteTable(
   });
 }
 
-function generatePdf(data: PdfResponse, loteLabel: string): { blobUrl: string; fileName: string } {
+function generatePdf(data: PdfResponse, loteLabel: string): { pdfData: ArrayBuffer; fileName: string } {
   const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
@@ -494,10 +498,8 @@ function generatePdf(data: PdfResponse, loteLabel: string): { blobUrl: string; f
   const dateSlug = `${data.periodo.from}_a_${data.periodo.to}`;
   const fileName = `rocagem_${loteSlug}_${dateSlug}.pdf`;
 
-  const arrayBuffer = doc.output('arraybuffer');
-  const blob = new Blob([arrayBuffer], { type: 'application/pdf' });
-  const blobUrl = URL.createObjectURL(blob);
-  return { blobUrl, fileName };
+  const pdfData = doc.output('arraybuffer') as ArrayBuffer;
+  return { pdfData, fileName };
 }
 
 interface MowingStatsBarProps {
@@ -514,7 +516,8 @@ export function MowingStatsBar({ visible = true, onPeriodChange, onPeriodClear }
   const [activeTo, setActiveTo] = useState('');
   const [showLoteSelector, setShowLoteSelector] = useState(false);
   const [generatingPdf, setGeneratingPdf] = useState(false);
-  const [pdfPreview, setPdfPreview] = useState<{ blobUrl: string; fileName: string } | null>(null);
+  const [pdfPreview, setPdfPreview] = useState<{ pdfData: ArrayBuffer; fileName: string } | null>(null);
+  const pdfContainerRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
 
   const queryParams = activeFrom && activeTo ? `?from=${activeFrom}&to=${activeTo}` : '';
@@ -572,7 +575,6 @@ export function MowingStatsBar({ visible = true, onPeriodChange, onPeriodClear }
       }
       
       const loteLabel = loteFilter === 'all' ? 'Ambos (1 e 2)' : `Lote ${loteFilter}`;
-      if (pdfPreview) URL.revokeObjectURL(pdfPreview.blobUrl);
       const result = generatePdf(data, loteLabel);
       setPdfPreview(result);
     } catch (err) {
@@ -585,18 +587,54 @@ export function MowingStatsBar({ visible = true, onPeriodChange, onPeriodClear }
 
   const handleDownloadPdf = () => {
     if (!pdfPreview) return;
+    const blob = new Blob([pdfPreview.pdfData], { type: 'application/pdf' });
+    const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
-    link.href = pdfPreview.blobUrl;
+    link.href = url;
     link.download = pdfPreview.fileName;
     link.click();
+    URL.revokeObjectURL(url);
   };
 
   const handleClosePdfPreview = () => {
-    if (pdfPreview) {
-      URL.revokeObjectURL(pdfPreview.blobUrl);
-      setPdfPreview(null);
-    }
+    setPdfPreview(null);
   };
+
+  useEffect(() => {
+    if (!pdfPreview || !pdfContainerRef.current) return;
+    const container = pdfContainerRef.current;
+    container.innerHTML = '';
+
+    const renderPages = async () => {
+      try {
+        const pdf = await pdfjsLib.getDocument({ data: pdfPreview.pdfData.slice(0) }).promise;
+        const containerWidth = container.clientWidth || 800;
+
+        for (let i = 1; i <= pdf.numPages; i++) {
+          const page = await pdf.getPage(i);
+          const unscaledViewport = page.getViewport({ scale: 1 });
+          const scale = (containerWidth - 32) / unscaledViewport.width;
+          const viewport = page.getViewport({ scale: Math.max(scale, 1) });
+          const canvas = document.createElement('canvas');
+          canvas.width = viewport.width;
+          canvas.height = viewport.height;
+          canvas.style.width = '100%';
+          canvas.style.height = 'auto';
+          canvas.style.marginBottom = '8px';
+          canvas.style.borderRadius = '4px';
+          canvas.style.boxShadow = '0 1px 3px rgba(0,0,0,0.2)';
+          const ctx = canvas.getContext('2d')!;
+          await page.render({ canvasContext: ctx, viewport, canvas } as any).promise;
+          container.appendChild(canvas);
+        }
+      } catch (err) {
+        console.error('PDF render error:', err);
+        container.innerHTML = '<p style="text-align:center;padding:2rem;color:#999;">Erro ao renderizar preview</p>';
+      }
+    };
+
+    renderPages();
+  }, [pdfPreview]);
 
   if (isError) {
     return (
@@ -827,13 +865,11 @@ export function MowingStatsBar({ visible = true, onPeriodChange, onPeriodClear }
                 </Button>
               </div>
             </div>
-            <div className="flex-1 min-h-0">
-              <iframe
-                src={pdfPreview.blobUrl + '#toolbar=1'}
-                className="w-full h-full border-0"
-                title="Visualizacao do PDF"
-                data-testid="iframe-pdf-preview"
-              />
+            <div className="flex-1 min-h-0 overflow-auto p-4 bg-muted/50" ref={pdfContainerRef} data-testid="pdf-pages-container">
+              <div className="flex items-center justify-center py-8 text-muted-foreground text-sm">
+                <Loader2 className="h-5 w-5 animate-spin mr-2" />
+                Renderizando preview...
+              </div>
             </div>
           </div>
         </div>
