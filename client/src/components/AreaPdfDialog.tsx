@@ -1,7 +1,7 @@
-import { useState, useEffect } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { useState } from "react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Download, Loader2, Printer } from "lucide-react";
+import { Download, Loader2, Printer, ExternalLink } from "lucide-react";
 import type { ServiceArea } from "@shared/schema";
 import { formatDateBR } from "@/lib/utils";
 import jsPDF from "jspdf";
@@ -10,6 +10,23 @@ interface AreaPdfDialogProps {
   area: ServiceArea;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+}
+
+function parseDateStr(dateStr: string): Date {
+  if (dateStr.includes("/")) {
+    const parts = dateStr.split("/");
+    if (parts.length === 3) {
+      return new Date(Number(parts[2]), Number(parts[1]) - 1, Number(parts[0]));
+    }
+  }
+  return new Date(dateStr);
+}
+
+function daysBetween(dateA: string, dateB: string): number {
+  const a = parseDateStr(dateA);
+  const b = parseDateStr(dateB);
+  const diff = Math.abs(a.getTime() - b.getTime());
+  return Math.round(diff / (1000 * 60 * 60 * 24));
 }
 
 function generateAreaPdf(area: ServiceArea): jsPDF {
@@ -158,22 +175,27 @@ function generateAreaPdf(area: ServiceArea): jsPDF {
 
   y += 8;
 
-  const allHistory: Array<{ date: string; status: string; observation?: string }> = [];
+  const allHistory: Array<{ date: string; observation?: string }> = [];
   if (area.ultimaRocagem) {
     allHistory.push({
       date: area.ultimaRocagem,
-      status: "Concluído",
-      observation: area.registradoPor ? `Registrado por: ${area.registradoPor}` : undefined,
+      observation: "Última roçagem",
     });
   }
   if (area.history && area.history.length > 0) {
     for (const entry of area.history) {
       const isDuplicate = area.ultimaRocagem && entry.date === area.ultimaRocagem;
       if (!isDuplicate) {
-        allHistory.push(entry);
+        allHistory.push({ date: entry.date, observation: entry.observation });
       }
     }
   }
+
+  allHistory.sort((a, b) => {
+    const dateA = parseDateStr(a.date);
+    const dateB = parseDateStr(b.date);
+    return dateB.getTime() - dateA.getTime();
+  });
 
   if (allHistory.length > 0) {
     doc.setFillColor(loteColor.r, loteColor.g, loteColor.b);
@@ -192,8 +214,8 @@ function generateAreaPdf(area: ServiceArea): jsPDF {
     doc.setFontSize(8);
     doc.text("#", margin + 3, y);
     doc.text("Data", margin + 12, y);
-    doc.text("Status", margin + 50, y);
-    doc.text("Observação", margin + 90, y);
+    doc.text("Intervalo", margin + 50, y);
+    doc.text("Observação", margin + 85, y);
 
     y += 5;
     doc.setFont("helvetica", "normal");
@@ -212,13 +234,22 @@ function generateAreaPdf(area: ServiceArea): jsPDF {
 
       doc.text(`${idx + 1}`, margin + 3, y);
       doc.text(formatDateBR(entry.date), margin + 12, y);
-      doc.text(entry.status || "—", margin + 50, y);
+
+      if (idx < allHistory.length - 1) {
+        const nextEntry = allHistory[idx + 1];
+        const days = daysBetween(entry.date, nextEntry.date);
+        doc.text(`${days} dias`, margin + 50, y);
+      } else {
+        doc.setTextColor(150, 150, 150);
+        doc.text("—", margin + 50, y);
+        doc.setTextColor(50, 50, 50);
+      }
 
       if (entry.observation) {
-        const obsText = entry.observation.length > 40
-          ? entry.observation.substring(0, 37) + "..."
+        const obsText = entry.observation.length > 45
+          ? entry.observation.substring(0, 42) + "..."
           : entry.observation;
-        doc.text(obsText, margin + 90, y);
+        doc.text(obsText, margin + 85, y);
       }
 
       y += 6;
@@ -256,72 +287,88 @@ function generateAreaPdf(area: ServiceArea): jsPDF {
 }
 
 export function AreaPdfDialog({ area, open, onOpenChange }: AreaPdfDialogProps) {
-  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
 
-  useEffect(() => {
-    if (open) {
-      setIsGenerating(true);
-      setTimeout(() => {
-        try {
-          const doc = generateAreaPdf(area);
-          const dataUri = doc.output("datauristring");
-          setPdfUrl(dataUri);
-        } catch (err) {
-          console.error("Error generating PDF:", err);
-        } finally {
-          setIsGenerating(false);
-        }
-      }, 100);
-    } else {
-      setPdfUrl(null);
-    }
-  }, [open, area]);
-
   function handleDownload() {
-    const doc = generateAreaPdf(area);
-    const fileName = `area_${area.endereco.replace(/[^a-zA-Z0-9]/g, "_").substring(0, 40)}_${new Date().toISOString().split("T")[0]}.pdf`;
-    doc.save(fileName);
+    setIsGenerating(true);
+    setTimeout(() => {
+      try {
+        const doc = generateAreaPdf(area);
+        const fileName = `area_${area.endereco.replace(/[^a-zA-Z0-9]/g, "_").substring(0, 40)}_${new Date().toISOString().split("T")[0]}.pdf`;
+        doc.save(fileName);
+      } catch (err) {
+        console.error("Error generating PDF:", err);
+      } finally {
+        setIsGenerating(false);
+      }
+    }, 50);
+  }
+
+  function handlePreview() {
+    setIsGenerating(true);
+    setTimeout(() => {
+      try {
+        const doc = generateAreaPdf(area);
+        const blob = doc.output("blob");
+        const url = URL.createObjectURL(blob);
+        window.open(url, "_blank");
+        setTimeout(() => URL.revokeObjectURL(url), 10000);
+      } catch (err) {
+        console.error("Error generating PDF preview:", err);
+      } finally {
+        setIsGenerating(false);
+      }
+    }, 50);
   }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl h-[85vh] flex flex-col" data-testid="dialog-pdf-preview">
-        <DialogHeader className="flex-shrink-0">
+      <DialogContent className="max-w-md" data-testid="dialog-pdf-preview">
+        <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Printer className="h-5 w-5" />
-            Ficha da Área - {area.endereco}
+            Ficha da Área
           </DialogTitle>
+          <DialogDescription>
+            {area.endereco}
+          </DialogDescription>
         </DialogHeader>
 
-        <div className="flex-1 min-h-0 relative">
-          {isGenerating ? (
-            <div className="flex items-center justify-center h-full">
-              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-              <span className="ml-3 text-muted-foreground">Gerando PDF...</span>
-            </div>
-          ) : pdfUrl ? (
-            <iframe
-              src={pdfUrl}
-              className="w-full h-full rounded border"
-              title="PDF Preview"
-              data-testid="iframe-pdf-preview"
-            />
-          ) : (
-            <div className="flex items-center justify-center h-full text-muted-foreground">
-              Erro ao gerar PDF
-            </div>
-          )}
-        </div>
+        <div className="space-y-3 py-2">
+          <p className="text-sm text-muted-foreground">
+            O PDF será gerado com os dados da área, informações de serviço e o histórico completo de roçagens com o intervalo entre cada uma.
+          </p>
 
-        <div className="flex justify-end gap-2 flex-shrink-0 pt-2">
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Fechar
-          </Button>
-          <Button onClick={handleDownload} disabled={isGenerating} data-testid="button-download-pdf">
-            <Download className="h-4 w-4 mr-2" />
-            Baixar PDF
-          </Button>
+          <div className="flex flex-col gap-2">
+            <Button
+              onClick={handlePreview}
+              disabled={isGenerating}
+              variant="outline"
+              className="w-full"
+              data-testid="button-preview-pdf"
+            >
+              {isGenerating ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <ExternalLink className="h-4 w-4 mr-2" />
+              )}
+              Visualizar PDF
+            </Button>
+
+            <Button
+              onClick={handleDownload}
+              disabled={isGenerating}
+              className="w-full"
+              data-testid="button-download-pdf"
+            >
+              {isGenerating ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Download className="h-4 w-4 mr-2" />
+              )}
+              Baixar PDF
+            </Button>
+          </div>
         </div>
       </DialogContent>
     </Dialog>
