@@ -455,7 +455,7 @@ export function MapInfoCard({ area, onClose, onRegisterMowing, onRegisterJardins
       {createPortal(
         <>
           <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
-            <AlertDialogContent data-testid="dialog-delete-confirm" className="z-[1100]">
+            <AlertDialogContent data-testid="dialog-delete-confirm">
               <AlertDialogHeader>
                 <AlertDialogTitle>Deletar Área?</AlertDialogTitle>
                 <AlertDialogDescription>
@@ -479,7 +479,7 @@ export function MapInfoCard({ area, onClose, onRegisterMowing, onRegisterJardins
           </AlertDialog>
 
           <AlertDialog open={showUndoMowingConfirm} onOpenChange={setShowUndoMowingConfirm}>
-            <AlertDialogContent data-testid="dialog-undo-mowing-confirm" className="z-[1100]">
+            <AlertDialogContent data-testid="dialog-undo-mowing-confirm">
               <AlertDialogHeader>
                 <AlertDialogTitle>Desfazer Roçagem?</AlertDialogTitle>
                 <AlertDialogDescription>
