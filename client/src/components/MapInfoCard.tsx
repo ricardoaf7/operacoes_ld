@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { createPortal } from "react-dom";
-import { X, Calendar, MapPin, Ruler, CheckCircle2, Info, ChevronDown, ChevronUp, Hash, CalendarClock, Trash2, Edit2, Image as ImageIcon, Move, Undo2, Play, Square } from "lucide-react";
+import { X, Calendar, MapPin, Ruler, CheckCircle2, Info, ChevronDown, ChevronUp, Hash, CalendarClock, Trash2, Edit2, Image as ImageIcon, Move, Undo2, Play, Square, FileText } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -20,6 +20,7 @@ import { useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { PhotoGalleryModal } from "@/components/PhotoGalleryModal";
+import { AreaPdfDialog } from "@/components/AreaPdfDialog";
 
 interface MapInfoCardProps {
   area: ServiceArea;
@@ -39,6 +40,7 @@ export function MapInfoCard({ area, onClose, onRegisterMowing, onRegisterJardins
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showUndoMowingConfirm, setShowUndoMowingConfirm] = useState(false);
   const [showPhotoGallery, setShowPhotoGallery] = useState(false);
+  const [showPdfDialog, setShowPdfDialog] = useState(false);
 
   const deleteAreaMutation = useMutation({
     mutationFn: async () => {
@@ -150,6 +152,11 @@ export function MapInfoCard({ area, onClose, onRegisterMowing, onRegisterJardins
             {area.bairro && (
               <p className="text-xs text-muted-foreground">{area.bairro}</p>
             )}
+            {area.lote && (
+              <p className="text-xs text-muted-foreground" data-testid="text-lote">
+                Lote {area.lote}
+              </p>
+            )}
           </div>
           <Button
             variant="ghost"
@@ -250,58 +257,46 @@ export function MapInfoCard({ area, onClose, onRegisterMowing, onRegisterJardins
           )}
         </div>
 
-        {/* Seção expandível com mais detalhes */}
         {isExpanded && (
           <>
             <Separator className="mb-4" />
             
             <div className="space-y-3 mb-4">
               <h4 className="font-semibold text-xs uppercase text-muted-foreground">
-                Detalhes Adicionais
+                Histórico de Roçagens
               </h4>
               
-              {area.lote && (
-                <div className="flex items-center gap-2 text-xs">
-                  <Hash className="h-3.5 w-3.5 text-muted-foreground" />
-                  <span className="text-muted-foreground">Lote:</span>
-                  <span className="font-medium" data-testid="text-lote">
-                    {area.lote}
-                  </span>
+              {area.history && area.history.length > 0 ? (
+                <div className="space-y-1 max-h-52 overflow-y-auto">
+                  {[...area.history].reverse().map((entry, idx) => (
+                    <div key={idx} className="text-xs p-2 bg-muted/30 rounded">
+                      <div className="flex justify-between items-start gap-2">
+                        <span className="font-medium">{formatDateBR(entry.date)}</span>
+                        <Badge variant="outline" className="text-[10px] h-4 px-1">
+                          {entry.status}
+                        </Badge>
+                      </div>
+                      {entry.observation && (
+                        <p className="text-muted-foreground mt-1 text-[11px]">
+                          {entry.observation}
+                        </p>
+                      )}
+                    </div>
+                  ))}
                 </div>
-              )}
-              
-              {area.tipo && (
-                <div className="flex items-center gap-2 text-xs">
-                  <MapPin className="h-3.5 w-3.5 text-muted-foreground" />
-                  <span className="text-muted-foreground">Tipo:</span>
-                  <span className="font-medium capitalize" data-testid="text-tipo">
-                    {area.tipo}
-                  </span>
-                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">Nenhum registro de roçagem encontrado.</p>
               )}
 
-              {area.history && area.history.length > 0 && (
-                <div className="space-y-2">
-                  <h5 className="font-semibold text-xs text-muted-foreground">Histórico Recente</h5>
-                  <div className="space-y-1 max-h-40 overflow-y-auto">
-                    {area.history.slice(-5).reverse().map((entry, idx) => (
-                      <div key={idx} className="text-xs p-2 bg-muted/30 rounded">
-                        <div className="flex justify-between items-start">
-                          <span className="font-medium">{formatDateBR(entry.date)}</span>
-                          <Badge variant="outline" className="text-[10px] h-4 px-1">
-                            {entry.status}
-                          </Badge>
-                        </div>
-                        {entry.observation && (
-                          <p className="text-muted-foreground mt-1 text-[11px]">
-                            {entry.observation}
-                          </p>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
+              <Button
+                variant="outline"
+                onClick={() => setShowPdfDialog(true)}
+                className="w-full h-8"
+                data-testid="button-print-pdf"
+              >
+                <FileText className="h-3.5 w-3.5 mr-2" />
+                Imprimir PDF
+              </Button>
             </div>
           </>
         )}
@@ -394,12 +389,12 @@ export function MapInfoCard({ area, onClose, onRegisterMowing, onRegisterJardins
             {isExpanded ? (
               <>
                 <ChevronUp className="h-3.5 w-3.5 mr-2" />
-                Ocultar Detalhes
+                Ocultar Histórico
               </>
             ) : (
               <>
                 <ChevronDown className="h-3.5 w-3.5 mr-2" />
-                Ver Detalhes Completos
+                Histórico
               </>
             )}
           </Button>
@@ -453,6 +448,12 @@ export function MapInfoCard({ area, onClose, onRegisterMowing, onRegisterJardins
           area={area}
           open={showPhotoGallery}
           onOpenChange={setShowPhotoGallery}
+        />
+
+        <AreaPdfDialog
+          area={area}
+          open={showPdfDialog}
+          onOpenChange={setShowPdfDialog}
         />
       </CardContent>
 

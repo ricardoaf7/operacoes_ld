@@ -205,6 +205,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
     });
   });
 
+  app.post("/api/auth/change-password", requireAuth, async (req, res) => {
+    try {
+      const { senhaAtual, novaSenha } = req.body;
+      if (!senhaAtual || !novaSenha) {
+        return res.status(400).json({ error: "Senha atual e nova senha são obrigatórias" });
+      }
+      if (novaSenha.length < 4) {
+        return res.status(400).json({ error: "A nova senha deve ter pelo menos 4 caracteres" });
+      }
+
+      const user = await storage.getUserById(req.session.userId!);
+      if (!user) {
+        return res.status(404).json({ error: "Usuário não encontrado" });
+      }
+
+      const valid = await bcrypt.compare(senhaAtual, user.senha);
+      if (!valid) {
+        return res.status(401).json({ error: "Senha atual incorreta" });
+      }
+
+      const hashedPassword = await bcrypt.hash(novaSenha, 10);
+      await storage.updateUser(user.id, { senha: hashedPassword });
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Change password error:", error);
+      res.status(500).json({ error: "Erro ao alterar senha" });
+    }
+  });
+
   // ===================== USER MANAGEMENT ROUTES =====================
 
   app.get("/api/users", requireRole("admin"), async (req, res) => {

@@ -29,7 +29,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Menu, X, Download, FileText, LogOut, Users } from "lucide-react";
+import { Menu, X, Download, FileText, LogOut, Users, Lock } from "lucide-react";
+import { ChangePasswordDialog } from "@/components/ChangePasswordDialog";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { useLocation } from "wouter";
@@ -63,6 +64,7 @@ export default function Dashboard({ isPublicView = false }: DashboardProps) {
     await logout();
     navigate("/login");
   }, [logout, navigate]);
+  const [showChangePassword, setShowChangePassword] = useState(false);
   const [selectedArea, setSelectedArea] = useState<ServiceArea | null>(null);
   const [showMapCard, setShowMapCard] = useState(false);
   const [showQuickRegisterModal, setShowQuickRegisterModal] = useState(false);
@@ -591,6 +593,11 @@ export default function Dashboard({ isPublicView = false }: DashboardProps) {
                       Gerenciar Usuários
                     </DropdownMenuItem>
                   )}
+                  <DropdownMenuItem onClick={() => setShowChangePassword(true)} data-testid="menu-item-change-password-mobile">
+                    <Lock className="h-4 w-4" />
+                    Alterar Senha
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={handleLogout} data-testid="menu-item-logout-mobile">
                     <LogOut className="h-4 w-4" />
                     Sair
@@ -826,6 +833,11 @@ export default function Dashboard({ isPublicView = false }: DashboardProps) {
                         Gerenciar Usuários
                       </DropdownMenuItem>
                     )}
+                    <DropdownMenuItem onClick={() => setShowChangePassword(true)} data-testid="menu-item-change-password-desktop">
+                      <Lock className="h-4 w-4" />
+                      Alterar Senha
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
                     <DropdownMenuItem onClick={handleLogout} data-testid="menu-item-logout-desktop">
                       <LogOut className="h-4 w-4" />
                       Sair
@@ -981,6 +993,11 @@ export default function Dashboard({ isPublicView = false }: DashboardProps) {
         area={selectedArea}
         open={showEditModal}
         onOpenChange={setShowEditModal}
+      />
+
+      <ChangePasswordDialog
+        open={showChangePassword}
+        onOpenChange={setShowChangePassword}
       />
     </SidebarProvider>
   );
