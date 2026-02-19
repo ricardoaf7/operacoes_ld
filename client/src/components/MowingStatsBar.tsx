@@ -494,7 +494,8 @@ function generatePdf(data: PdfResponse, loteLabel: string): { blobUrl: string; f
   const dateSlug = `${data.periodo.from}_a_${data.periodo.to}`;
   const fileName = `rocagem_${loteSlug}_${dateSlug}.pdf`;
 
-  const blob = doc.output('blob');
+  const arrayBuffer = doc.output('arraybuffer');
+  const blob = new Blob([arrayBuffer], { type: 'application/pdf' });
   const blobUrl = URL.createObjectURL(blob);
   return { blobUrl, fileName };
 }
@@ -828,7 +829,7 @@ export function MowingStatsBar({ visible = true, onPeriodChange, onPeriodClear }
             </div>
             <div className="flex-1 min-h-0">
               <iframe
-                src={pdfPreview.blobUrl}
+                src={pdfPreview.blobUrl + '#toolbar=1'}
                 className="w-full h-full border-0"
                 title="Visualizacao do PDF"
                 data-testid="iframe-pdf-preview"
