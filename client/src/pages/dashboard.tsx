@@ -33,7 +33,11 @@ import { Menu, X, Download, FileText } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import L from "leaflet";
 
-export default function Dashboard() {
+interface DashboardProps {
+  isPublicView?: boolean;
+}
+
+export default function Dashboard({ isPublicView = false }: DashboardProps) {
   const isMobile = useIsMobile();
   const { toast } = useToast();
   const [selectedArea, setSelectedArea] = useState<ServiceArea | null>(null);
@@ -441,10 +445,10 @@ export default function Dashboard() {
   // IMPORTANTE: useCallback para evitar recriação do mapa ao re-render
   // handleMapClick é passado como dependência do useEffect de inicialização do mapa
   const handleMapClick = useCallback((lat: number, lng: number) => {
-    // Clique direito no mapa: mostrar confirmação primeiro
+    if (isPublicView) return;
     setPendingNewAreaCoords({ lat, lng });
     setShowNewAreaConfirm(true);
-  }, []);
+  }, [isPublicView]);
 
   const handleConfirmNewArea = () => {
     if (pendingNewAreaCoords) {
@@ -522,30 +526,33 @@ export default function Dashboard() {
           </Button>
           <h1 className="text-lg font-semibold">Zeladoria Londrina</h1>
           <div className="flex items-center gap-2">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={handleBackupDownload}
-              aria-label="Exportar backup JSON"
-              data-testid="button-backup"
-            >
-              <Download className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setShowExportDialog(true)}
-              aria-label="Exportar CSV para Supabase"
-              data-testid="button-export-csv"
-            >
-              <FileText className="h-4 w-4" />
-            </Button>
+            {!isPublicView && (
+              <>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={handleBackupDownload}
+                  aria-label="Exportar backup JSON"
+                  data-testid="button-backup"
+                >
+                  <Download className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setShowExportDialog(true)}
+                  aria-label="Exportar CSV para Supabase"
+                  data-testid="button-export-csv"
+                >
+                  <FileText className="h-4 w-4" />
+                </Button>
+              </>
+            )}
             <ThemeToggle />
           </div>
         </header>
 
-        {/* Barra de busca e filtros - aparece só quando serviço selecionado */}
-        {selectedService === 'rocagem' && (
+        {(selectedService === 'rocagem' || isPublicView) && (
           <MapHeaderBar
             searchQuery={filters.search}
             onSearchChange={(query) => setFilters({ ...filters, search: query })}
@@ -563,93 +570,149 @@ export default function Dashboard() {
             }}
           />
         )}
-        {selectedService === 'rocagem' && <MowingStatsBar onPeriodChange={handleStatsPeriodChange} onPeriodClear={handleStatsPeriodClear} />}
+        {(selectedService === 'rocagem' || isPublicView) && <MowingStatsBar onPeriodChange={handleStatsPeriodChange} onPeriodClear={handleStatsPeriodClear} />}
         
         <main className="flex-1 overflow-hidden relative">
           <DashboardMap
             rocagemAreas={rocagemAreas}
             jardinsAreas={jardinsAreas}
             layerFilters={{
-              rocagemLote1: selectedService === 'rocagem',
-              rocagemLote2: selectedService === 'rocagem',
+              rocagemLote1: selectedService === 'rocagem' || isPublicView,
+              rocagemLote2: selectedService === 'rocagem' || isPublicView,
               jardins: selectedService === 'jardins',
             }}
             onAreaClick={handleAreaClick}
-            onMapClick={handleMapClick}
+            onMapClick={isPublicView ? undefined : handleMapClick}
             filteredAreaIds={computedFilteredAreaIds}
             mapRef={mapRef}
             searchQuery={filters.search}
             activeFilter={timeRangeFilter}
             selectedAreaId={selectedArea?.id || null}
             relocatingAreaId={relocatingAreaId}
-            onPositionChange={handlePositionChange}
+            onPositionChange={isPublicView ? undefined : handlePositionChange}
           />
 
-          {/* Card flutuante no mapa - lado esquerdo para não cobrir área selecionada */}
           {showMapCard && selectedArea && (
             <div className="absolute top-4 left-4 z-[1000] pointer-events-auto">
               <MapInfoCard
                 area={selectedArea}
                 onClose={handleCloseMapCard}
-                onRegisterMowing={handleOpenQuickRegister}
-                onRegisterJardins={handleOpenJardinsRegister}
-                onSetManualForecast={handleOpenManualForecast}
-                onEdit={handleOpenEdit}
-                onChangeLocation={handleStartRelocation}
+                onRegisterMowing={isPublicView ? undefined : handleOpenQuickRegister}
+                onRegisterJardins={isPublicView ? undefined : handleOpenJardinsRegister}
+                onSetManualForecast={isPublicView ? undefined : handleOpenManualForecast}
+                onEdit={isPublicView ? undefined : handleOpenEdit}
+                onChangeLocation={isPublicView ? undefined : handleStartRelocation}
                 isRelocating={relocatingAreaId === selectedArea.id}
+                isPublicView={isPublicView}
               />
             </div>
           )}
           
-          <BottomSheet 
-            state={bottomSheetState}
-            onStateChange={setBottomSheetState}
-          >
-            <AppSidebar
-              standalone
-              selectedService={selectedService}
-              onServiceSelect={handleServiceSelect}
-              selectedArea={selectedArea}
-              onAreaClose={() => setSelectedArea(null)}
-              onAreaUpdate={handleAreaUpdate}
-              showQuickRegisterModal={showQuickRegisterModal}
-              showMapCard={showMapCard}
-            />
-          </BottomSheet>
-
-          {/* Modal de registro rápido */}
-          <QuickRegisterModal
-            area={selectedArea}
-            open={showQuickRegisterModal}
-            onOpenChange={setShowQuickRegisterModal}
-            mapRef={mapRef}
-            savedMapZoom={savedMapZoom}
-            savedMapCenter={savedMapCenter}
-          />
-
-          {/* Modal de registro - Jardins */}
-          <JardinsRegisterModal
-            area={selectedArea}
-            open={showJardinsRegisterModal}
-            onOpenChange={setShowJardinsRegisterModal}
-          />
-
-          {/* Modal de cadastro de nova área */}
-          {newAreaCoords && (
-            <NewAreaModal
-              open={showNewAreaModal}
-              onOpenChange={setShowNewAreaModal}
-              lat={newAreaCoords.lat}
-              lng={newAreaCoords.lng}
-            />
+          {!isPublicView && (
+            <BottomSheet 
+              state={bottomSheetState}
+              onStateChange={setBottomSheetState}
+            >
+              <AppSidebar
+                standalone
+                selectedService={selectedService}
+                onServiceSelect={handleServiceSelect}
+                selectedArea={selectedArea}
+                onAreaClose={() => setSelectedArea(null)}
+                onAreaUpdate={handleAreaUpdate}
+                showQuickRegisterModal={showQuickRegisterModal}
+                showMapCard={showMapCard}
+              />
+            </BottomSheet>
           )}
 
-          {/* Modal de edição de área */}
-          <EditAreaModal
-            area={selectedArea}
-            open={showEditModal}
-            onOpenChange={setShowEditModal}
+          {!isPublicView && (
+            <>
+              <QuickRegisterModal
+                area={selectedArea}
+                open={showQuickRegisterModal}
+                onOpenChange={setShowQuickRegisterModal}
+                mapRef={mapRef}
+                savedMapZoom={savedMapZoom}
+                savedMapCenter={savedMapCenter}
+              />
+              <JardinsRegisterModal
+                area={selectedArea}
+                open={showJardinsRegisterModal}
+                onOpenChange={setShowJardinsRegisterModal}
+              />
+              {newAreaCoords && (
+                <NewAreaModal
+                  open={showNewAreaModal}
+                  onOpenChange={setShowNewAreaModal}
+                  lat={newAreaCoords.lat}
+                  lng={newAreaCoords.lng}
+                />
+              )}
+              <EditAreaModal
+                area={selectedArea}
+                open={showEditModal}
+                onOpenChange={setShowEditModal}
+              />
+            </>
+          )}
+        </main>
+      </div>
+    );
+  }
+
+  if (isPublicView) {
+    return (
+      <div className="flex flex-col h-screen w-full">
+        <header className="flex items-center justify-between h-14 px-4 border-b border-sidebar-border bg-background z-30">
+          <h1 className="text-lg font-semibold" data-testid="text-public-title">Zeladoria Londrina - Portal Público</h1>
+          <ThemeToggle />
+        </header>
+
+        <MapHeaderBar
+          searchQuery={filters.search}
+          onSearchChange={(query) => setFilters({ ...filters, search: query })}
+          activeFilter={timeRangeFilter}
+          onFilterChange={handleTimeRangeFilterChange}
+          filteredCount={computedFilteredAreaIds ? computedFilteredAreaIds.size : filteredRocagemAreas.length}
+          totalCount={rocagemAreas.length}
+          areas={filteredRocagemAreas}
+          onAreaSelect={handleAreaSelectFromSearch}
+          onGeocodeFlyTo={handleGeocodeFlyTo}
+          selectedAreaId={selectedArea?.id ?? null}
+          onClearSelection={() => {
+            setSelectedArea(null);
+            setShowMapCard(false);
+          }}
+        />
+        <MowingStatsBar onPeriodChange={handleStatsPeriodChange} onPeriodClear={handleStatsPeriodClear} />
+
+        <main className="flex-1 overflow-hidden relative">
+          <DashboardMap
+            rocagemAreas={rocagemAreas}
+            jardinsAreas={jardinsAreas}
+            layerFilters={{
+              rocagemLote1: true,
+              rocagemLote2: true,
+              jardins: false,
+            }}
+            onAreaClick={handleAreaClick}
+            filteredAreaIds={computedFilteredAreaIds}
+            mapRef={mapRef}
+            searchQuery={filters.search}
+            activeFilter={timeRangeFilter}
+            selectedAreaId={selectedArea?.id || null}
           />
+
+          {showMapCard && selectedArea && (
+            <div className="absolute top-4 left-4 z-[1000] pointer-events-auto">
+              <MapInfoCard
+                area={selectedArea}
+                onClose={handleCloseMapCard}
+                isPublicView={true}
+              />
+            </div>
+          )}
         </main>
       </div>
     );
@@ -698,7 +761,6 @@ export default function Dashboard() {
             </div>
           </header>
 
-          {/* Barra de busca e filtros - aparece só quando serviço selecionado */}
           {selectedService === 'rocagem' && (
             <MapHeaderBar
               searchQuery={filters.search}
@@ -740,7 +802,6 @@ export default function Dashboard() {
               onPositionChange={handlePositionChange}
             />
 
-            {/* Card flutuante no mapa - lado esquerdo para não cobrir área selecionada */}
             {showMapCard && selectedArea && (
               <div className="absolute top-4 left-4 z-[1000] pointer-events-auto">
                 <MapInfoCard
@@ -759,7 +820,6 @@ export default function Dashboard() {
         </SidebarInset>
       </div>
 
-      {/* Modal de registro rápido */}
       <QuickRegisterModal
         area={selectedArea}
         open={showQuickRegisterModal}
@@ -769,27 +829,23 @@ export default function Dashboard() {
         savedMapCenter={savedMapCenter}
       />
 
-      {/* Modal de registro - Jardins */}
       <JardinsRegisterModal
         area={selectedArea}
         open={showJardinsRegisterModal}
         onOpenChange={setShowJardinsRegisterModal}
       />
 
-      {/* Modal de previsão manual */}
       <ManualForecastModal
         area={selectedArea}
         open={showManualForecastModal}
         onOpenChange={setShowManualForecastModal}
       />
 
-      {/* Modal de exportação CSV */}
       <ExportDialog
         open={showExportDialog}
         onOpenChange={setShowExportDialog}
       />
 
-      {/* Diálogo de confirmação de relocação - z-index alto para ficar na frente */}
       <AlertDialog open={showRelocationConfirm} onOpenChange={setShowRelocationConfirm}>
         <AlertDialogContent data-testid="dialog-relocation-confirm" className="z-[9999]">
           <AlertDialogHeader>
@@ -814,7 +870,6 @@ export default function Dashboard() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Diálogo de confirmação para adicionar nova área */}
       <AlertDialog open={showNewAreaConfirm} onOpenChange={setShowNewAreaConfirm}>
         <AlertDialogContent data-testid="dialog-new-area-confirm" className="z-[9999]">
           <AlertDialogHeader>
@@ -838,7 +893,6 @@ export default function Dashboard() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Modal de cadastro de nova área */}
       {newAreaCoords && (
         <NewAreaModal
           open={showNewAreaModal}
@@ -848,7 +902,6 @@ export default function Dashboard() {
         />
       )}
 
-      {/* Modal de edição de área */}
       <EditAreaModal
         area={selectedArea}
         open={showEditModal}

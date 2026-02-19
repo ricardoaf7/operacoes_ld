@@ -1,4 +1,4 @@
-import type { ServiceArea, Team, AppConfig, ExportHistory, InsertExportHistory } from "@shared/schema";
+import type { ServiceArea, Team, AppConfig, ExportHistory, InsertExportHistory, User, InsertUser } from "@shared/schema";
 
 export interface IStorage {
   // Service Areas
@@ -34,6 +34,14 @@ export interface IStorage {
   getLastExport(scope: string, type: 'full' | 'incremental'): Promise<ExportHistory | null>;
   recordExport(data: InsertExportHistory): Promise<ExportHistory>;
   getAreasModifiedSince(timestamp: Date): Promise<ServiceArea[]>;
+
+  // Users
+  getUserByEmail(email: string): Promise<User | undefined>;
+  getUserById(id: number): Promise<User | undefined>;
+  getAllUsers(): Promise<User[]>;
+  createUser(data: InsertUser): Promise<User>;
+  updateUser(id: number, data: Partial<InsertUser>): Promise<User | undefined>;
+  deleteUser(id: number): Promise<boolean>;
 }
 
 // Função legada de cálculo de agendamento - DEPRECADA
@@ -446,6 +454,41 @@ export class MemStorage implements IStorage {
 
   async getAreasModifiedSince(timestamp: Date): Promise<ServiceArea[]> {
     return this.rocagemAreas;
+  }
+
+  private memUsers: User[] = [];
+  private nextUserId = 1;
+
+  async getUserByEmail(email: string): Promise<User | undefined> {
+    return this.memUsers.find(u => u.email === email);
+  }
+
+  async getUserById(id: number): Promise<User | undefined> {
+    return this.memUsers.find(u => u.id === id);
+  }
+
+  async getAllUsers(): Promise<User[]> {
+    return this.memUsers;
+  }
+
+  async createUser(data: InsertUser): Promise<User> {
+    const user: User = { ...data, id: this.nextUserId++ };
+    this.memUsers.push(user);
+    return user;
+  }
+
+  async updateUser(id: number, data: Partial<InsertUser>): Promise<User | undefined> {
+    const user = this.memUsers.find(u => u.id === id);
+    if (!user) return undefined;
+    Object.assign(user, data);
+    return user;
+  }
+
+  async deleteUser(id: number): Promise<boolean> {
+    const idx = this.memUsers.findIndex(u => u.id === id);
+    if (idx === -1) return false;
+    this.memUsers.splice(idx, 1);
+    return true;
   }
 }
 

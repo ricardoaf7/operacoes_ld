@@ -2,8 +2,8 @@ import { drizzle } from "drizzle-orm/neon-serverless";
 import { eq, inArray, or, ilike, and, sql, gt, lt, desc } from "drizzle-orm";
 import { Pool, neonConfig } from "@neondatabase/serverless";
 import ws from "ws";
-import type { ServiceArea, Team, AppConfig, ExportHistory, InsertExportHistory } from "@shared/schema";
-import { serviceAreas, teams, appConfig, exportHistory } from "@shared/schema";
+import type { ServiceArea, Team, AppConfig, ExportHistory, InsertExportHistory, User, InsertUser } from "@shared/schema";
+import { serviceAreas, teams, appConfig, exportHistory, users } from "@shared/schema";
 import type { IStorage } from "./storage";
 
 neonConfig.webSocketConstructor = ws;
@@ -537,6 +537,82 @@ export class DbStorage implements IStorage {
       status: dbTeam.status as "Idle" | "Assigned" | "Working",
       currentAreaId: dbTeam.currentAreaId,
       location: dbTeam.location as { lat: number; lng: number },
+    };
+  }
+
+  async getUserByEmail(email: string): Promise<User | undefined> {
+    const results = await this.db
+      .select()
+      .from(users)
+      .where(eq(users.email, email))
+      .limit(1);
+    if (results.length === 0) return undefined;
+    return this.mapDbUser(results[0]);
+  }
+
+  async getUserById(id: number): Promise<User | undefined> {
+    const results = await this.db
+      .select()
+      .from(users)
+      .where(eq(users.id, id))
+      .limit(1);
+    if (results.length === 0) return undefined;
+    return this.mapDbUser(results[0]);
+  }
+
+  async getAllUsers(): Promise<User[]> {
+    const results = await this.db.select().from(users);
+    return results.map(this.mapDbUser);
+  }
+
+  async createUser(data: InsertUser): Promise<User> {
+    const results = await this.db
+      .insert(users)
+      .values({
+        nome: data.nome,
+        email: data.email,
+        senha: data.senha,
+        role: data.role,
+        ativo: data.ativo ?? true,
+      })
+      .returning();
+    return this.mapDbUser(results[0]);
+  }
+
+  async updateUser(id: number, data: Partial<InsertUser>): Promise<User | undefined> {
+    const updateData: any = {};
+    if (data.nome !== undefined) updateData.nome = data.nome;
+    if (data.email !== undefined) updateData.email = data.email;
+    if (data.senha !== undefined) updateData.senha = data.senha;
+    if (data.role !== undefined) updateData.role = data.role;
+    if (data.ativo !== undefined) updateData.ativo = data.ativo;
+    updateData.updatedAt = new Date();
+
+    const results = await this.db
+      .update(users)
+      .set(updateData)
+      .where(eq(users.id, id))
+      .returning();
+    if (results.length === 0) return undefined;
+    return this.mapDbUser(results[0]);
+  }
+
+  async deleteUser(id: number): Promise<boolean> {
+    const results = await this.db
+      .delete(users)
+      .where(eq(users.id, id))
+      .returning();
+    return results.length > 0;
+  }
+
+  private mapDbUser(dbUser: any): User {
+    return {
+      id: dbUser.id,
+      nome: dbUser.nome,
+      email: dbUser.email,
+      senha: dbUser.senha,
+      role: dbUser.role as "admin" | "gestor" | "fiscal",
+      ativo: dbUser.ativo,
     };
   }
 

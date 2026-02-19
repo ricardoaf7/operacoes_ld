@@ -1,4 +1,4 @@
-import type { Express } from "express";
+import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import express from "express";
 import { storage } from "./storage";
@@ -8,6 +8,7 @@ import * as fs from "fs";
 import * as path from "path";
 import type { ServiceArea } from "@shared/schema";
 import { randomUUID } from "crypto";
+import bcrypt from "bcryptjs";
 
 const upload = multer({ 
   storage: multer.memoryStorage(),
@@ -103,11 +104,185 @@ function convertToSupabaseCSV(areas: ServiceArea[]): string {
   return csv;
 }
 
+function requireAuth(req: Request, res: Response, next: NextFunction) {
+  if (!req.session.userId) {
+    return res.status(401).json({ error: "Não autenticado" });
+  }
+  next();
+}
+
+function requireRole(...roles: string[]) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    if (!req.session.userId) {
+      return res.status(401).json({ error: "Não autenticado" });
+    }
+    if (!roles.includes(req.session.userRole || '')) {
+      return res.status(403).json({ error: "Sem permissão" });
+    }
+    next();
+  };
+}
+
+async function ensureAdminExists() {
+  const existing = await storage.getUserByEmail("admin@cmtu.londrina.pr.gov.br");
+  if (!existing) {
+    const hashedPassword = await bcrypt.hash("admin123", 10);
+    await storage.createUser({
+      nome: "Administrador",
+      email: "admin@cmtu.londrina.pr.gov.br",
+      senha: hashedPassword,
+      role: "admin",
+      ativo: true,
+    });
+    console.log("👤 Usuário admin padrão criado (admin@cmtu.londrina.pr.gov.br / admin123)");
+  }
+}
+
 export async function registerRoutes(app: Express): Promise<Server> {
   app.use('/uploads', express.static(uploadDir));
 
+  await ensureAdminExists();
+
+  // ===================== AUTH ROUTES =====================
+
+  app.post("/api/auth/login", async (req, res) => {
+    try {
+      const { email, senha } = req.body;
+      if (!email || !senha) {
+        return res.status(400).json({ error: "Email e senha são obrigatórios" });
+      }
+
+      const user = await storage.getUserByEmail(email);
+      if (!user || !user.ativo) {
+        return res.status(401).json({ error: "Email ou senha inválidos" });
+      }
+
+      const valid = await bcrypt.compare(senha, user.senha);
+      if (!valid) {
+        return res.status(401).json({ error: "Email ou senha inválidos" });
+      }
+
+      req.session.userId = user.id;
+      req.session.userRole = user.role;
+      req.session.userName = user.nome;
+
+      res.json({
+        id: user.id,
+        nome: user.nome,
+        email: user.email,
+        role: user.role,
+      });
+    } catch (error) {
+      console.error("Login error:", error);
+      res.status(500).json({ error: "Erro ao fazer login" });
+    }
+  });
+
+  app.post("/api/auth/logout", (req, res) => {
+    req.session.destroy((err) => {
+      if (err) {
+        return res.status(500).json({ error: "Erro ao fazer logout" });
+      }
+      res.json({ success: true });
+    });
+  });
+
+  app.get("/api/auth/me", async (req, res) => {
+    if (!req.session.userId) {
+      return res.status(401).json({ error: "Não autenticado" });
+    }
+
+    const user = await storage.getUserById(req.session.userId);
+    if (!user) {
+      return res.status(401).json({ error: "Usuário não encontrado" });
+    }
+
+    res.json({
+      id: user.id,
+      nome: user.nome,
+      email: user.email,
+      role: user.role,
+    });
+  });
+
+  // ===================== USER MANAGEMENT ROUTES =====================
+
+  app.get("/api/users", requireRole("admin"), async (req, res) => {
+    try {
+      const allUsers = await storage.getAllUsers();
+      res.json(allUsers.map(u => ({ id: u.id, nome: u.nome, email: u.email, role: u.role, ativo: u.ativo })));
+    } catch (error) {
+      res.status(500).json({ error: "Erro ao buscar usuários" });
+    }
+  });
+
+  app.post("/api/users", requireRole("admin"), async (req, res) => {
+    try {
+      const { nome, email, senha, role } = req.body;
+      if (!nome || !email || !senha || !role) {
+        return res.status(400).json({ error: "Todos os campos são obrigatórios" });
+      }
+
+      const existing = await storage.getUserByEmail(email);
+      if (existing) {
+        return res.status(400).json({ error: "Email já cadastrado" });
+      }
+
+      const hashedPassword = await bcrypt.hash(senha, 10);
+      const user = await storage.createUser({
+        nome,
+        email,
+        senha: hashedPassword,
+        role,
+        ativo: true,
+      });
+
+      res.json({ id: user.id, nome: user.nome, email: user.email, role: user.role, ativo: user.ativo });
+    } catch (error) {
+      res.status(500).json({ error: "Erro ao criar usuário" });
+    }
+  });
+
+  app.patch("/api/users/:id", requireRole("admin"), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { nome, email, senha, role, ativo } = req.body;
+
+      const updateData: any = {};
+      if (nome !== undefined) updateData.nome = nome;
+      if (email !== undefined) updateData.email = email;
+      if (role !== undefined) updateData.role = role;
+      if (ativo !== undefined) updateData.ativo = ativo;
+      if (senha) updateData.senha = await bcrypt.hash(senha, 10);
+
+      const user = await storage.updateUser(id, updateData);
+      if (!user) {
+        return res.status(404).json({ error: "Usuário não encontrado" });
+      }
+
+      res.json({ id: user.id, nome: user.nome, email: user.email, role: user.role, ativo: user.ativo });
+    } catch (error) {
+      res.status(500).json({ error: "Erro ao atualizar usuário" });
+    }
+  });
+
+  app.delete("/api/users/:id", requireRole("admin"), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const deleted = await storage.deleteUser(id);
+      if (!deleted) {
+        return res.status(404).json({ error: "Usuário não encontrado" });
+      }
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Erro ao deletar usuário" });
+    }
+  });
+
+  // ===================== EXISTING ROUTES =====================
+
   // Endpoint para deletar área
-  app.delete("/api/areas/:id", async (req, res) => {
+  app.delete("/api/areas/:id", requireAuth, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) {
@@ -127,7 +302,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Endpoint para upload de fotos
-  app.post("/api/photo/upload", upload.single("file"), async (req, res) => {
+  app.post("/api/photo/upload", requireAuth, upload.single("file"), async (req, res) => {
     try {
       if (!req.file) {
         return res.status(400).json({ error: "Nenhum arquivo enviado" });
@@ -427,7 +602,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Criar nova área de serviço
-  app.post("/api/areas", async (req, res) => {
+  app.post("/api/areas", requireAuth, async (req, res) => {
     try {
       const createSchema = z.object({
         tipo: z.string().min(1, "Tipo é obrigatório"),
@@ -600,7 +775,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch("/api/config", async (req, res) => {
+  app.patch("/api/config", requireAuth, async (req, res) => {
     try {
       const configSchema = z.object({
         mowingProductionRate: z.object({
@@ -624,7 +799,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch("/api/areas/:id/status", async (req, res) => {
+  app.patch("/api/areas/:id/status", requireAuth, async (req, res) => {
     try {
       const areaId = parseInt(req.params.id);
       const statusSchema = z.object({
@@ -649,7 +824,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch("/api/teams/:id/assign", async (req, res) => {
+  app.patch("/api/teams/:id/assign", requireAuth, async (req, res) => {
     try {
       const teamId = parseInt(req.params.id);
       const assignSchema = z.object({
@@ -674,7 +849,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch("/api/areas/:id/polygon", async (req, res) => {
+  app.patch("/api/areas/:id/polygon", requireAuth, async (req, res) => {
     try {
       const areaId = parseInt(req.params.id);
       const polygonSchema = z.object({
@@ -702,7 +877,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch("/api/areas/:id/position", async (req, res) => {
+  app.patch("/api/areas/:id/position", requireAuth, async (req, res) => {
     try {
       const areaId = parseInt(req.params.id);
       const positionSchema = z.object({
@@ -728,7 +903,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch("/api/areas/:id/executando", async (req, res) => {
+  app.patch("/api/areas/:id/executando", requireAuth, async (req, res) => {
     try {
       const areaId = parseInt(req.params.id);
       const schema = z.object({
@@ -753,7 +928,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/areas/reset-executando", async (_req, res) => {
+  app.post("/api/areas/reset-executando", requireAuth, async (_req, res) => {
     try {
       const count = await storage.resetAllExecutando();
       res.json({ message: `${count} áreas resetadas`, count });
@@ -763,7 +938,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch("/api/areas/:id/manual-forecast", async (req, res) => {
+  app.patch("/api/areas/:id/manual-forecast", requireAuth, async (req, res) => {
     try {
       const areaId = parseInt(req.params.id);
       const manualForecastSchema = z.object({
@@ -792,7 +967,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.patch("/api/areas/:id", async (req, res) => {
+  app.patch("/api/areas/:id", requireAuth, async (req, res) => {
     try {
       const areaId = parseInt(req.params.id);
       const updateSchema = z.object({
@@ -856,7 +1031,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/areas/:id/history", async (req, res) => {
+  app.post("/api/areas/:id/history", requireAuth, async (req, res) => {
     try {
       const areaId = parseInt(req.params.id);
       const historyEntrySchema = z.object({
@@ -883,7 +1058,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/areas/register-daily", async (req, res) => {
+  app.post("/api/areas/register-daily", requireAuth, async (req, res) => {
     try {
       const registerSchema = z.object({
         areaIds: z.array(z.number()).min(1, "Selecione pelo menos uma área"),
@@ -916,7 +1091,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // - POST /api/admin/import-production (não necessário - banco é compartilhado entre dev e produção)
 
   // Desfazer último registro de roçagem de uma área
-  app.delete("/api/areas/:id/rocagem", async (req, res) => {
+  app.delete("/api/areas/:id/rocagem", requireAuth, async (req, res) => {
     try {
       const areaId = parseInt(req.params.id);
       
@@ -958,7 +1133,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/admin/recalculate-schedules", async (req, res) => {
+  app.post("/api/admin/recalculate-schedules", requireRole("admin"), async (req, res) => {
     console.log("📅 Recalculando agendamentos de todas as áreas");
     
     try {

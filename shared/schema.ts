@@ -165,6 +165,32 @@ export const appConfig = pgTable("app_config", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+// Users table for authentication
+export const users = pgTable("users", {
+  id: serial("id").primaryKey(),
+  nome: text("nome").notNull(),
+  email: text("email").notNull(),
+  senha: text("senha").notNull(),
+  role: text("role").notNull().default("fiscal"),
+  ativo: boolean("ativo").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const userSchema = z.object({
+  id: z.number(),
+  nome: z.string(),
+  email: z.string().email(),
+  senha: z.string(),
+  role: z.enum(["admin", "gestor", "fiscal"]),
+  ativo: z.boolean().default(true),
+});
+
+export type User = z.infer<typeof userSchema>;
+
+export const insertUserSchema = userSchema.omit({ id: true });
+export type InsertUser = z.infer<typeof insertUserSchema>;
+
 export const exportHistory = pgTable("export_history", {
   id: serial("id").primaryKey(),
   scope: text("scope").notNull(),

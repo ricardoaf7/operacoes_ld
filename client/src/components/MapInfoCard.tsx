@@ -24,15 +24,16 @@ import { PhotoGalleryModal } from "@/components/PhotoGalleryModal";
 interface MapInfoCardProps {
   area: ServiceArea;
   onClose: () => void;
-  onRegisterMowing: () => void;
+  onRegisterMowing?: () => void;
   onRegisterJardins?: () => void;
-  onSetManualForecast: () => void;
+  onSetManualForecast?: () => void;
   onEdit?: () => void;
   onChangeLocation?: () => void;
   isRelocating?: boolean;
+  isPublicView?: boolean;
 }
 
-export function MapInfoCard({ area, onClose, onRegisterMowing, onRegisterJardins, onSetManualForecast, onEdit, onChangeLocation, isRelocating = false }: MapInfoCardProps) {
+export function MapInfoCard({ area, onClose, onRegisterMowing, onRegisterJardins, onSetManualForecast, onEdit, onChangeLocation, isRelocating = false, isPublicView = false }: MapInfoCardProps) {
   const { toast } = useToast();
   const [isExpanded, setIsExpanded] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -307,7 +308,7 @@ export function MapInfoCard({ area, onClose, onRegisterMowing, onRegisterJardins
 
         {/* Botões de ação */}
         <div className="flex flex-col gap-2">
-          {isRocagem && (
+          {!isPublicView && isRocagem && (
             <>
               <Button
                 onClick={() => toggleExecutandoMutation.mutate()}
@@ -373,7 +374,7 @@ export function MapInfoCard({ area, onClose, onRegisterMowing, onRegisterJardins
             </>
           )}
 
-          {isJardins && onRegisterJardins && (
+          {!isPublicView && isJardins && onRegisterJardins && (
             <Button
               onClick={onRegisterJardins}
               className="w-full h-9 bg-green-600 hover:bg-green-700 text-white"
@@ -403,45 +404,49 @@ export function MapInfoCard({ area, onClose, onRegisterMowing, onRegisterJardins
             )}
           </Button>
 
-          <Separator />
+          {!isPublicView && (
+            <>
+              <Separator />
 
-          {onChangeLocation && (
-            <Button
-              onClick={onChangeLocation}
-              variant={isRelocating ? "default" : "outline"}
-              className={`w-full h-8 ${isRelocating 
-                ? "bg-blue-600 hover:bg-blue-700 text-white" 
-                : "text-blue-600 dark:text-blue-400 border-blue-300 dark:border-blue-700"}`}
-              data-testid="button-change-location"
-            >
-              <Move className="h-3.5 w-3.5 mr-1" />
-              {isRelocating ? "Clique no Novo Local" : "Mudar Localização"}
-            </Button>
+              {onChangeLocation && (
+                <Button
+                  onClick={onChangeLocation}
+                  variant={isRelocating ? "default" : "outline"}
+                  className={`w-full h-8 ${isRelocating 
+                    ? "bg-blue-600 hover:bg-blue-700 text-white" 
+                    : "text-blue-600 dark:text-blue-400 border-blue-300 dark:border-blue-700"}`}
+                  data-testid="button-change-location"
+                >
+                  <Move className="h-3.5 w-3.5 mr-1" />
+                  {isRelocating ? "Clique no Novo Local" : "Mudar Localização"}
+                </Button>
+              )}
+
+              <div className="flex gap-2">
+                {onEdit && (
+                  <Button
+                    onClick={onEdit}
+                    variant="outline"
+                    className="flex-1 h-8 text-blue-600 dark:text-blue-400 border-blue-300 dark:border-blue-700"
+                    data-testid="button-edit-area"
+                  >
+                    <Edit2 className="h-3.5 w-3.5 mr-1" />
+                    Editar
+                  </Button>
+                )}
+                <Button
+                  onClick={() => setShowDeleteConfirm(true)}
+                  variant="outline"
+                  className="flex-1 h-8 text-red-600 dark:text-red-400 border-red-300 dark:border-red-700 hover:bg-red-50 dark:hover:bg-red-950"
+                  data-testid="button-delete-area"
+                  disabled={deleteAreaMutation.isPending}
+                >
+                  <Trash2 className="h-3.5 w-3.5 mr-1" />
+                  Deletar
+                </Button>
+              </div>
+            </>
           )}
-
-          <div className="flex gap-2">
-            {onEdit && (
-              <Button
-                onClick={onEdit}
-                variant="outline"
-                className="flex-1 h-8 text-blue-600 dark:text-blue-400 border-blue-300 dark:border-blue-700"
-                data-testid="button-edit-area"
-              >
-                <Edit2 className="h-3.5 w-3.5 mr-1" />
-                Editar
-              </Button>
-            )}
-            <Button
-              onClick={() => setShowDeleteConfirm(true)}
-              variant="outline"
-              className="flex-1 h-8 text-red-600 dark:text-red-400 border-red-300 dark:border-red-700 hover:bg-red-50 dark:hover:bg-red-950"
-              data-testid="button-delete-area"
-              disabled={deleteAreaMutation.isPending}
-            >
-              <Trash2 className="h-3.5 w-3.5 mr-1" />
-              Deletar
-            </Button>
-          </div>
         </div>
 
         <PhotoGalleryModal
