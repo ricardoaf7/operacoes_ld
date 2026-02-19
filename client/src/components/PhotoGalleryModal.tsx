@@ -11,6 +11,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { Input } from "@/components/ui/input";
 import type { ServiceArea } from "@shared/schema";
 import { formatDateBR } from "@/lib/utils";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -31,6 +32,7 @@ export function PhotoGalleryModal({
   const { toast } = useToast();
   const [isUploading, setIsUploading] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  const [photoDate, setPhotoDate] = useState(() => new Date().toISOString().split("T")[0]);
 
   const { data: freshArea } = useQuery<ServiceArea>({
     queryKey: ["/api/areas", area.id],
@@ -120,9 +122,10 @@ export function PhotoGalleryModal({
       const urls = await Promise.all(uploadPromises);
       
       const currentFotos = liveArea.fotos || [];
+      const selectedDate = photoDate ? new Date(photoDate + "T12:00:00").toISOString() : new Date().toISOString();
       const newPhotos = urls.map((url) => ({
         url,
-        data: new Date().toISOString(),
+        data: selectedDate,
       }));
       const updatedFotos = [...currentFotos, ...newPhotos];
 
@@ -168,24 +171,37 @@ export function PhotoGalleryModal({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-6">
-          <label htmlFor="photo-input" className="flex flex-col items-center justify-center cursor-pointer gap-2">
-            <Upload className="h-6 w-6 text-muted-foreground" />
-            <span className="text-sm font-medium text-muted-foreground">
-              {isUploading ? "Enviando fotos..." : "Clique para enviar fotos"}
-            </span>
-            <span className="text-xs text-muted-foreground">Envie uma ou múltiplas fotos (JPG, PNG, GIF, WebP - máx. 10MB cada)</span>
-            <input
-              id="photo-input"
-              type="file"
-              accept="image/*"
-              multiple
-              onChange={handleFileSelect}
-              disabled={isUploading}
-              className="hidden"
-              data-testid="input-photo-file"
+        <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            <Calendar className="h-4 w-4 text-muted-foreground shrink-0" />
+            <span className="text-sm text-muted-foreground shrink-0">Data das fotos:</span>
+            <Input
+              type="date"
+              value={photoDate}
+              onChange={(e) => setPhotoDate(e.target.value)}
+              className="max-w-[180px]"
+              data-testid="input-photo-date"
             />
-          </label>
+          </div>
+          <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-6">
+            <label htmlFor="photo-input" className="flex flex-col items-center justify-center cursor-pointer gap-2">
+              <Upload className="h-6 w-6 text-muted-foreground" />
+              <span className="text-sm font-medium text-muted-foreground">
+                {isUploading ? "Enviando fotos..." : "Clique para enviar fotos"}
+              </span>
+              <span className="text-xs text-muted-foreground">Envie uma ou múltiplas fotos (JPG, PNG, GIF, WebP - máx. 10MB cada)</span>
+              <input
+                id="photo-input"
+                type="file"
+                accept="image/*"
+                multiple
+                onChange={handleFileSelect}
+                disabled={isUploading}
+                className="hidden"
+                data-testid="input-photo-file"
+              />
+            </label>
+          </div>
         </div>
 
         <Separator />
@@ -273,27 +289,27 @@ export function PhotoGalleryModal({
             <>
               <Button
                 variant="ghost"
-                size="icon"
-                className="absolute left-4 top-1/2 -translate-y-1/2 text-white bg-black/50"
+                size="lg"
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-white bg-black/60 rounded-full p-0 min-w-12 min-h-12"
                 onClick={(e) => {
                   e.stopPropagation();
                   setLightboxIndex((prev) => (prev! > 0 ? prev! - 1 : sortedFotos.length - 1));
                 }}
                 data-testid="button-lightbox-prev"
               >
-                <ChevronLeft className="h-6 w-6" />
+                <ChevronLeft className="h-8 w-8" />
               </Button>
               <Button
                 variant="ghost"
-                size="icon"
-                className="absolute right-4 top-1/2 -translate-y-1/2 text-white bg-black/50"
+                size="lg"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-white bg-black/60 rounded-full p-0 min-w-12 min-h-12"
                 onClick={(e) => {
                   e.stopPropagation();
                   setLightboxIndex((prev) => (prev! < sortedFotos.length - 1 ? prev! + 1 : 0));
                 }}
                 data-testid="button-lightbox-next"
               >
-                <ChevronRight className="h-6 w-6" />
+                <ChevronRight className="h-8 w-8" />
               </Button>
             </>
           )}
