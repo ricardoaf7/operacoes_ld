@@ -1,4 +1,5 @@
-import { useState, useCallback } from "react";
+import { useState } from "react";
+import { createPortal } from "react-dom";
 import { Upload, X, Calendar, Image as ImageIcon, Loader2, ChevronLeft, ChevronRight, ZoomIn } from "lucide-react";
 import {
   Dialog,
@@ -157,6 +158,7 @@ export function PhotoGalleryModal({
   );
 
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto" data-testid="dialog-photo-gallery">
         <DialogHeader>
@@ -248,9 +250,11 @@ export function PhotoGalleryModal({
         )}
       </DialogContent>
 
-      {lightboxIndex !== null && sortedFotos[lightboxIndex] && (
+    </Dialog>
+
+      {lightboxIndex !== null && sortedFotos[lightboxIndex] && createPortal(
         <div
-          className="fixed inset-0 bg-black/90 flex items-center justify-center"
+          className="fixed inset-0 bg-black/95 flex items-center justify-center"
           style={{ zIndex: 10000 }}
           onClick={() => setLightboxIndex(null)}
           data-testid="lightbox-overlay"
@@ -259,7 +263,7 @@ export function PhotoGalleryModal({
             variant="ghost"
             size="icon"
             className="absolute top-4 right-4 text-white bg-black/50"
-            onClick={() => setLightboxIndex(null)}
+            onClick={(e) => { e.stopPropagation(); setLightboxIndex(null); }}
             data-testid="button-lightbox-close"
           >
             <X className="h-5 w-5" />
@@ -309,8 +313,9 @@ export function PhotoGalleryModal({
               <span className="ml-2 text-white/70">{lightboxIndex + 1} / {sortedFotos.length}</span>
             )}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
-    </Dialog>
+    </>
   );
 }
