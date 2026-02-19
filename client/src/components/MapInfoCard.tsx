@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { X, Calendar, MapPin, Ruler, CheckCircle2, Info, ChevronDown, ChevronUp, Hash, CalendarClock, Trash2, Edit2, Image as ImageIcon, Move, Undo2, Play, Square, FileText } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
@@ -41,6 +41,38 @@ export function MapInfoCard({ area, onClose, onRegisterMowing, onRegisterJardins
   const [showUndoMowingConfirm, setShowUndoMowingConfirm] = useState(false);
   const [showPhotoGallery, setShowPhotoGallery] = useState(false);
   const [showPdfDialog, setShowPdfDialog] = useState(false);
+  const [fullArea, setFullArea] = useState<ServiceArea | null>(null);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+
+  useEffect(() => {
+    setFullArea(null);
+    setIsExpanded(false);
+  }, [area.id]);
+
+  const fetchFullArea = async () => {
+    if (fullArea) return;
+    setLoadingHistory(true);
+    try {
+      const res = await fetch(`/api/areas/${area.id}`);
+      if (res.ok) {
+        const data = await res.json();
+        setFullArea(data);
+      }
+    } catch (err) {
+      console.error("Error fetching full area:", err);
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
+
+  const handleToggleHistory = () => {
+    if (!isExpanded) {
+      fetchFullArea();
+    }
+    setIsExpanded(!isExpanded);
+  };
+
+  const areaWithHistory = fullArea || area;
 
   const deleteAreaMutation = useMutation({
     mutationFn: async () => {
@@ -266,9 +298,14 @@ export function MapInfoCard({ area, onClose, onRegisterMowing, onRegisterJardins
                 Histórico de Roçagens
               </h4>
               
-              {area.history && area.history.length > 0 ? (
+              {loadingHistory ? (
+                <div className="flex items-center justify-center py-4">
+                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary"></div>
+                  <span className="ml-2 text-xs text-muted-foreground">Carregando histórico...</span>
+                </div>
+              ) : areaWithHistory.history && areaWithHistory.history.length > 0 ? (
                 <div className="space-y-1 max-h-52 overflow-y-auto">
-                  {[...area.history].reverse().map((entry, idx) => (
+                  {[...areaWithHistory.history].reverse().map((entry, idx) => (
                     <div key={idx} className="text-xs p-2 bg-muted/30 rounded">
                       <div className="flex justify-between items-start gap-2">
                         <span className="font-medium">{formatDateBR(entry.date)}</span>
@@ -382,7 +419,7 @@ export function MapInfoCard({ area, onClose, onRegisterMowing, onRegisterJardins
           
           <Button
             variant="outline"
-            onClick={() => setIsExpanded(!isExpanded)}
+            onClick={handleToggleHistory}
             className="w-full h-8"
             data-testid="button-view-details"
           >
@@ -451,7 +488,7 @@ export function MapInfoCard({ area, onClose, onRegisterMowing, onRegisterJardins
         />
 
         <AreaPdfDialog
-          area={area}
+          area={areaWithHistory}
           open={showPdfDialog}
           onOpenChange={setShowPdfDialog}
         />
