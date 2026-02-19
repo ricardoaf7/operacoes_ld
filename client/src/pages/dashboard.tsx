@@ -29,17 +29,40 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Menu, X, Download, FileText } from "lucide-react";
+import { Menu, X, Download, FileText, LogOut, Users } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/use-auth";
+import { useLocation } from "wouter";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import L from "leaflet";
 
 interface DashboardProps {
   isPublicView?: boolean;
 }
 
+const roleLabels: Record<string, string> = {
+  admin: "Administrador",
+  gestor: "Gestor",
+  fiscal: "Fiscal",
+};
+
 export default function Dashboard({ isPublicView = false }: DashboardProps) {
   const isMobile = useIsMobile();
   const { toast } = useToast();
+  const { user, logout } = useAuth();
+  const [, navigate] = useLocation();
+
+  const handleLogout = useCallback(async () => {
+    await logout();
+    navigate("/login");
+  }, [logout, navigate]);
   const [selectedArea, setSelectedArea] = useState<ServiceArea | null>(null);
   const [showMapCard, setShowMapCard] = useState(false);
   const [showQuickRegisterModal, setShowQuickRegisterModal] = useState(false);
@@ -549,6 +572,32 @@ export default function Dashboard({ isPublicView = false }: DashboardProps) {
               </>
             )}
             <ThemeToggle />
+            {!isPublicView && user && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon" data-testid="button-user-menu-mobile">
+                    <LogOut className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="z-[9999]">
+                  <DropdownMenuLabel>
+                    <div className="text-sm font-medium">{user.nome}</div>
+                    <div className="text-xs text-muted-foreground">{roleLabels[user.role] || user.role}</div>
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  {user.role === "admin" && (
+                    <DropdownMenuItem onClick={() => navigate("/usuarios")} data-testid="menu-item-users">
+                      <Users className="h-4 w-4" />
+                      Gerenciar Usuários
+                    </DropdownMenuItem>
+                  )}
+                  <DropdownMenuItem onClick={handleLogout} data-testid="menu-item-logout-mobile">
+                    <LogOut className="h-4 w-4" />
+                    Sair
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
           </div>
         </header>
 
@@ -758,6 +807,32 @@ export default function Dashboard({ isPublicView = false }: DashboardProps) {
                 <FileText className="h-4 w-4" />
               </Button>
               <ThemeToggle />
+              {user && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon" data-testid="button-user-menu-desktop">
+                      <LogOut className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="z-[9999]">
+                    <DropdownMenuLabel>
+                      <div className="text-sm font-medium">{user.nome}</div>
+                      <div className="text-xs text-muted-foreground">{roleLabels[user.role] || user.role}</div>
+                    </DropdownMenuLabel>
+                    <DropdownMenuSeparator />
+                    {user.role === "admin" && (
+                      <DropdownMenuItem onClick={() => navigate("/usuarios")} data-testid="menu-item-users-desktop">
+                        <Users className="h-4 w-4" />
+                        Gerenciar Usuários
+                      </DropdownMenuItem>
+                    )}
+                    <DropdownMenuItem onClick={handleLogout} data-testid="menu-item-logout-desktop">
+                      <LogOut className="h-4 w-4" />
+                      Sair
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
             </div>
           </header>
 

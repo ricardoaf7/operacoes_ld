@@ -5,11 +5,13 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, Shield } from "lucide-react";
+import { useLocation } from "wouter";
 import logoPositivo from "@assets/Operacoes_Logo_Positivo_1762027620245.png";
 
 export default function LoginPage() {
   const { login } = useAuth();
   const { toast } = useToast();
+  const [, navigate] = useLocation();
   const [email, setEmail] = useState("");
   const [senha, setSenha] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -25,6 +27,7 @@ export default function LoginPage() {
     try {
       await login(email, senha);
       toast({ title: "Login realizado com sucesso" });
+      navigate("/");
     } catch (error: any) {
       toast({
         variant: "destructive",
