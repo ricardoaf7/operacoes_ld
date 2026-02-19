@@ -804,6 +804,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ultimaRocagem: z.string().min(1).optional(),
         status: z.enum(["Pendente", "Em Execução", "Concluído"]).optional(),
         registradoPor: z.string().optional(),
+        fotos: z.array(z.object({ url: z.string(), data: z.string() })).optional(),
       });
 
       const data = updateSchema.parse(req.body);
