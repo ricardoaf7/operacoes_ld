@@ -171,335 +171,211 @@ function formatDateBR(dateStr: string): string {
   return new Date(dateStr + 'T12:00:00').toLocaleDateString('pt-BR');
 }
 
-function buildDailyData(areas: PdfAreaData[], lotes: number[]) {
-  const allDates = new Set<string>();
-  areas.forEach(a => { if (a.ultimaRocagem) allDates.add(a.ultimaRocagem); });
-  const sortedDates = Array.from(allDates).sort();
-
-  const dataByLote: Record<number, Record<string, number>> = {};
-  for (const lote of lotes) {
-    dataByLote[lote] = {};
-    for (const d of sortedDates) dataByLote[lote][d] = 0;
-  }
-  areas.forEach(a => {
-    if (a.ultimaRocagem && dataByLote[a.lote]) {
-      dataByLote[a.lote][a.ultimaRocagem] += (a.metragem || 0);
+function buildDailyDataForLote(areas: PdfAreaData[], lote: number) {
+  const loteAreas = areas.filter(a => a.lote === lote);
+  const dateMap: Record<string, number> = {};
+  loteAreas.forEach(a => {
+    if (a.ultimaRocagem) {
+      dateMap[a.ultimaRocagem] = (dateMap[a.ultimaRocagem] || 0) + (a.metragem || 0);
     }
   });
-
-  return { dates: sortedDates, dataByLote };
+  const dates = Object.keys(dateMap).sort();
+  const values = dates.map(d => dateMap[d]);
+  return { dates, values };
 }
 
-function buildMonthlyData(areas: PdfAreaData[], lotes: number[]) {
-  const allMonths = new Set<string>();
-  areas.forEach(a => {
-    if (a.ultimaRocagem) allMonths.add(a.ultimaRocagem.substring(0, 7));
-  });
-  const sortedMonths = Array.from(allMonths).sort();
-
-  const dataByLote: Record<number, Record<string, number>> = {};
-  for (const lote of lotes) {
-    dataByLote[lote] = {};
-    for (const m of sortedMonths) dataByLote[lote][m] = 0;
-  }
-  areas.forEach(a => {
-    if (a.ultimaRocagem && dataByLote[a.lote]) {
-      const monthKey = a.ultimaRocagem.substring(0, 7);
-      dataByLote[a.lote][monthKey] += (a.metragem || 0);
+function buildMonthlyDataForLote(areas: PdfAreaData[], lote: number) {
+  const loteAreas = areas.filter(a => a.lote === lote);
+  const monthMap: Record<string, number> = {};
+  loteAreas.forEach(a => {
+    if (a.ultimaRocagem) {
+      const key = a.ultimaRocagem.substring(0, 7);
+      monthMap[key] = (monthMap[key] || 0) + (a.metragem || 0);
     }
   });
-
-  return { months: sortedMonths, dataByLote };
+  const months = Object.keys(monthMap).sort();
+  const values = months.map(m => monthMap[m]);
+  return { months, values };
 }
 
-const LOTE_COLORS: Record<number, { bar: string; barLight: string; label: string }> = {
-  1: { bar: '#2980b9', barLight: '#5dade2', label: 'Lote 1' },
-  2: { bar: '#e67e22', barLight: '#f0b27a', label: 'Lote 2' },
+const LOTE_COLORS: Record<number, { r: number; g: number; b: number }> = {
+  1: { r: 41, g: 128, b: 185 },
+  2: { r: 230, g: 126, b: 34 },
 };
 
-function drawBarChart(
+const MONTH_NAMES: Record<string, string> = {
+  '01': 'Jan', '02': 'Fev', '03': 'Mar', '04': 'Abr',
+  '05': 'Mai', '06': 'Jun', '07': 'Jul', '08': 'Ago',
+  '09': 'Set', '10': 'Out', '11': 'Nov', '12': 'Dez',
+};
+
+function drawVectorBarChart(
+  doc: jsPDF,
   title: string,
   labels: string[],
-  dataByLote: Record<number, Record<string, number>>,
-  lotes: number[],
+  values: number[],
   formatLabel: (key: string) => string,
-  canvasWidth: number,
-  canvasHeight: number,
-): string {
-  const canvas = document.createElement('canvas');
-  canvas.width = canvasWidth;
-  canvas.height = canvasHeight;
-  const ctx = canvas.getContext('2d')!;
+  barColor: { r: number; g: number; b: number },
+  chartArea: { x: number; y: number; w: number; h: number },
+) {
+  if (labels.length === 0) return;
 
-  ctx.fillStyle = '#ffffff';
-  ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+  doc.setFontSize(11);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(30, 30, 30);
+  doc.text(title, chartArea.x + chartArea.w / 2, chartArea.y - 4, { align: 'center' });
 
-  const margin = { top: 70, right: 30, bottom: 80, left: 90 };
-  const chartW = canvasWidth - margin.left - margin.right;
-  const chartH = canvasHeight - margin.top - margin.bottom;
+  const margin = { left: 28, right: 5, top: 4, bottom: 18 };
+  const areaX = chartArea.x + margin.left;
+  const areaY = chartArea.y + margin.top;
+  const areaW = chartArea.w - margin.left - margin.right;
+  const areaH = chartArea.h - margin.top - margin.bottom;
 
-  ctx.fillStyle = '#1a1a2e';
-  ctx.font = 'bold 22px Arial';
-  ctx.textAlign = 'center';
-  ctx.fillText(title, canvasWidth / 2, 35);
-
-  if (lotes.length > 1) {
-    let legendX = canvasWidth / 2 - 100;
-    for (const lote of lotes) {
-      const color = LOTE_COLORS[lote] || LOTE_COLORS[1];
-      ctx.fillStyle = color.bar;
-      ctx.fillRect(legendX, 48, 16, 12);
-      ctx.fillStyle = '#333';
-      ctx.font = '14px Arial';
-      ctx.textAlign = 'left';
-      ctx.fillText(color.label, legendX + 22, 59);
-      legendX += 110;
-    }
-  }
-
-  let maxVal = 0;
-  for (const lote of lotes) {
-    for (const key of labels) {
-      const val = dataByLote[lote]?.[key] || 0;
-      if (val > maxVal) maxVal = val;
-    }
-  }
-  if (maxVal === 0) maxVal = 1000;
+  let maxVal = Math.max(...values, 1);
   maxVal = Math.ceil(maxVal / 1000) * 1000;
+  if (maxVal === 0) maxVal = 1000;
 
-  ctx.strokeStyle = '#ddd';
-  ctx.lineWidth = 1;
-  ctx.fillStyle = '#666';
-  ctx.font = '12px Arial';
-  ctx.textAlign = 'right';
+  doc.setDrawColor(200, 200, 200);
+  doc.setLineWidth(0.2);
+  doc.setFontSize(6);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(100, 100, 100);
   const gridLines = 5;
   for (let i = 0; i <= gridLines; i++) {
-    const y = margin.top + chartH - (i / gridLines) * chartH;
+    const y = areaY + areaH - (i / gridLines) * areaH;
     const val = (i / gridLines) * maxVal;
-    ctx.beginPath();
-    ctx.moveTo(margin.left, y);
-    ctx.lineTo(margin.left + chartW, y);
-    ctx.stroke();
-    ctx.fillText(formatMetragem(val), margin.left - 8, y + 4);
+    doc.line(areaX, y, areaX + areaW, y);
+    doc.text(formatMetragem(val), areaX - 2, y + 1, { align: 'right' });
   }
 
-  ctx.strokeStyle = '#333';
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.moveTo(margin.left, margin.top);
-  ctx.lineTo(margin.left, margin.top + chartH);
-  ctx.lineTo(margin.left + chartW, margin.top + chartH);
-  ctx.stroke();
+  doc.setDrawColor(60, 60, 60);
+  doc.setLineWidth(0.4);
+  doc.line(areaX, areaY, areaX, areaY + areaH);
+  doc.line(areaX, areaY + areaH, areaX + areaW, areaY + areaH);
 
-  const groupCount = labels.length;
-  const groupWidth = chartW / groupCount;
-  const barsPerGroup = lotes.length;
-  const barPadding = groupWidth * 0.15;
-  const totalBarSpace = groupWidth - barPadding * 2;
-  const barWidth = Math.min(totalBarSpace / barsPerGroup - 2, 50);
-  const barGap = barsPerGroup > 1 ? (totalBarSpace - barWidth * barsPerGroup) / (barsPerGroup - 1) : 0;
+  const barCount = labels.length;
+  const groupW = areaW / barCount;
+  const barW = Math.min(groupW * 0.65, 12);
+  const barGap = (groupW - barW) / 2;
 
-  for (let gi = 0; gi < groupCount; gi++) {
-    const key = labels[gi];
-    const groupX = margin.left + gi * groupWidth;
+  for (let i = 0; i < barCount; i++) {
+    const val = values[i];
+    const barH = (val / maxVal) * areaH;
+    const barX = areaX + i * groupW + barGap;
+    const barY = areaY + areaH - barH;
 
-    for (let li = 0; li < lotes.length; li++) {
-      const lote = lotes[li];
-      const val = dataByLote[lote]?.[key] || 0;
-      const barH = (val / maxVal) * chartH;
-      const barX = groupX + barPadding + li * (barWidth + barGap);
-      const barY = margin.top + chartH - barH;
+    doc.setFillColor(barColor.r, barColor.g, barColor.b);
+    doc.rect(barX, barY, barW, barH, 'F');
 
-      const color = LOTE_COLORS[lote] || LOTE_COLORS[1];
-      ctx.fillStyle = color.bar;
-      ctx.fillRect(barX, barY, barWidth, barH);
-
-      if (val > 0 && barH > 18) {
-        ctx.fillStyle = '#fff';
-        ctx.font = 'bold 10px Arial';
-        ctx.textAlign = 'center';
-        ctx.fillText(formatMetragem(val), barX + barWidth / 2, barY + 14);
-      }
+    if (val > 0 && barH > 5) {
+      doc.setFontSize(4.5);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(255, 255, 255);
+      doc.text(formatMetragem(val), barX + barW / 2, barY + 3, { align: 'center' });
     }
 
-    ctx.save();
-    ctx.fillStyle = '#333';
-    ctx.font = '11px Arial';
-    ctx.textAlign = 'right';
-    const labelX = groupX + groupWidth / 2;
-    const labelY = margin.top + chartH + 12;
-    ctx.translate(labelX, labelY);
-    ctx.rotate(-Math.PI / 4);
-    ctx.fillText(formatLabel(key), 0, 0);
-    ctx.restore();
+    doc.setFontSize(5);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(60, 60, 60);
+    const labelText = formatLabel(labels[i]);
+    const labelX = barX + barW / 2;
+    const labelY = areaY + areaH + 3;
+    if (barCount <= 15) {
+      doc.text(labelText, labelX, labelY, { align: 'center' });
+    } else {
+      doc.text(labelText, labelX + 2, labelY, { align: 'right', angle: 35 });
+    }
   }
 
-  ctx.fillStyle = '#666';
-  ctx.font = '13px Arial';
-  ctx.textAlign = 'center';
-  ctx.save();
-  ctx.translate(18, margin.top + chartH / 2);
-  ctx.rotate(-Math.PI / 2);
-  ctx.fillText('Metragem (m\u00B2)', 0, 0);
-  ctx.restore();
-
-  return canvas.toDataURL('image/png');
+  doc.setFontSize(6);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(100, 100, 100);
+  const yAxisX = chartArea.x + 3;
+  const yAxisY = areaY + areaH / 2;
+  doc.text('Metragem (m\u00B2)', yAxisX, yAxisY, { angle: 90 });
 }
 
 function addPdfHeader(doc: jsPDF, pageWidth: number, fromFormatted: string, toFormatted: string, loteLabel: string, count: number, totalFormatted: string) {
-  doc.setFontSize(16);
+  doc.setFontSize(14);
   doc.setFont('helvetica', 'bold');
-  doc.text('CMTU-LD - Relatorio de Rocagem', pageWidth / 2, 15, { align: 'center' });
-  doc.setFontSize(10);
+  doc.setTextColor(30, 30, 30);
+  doc.text('CMTU-LD - Relatorio de Rocagem', pageWidth / 2, 14, { align: 'center' });
+  doc.setFontSize(9);
   doc.setFont('helvetica', 'normal');
-  doc.text(`Periodo: ${fromFormatted} a ${toFormatted}`, pageWidth / 2, 22, { align: 'center' });
-  doc.text(`Lote: ${loteLabel}  |  Total de areas: ${count}  |  Metragem total: ${totalFormatted} m2`, pageWidth / 2, 28, { align: 'center' });
+  doc.setTextColor(80, 80, 80);
+  doc.text(`Periodo: ${fromFormatted} a ${toFormatted}`, pageWidth / 2, 20, { align: 'center' });
+  doc.text(`Lote: ${loteLabel}  |  Total de areas: ${count}  |  Metragem total: ${totalFormatted} m2`, pageWidth / 2, 26, { align: 'center' });
 }
 
-function generatePdf(data: PdfResponse, loteLabel: string) {
-  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
-  const pageWidth = doc.internal.pageSize.getWidth();
-  const pageHeight = doc.internal.pageSize.getHeight();
-
-  const fromFormatted = formatDateBR(data.periodo.from);
-  const toFormatted = formatDateBR(data.periodo.to);
-  const totalFormatted = formatMetragem(data.totalMetragem);
-  const generatedAt = new Date().toLocaleString('pt-BR');
-
-  const lotes = Array.from(new Set(data.areas.map(a => a.lote))).sort((a, b) => a - b);
-
-  const { dates: dailyDates, dataByLote: dailyByLote } = buildDailyData(data.areas, lotes);
-  const { months: monthlyMonths, dataByLote: monthlyByLote } = buildMonthlyData(data.areas, lotes);
-
-  addPdfHeader(doc, pageWidth, fromFormatted, toFormatted, loteLabel, data.count, totalFormatted);
-
-  if (dailyDates.length > 0) {
-    const chartW = Math.max(800, dailyDates.length * 60);
-    const dailyImg = drawBarChart(
-      'Comparativo Diario - Metragem Rocada por Dia',
-      dailyDates,
-      dailyByLote,
-      lotes,
-      (key) => formatDateBR(key),
-      chartW,
-      420,
-    );
-    const imgW = pageWidth - 28;
-    const imgH = (pageHeight - 42);
-    doc.addImage(dailyImg, 'PNG', 14, 33, imgW, imgH);
-  }
-
-  if (monthlyMonths.length > 0) {
-    doc.addPage();
-    addPdfHeader(doc, pageWidth, fromFormatted, toFormatted, loteLabel, data.count, totalFormatted);
-
-    const monthNames: Record<string, string> = {
-      '01': 'Jan', '02': 'Fev', '03': 'Mar', '04': 'Abr',
-      '05': 'Mai', '06': 'Jun', '07': 'Jul', '08': 'Ago',
-      '09': 'Set', '10': 'Out', '11': 'Nov', '12': 'Dez',
-    };
-    const chartW = Math.max(600, monthlyMonths.length * 120);
-    const monthlyImg = drawBarChart(
-      'Comparativo Mensal - Metragem Rocada por Mes',
-      monthlyMonths,
-      monthlyByLote,
-      lotes,
-      (key) => {
-        const [y, m] = key.split('-');
-        return `${monthNames[m] || m}/${y}`;
-      },
-      chartW,
-      420,
-    );
-    const imgW = pageWidth - 28;
-    const imgH = (pageHeight - 42);
-    doc.addImage(monthlyImg, 'PNG', 14, 33, imgW, imgH);
-  }
-
-  doc.addPage();
-  addPdfHeader(doc, pageWidth, fromFormatted, toFormatted, loteLabel, data.count, totalFormatted);
-
-  const groupedByLote: Record<number, Record<string, PdfAreaData[]>> = {};
-  for (const lote of lotes) {
-    const loteAreas = data.areas.filter(a => a.lote === lote);
-    loteAreas.sort((a, b) => {
-      const hasA = !!a.ultimaRocagem;
-      const hasB = !!b.ultimaRocagem;
-      if (hasA !== hasB) return hasA ? -1 : 1;
-      if (hasA && hasB) {
-        const dateA = new Date(a.ultimaRocagem).getTime();
-        const dateB = new Date(b.ultimaRocagem).getTime();
-        if (dateA !== dateB) return dateA - dateB;
-      }
-      return a.endereco.localeCompare(b.endereco, 'pt-BR');
-    });
-    const byDate: Record<string, PdfAreaData[]> = {};
-    for (const area of loteAreas) {
-      const dateKey = area.ultimaRocagem || 'sem-data';
-      if (!byDate[dateKey]) byDate[dateKey] = [];
-      byDate[dateKey].push(area);
+function addLoteTable(
+  doc: jsPDF,
+  loteAreas: PdfAreaData[],
+  lote: number,
+  startY: number,
+) {
+  loteAreas.sort((a, b) => {
+    const hasA = !!a.ultimaRocagem;
+    const hasB = !!b.ultimaRocagem;
+    if (hasA !== hasB) return hasA ? -1 : 1;
+    if (hasA && hasB) {
+      const dateA = new Date(a.ultimaRocagem).getTime();
+      const dateB = new Date(b.ultimaRocagem).getTime();
+      if (dateA !== dateB) return dateA - dateB;
     }
-    groupedByLote[lote] = byDate;
+    return a.endereco.localeCompare(b.endereco, 'pt-BR');
+  });
+
+  const byDate: Record<string, PdfAreaData[]> = {};
+  for (const area of loteAreas) {
+    const dateKey = area.ultimaRocagem || 'sem-data';
+    if (!byDate[dateKey]) byDate[dateKey] = [];
+    byDate[dateKey].push(area);
   }
 
+  const dates = Object.keys(byDate).sort((a, b) => {
+    if (a === 'sem-data') return 1;
+    if (b === 'sem-data') return -1;
+    return new Date(a).getTime() - new Date(b).getTime();
+  });
+
+  const loteMetragem = loteAreas.reduce((s, a) => s + (a.metragem || 0), 0);
   const headColumns = ['#', 'Local (Endereco)', 'Bairro', 'Metragem', 'Data da Rocagem'];
   const tableBody: any[][] = [];
   const subtotalRowIndices: number[] = [];
   const loteHeaderIndices: number[] = [];
-  const grandTotalIndex: number[] = [];
 
-  let globalIndex = 0;
+  loteHeaderIndices.push(0);
+  tableBody.push([
+    { content: `LOTE ${lote}  -  ${loteAreas.length} areas  -  ${formatMetragem(loteMetragem)} m2`, colSpan: 5, styles: { fontStyle: 'bold', fillColor: [41, 128, 185], textColor: 255, fontSize: 9, halign: 'left' } },
+  ]);
 
-  for (const lote of lotes) {
-    loteHeaderIndices.push(tableBody.length);
-    const loteMetragemTotal = data.areas.filter(a => a.lote === lote).reduce((s, a) => s + (a.metragem || 0), 0);
-    const loteAreaCount = data.areas.filter(a => a.lote === lote).length;
-    tableBody.push([
-      { content: `LOTE ${lote}  -  ${loteAreaCount} areas  -  ${formatMetragem(loteMetragemTotal)} m2`, colSpan: 5, styles: { fontStyle: 'bold', fillColor: [41, 128, 185], textColor: 255, fontSize: 9, halign: 'left' } },
-    ]);
-
-    const dateGroups = groupedByLote[lote];
-    const dates = Object.keys(dateGroups).sort((a, b) => {
-      if (a === 'sem-data') return 1;
-      if (b === 'sem-data') return -1;
-      return new Date(a).getTime() - new Date(b).getTime();
-    });
-
-    for (const dateKey of dates) {
-      const areasForDate = dateGroups[dateKey];
-      for (const area of areasForDate) {
-        globalIndex++;
-        tableBody.push([
-          globalIndex.toString(),
-          area.endereco || '-',
-          area.bairro || '-',
-          area.metragem ? formatMetragem(area.metragem) + ' m2' : '-',
-          dateKey !== 'sem-data' ? formatDateBR(dateKey) : '-',
-        ]);
-      }
-
-      const dayMetragem = areasForDate.reduce((s, a) => s + (a.metragem || 0), 0);
-      subtotalRowIndices.push(tableBody.length);
+  let idx = 0;
+  for (const dateKey of dates) {
+    const areasForDate = byDate[dateKey];
+    for (const area of areasForDate) {
+      idx++;
       tableBody.push([
-        { content: `Subtotal ${dateKey !== 'sem-data' ? formatDateBR(dateKey) : 'Sem data'}: ${areasForDate.length} areas  -  ${formatMetragem(dayMetragem)} m2`, colSpan: 5, styles: { fontStyle: 'bold', fillColor: [220, 230, 241], textColor: [30, 30, 30], fontSize: 8, halign: 'right' } },
+        idx.toString(),
+        area.endereco || '-',
+        area.bairro || '-',
+        area.metragem ? formatMetragem(area.metragem) + ' m2' : '-',
+        dateKey !== 'sem-data' ? formatDateBR(dateKey) : '-',
       ]);
     }
-
+    const dayMetragem = areasForDate.reduce((s, a) => s + (a.metragem || 0), 0);
     subtotalRowIndices.push(tableBody.length);
     tableBody.push([
-      { content: `Total Lote ${lote}: ${loteAreaCount} areas  -  ${formatMetragem(loteMetragemTotal)} m2`, colSpan: 5, styles: { fontStyle: 'bold', fillColor: [180, 210, 240], textColor: [0, 0, 0], fontSize: 9, halign: 'right' } },
+      { content: `Subtotal ${dateKey !== 'sem-data' ? formatDateBR(dateKey) : 'Sem data'}: ${areasForDate.length} areas  -  ${formatMetragem(dayMetragem)} m2`, colSpan: 5, styles: { fontStyle: 'bold', fillColor: [220, 230, 241], textColor: [30, 30, 30], fontSize: 8, halign: 'right' } },
     ]);
   }
 
-  if (lotes.length > 1) {
-    grandTotalIndex.push(tableBody.length);
-    tableBody.push([
-      { content: `TOTAL GERAL: ${data.count} areas  -  ${totalFormatted} m2`, colSpan: 5, styles: { fontStyle: 'bold', fillColor: [41, 128, 185], textColor: 255, fontSize: 10, halign: 'center' } },
-    ]);
-  }
+  subtotalRowIndices.push(tableBody.length);
+  tableBody.push([
+    { content: `Total Lote ${lote}: ${loteAreas.length} areas  -  ${formatMetragem(loteMetragem)} m2`, colSpan: 5, styles: { fontStyle: 'bold', fillColor: [180, 210, 240], textColor: [0, 0, 0], fontSize: 9, halign: 'right' } },
+  ]);
 
   autoTable(doc, {
-    startY: 33,
+    startY,
     head: [headColumns],
     body: tableBody,
     margin: { left: 14, right: 14 },
@@ -516,25 +392,111 @@ function generatePdf(data: PdfResponse, loteLabel: string) {
     didParseCell: (hookData: any) => {
       if (hookData.section === 'body') {
         const rowIndex = hookData.row.index;
-        if (loteHeaderIndices.includes(rowIndex) || subtotalRowIndices.includes(rowIndex) || grandTotalIndex.includes(rowIndex)) {
+        if (loteHeaderIndices.includes(rowIndex) || subtotalRowIndices.includes(rowIndex)) {
           hookData.cell.styles.fillColor = hookData.cell.styles.fillColor;
         }
       }
     },
   });
+}
+
+function generatePdf(data: PdfResponse, loteLabel: string): { blobUrl: string; fileName: string } {
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+
+  const fromFormatted = formatDateBR(data.periodo.from);
+  const toFormatted = formatDateBR(data.periodo.to);
+  const totalFormatted = formatMetragem(data.totalMetragem);
+  const generatedAt = new Date().toLocaleString('pt-BR');
+
+  const lotes = Array.from(new Set(data.areas.map(a => a.lote))).sort((a, b) => a - b);
+
+  const fromMonth = data.periodo.from.substring(0, 7);
+  const toMonth = data.periodo.to.substring(0, 7);
+  const isMultiMonth = fromMonth !== toMonth;
+
+  let needsNewPage = false;
+
+  for (const lote of lotes) {
+    const loteAreas = data.areas.filter(a => a.lote === lote);
+    if (loteAreas.length === 0) continue;
+    const color = LOTE_COLORS[lote] || LOTE_COLORS[1];
+
+    const { dates: dailyDates, values: dailyValues } = buildDailyDataForLote(data.areas, lote);
+
+    if (dailyDates.length > 0) {
+      if (needsNewPage) doc.addPage();
+      needsNewPage = true;
+      addPdfHeader(doc, pageWidth, fromFormatted, toFormatted, loteLabel, data.count, totalFormatted);
+      const chartArea = { x: 14, y: 36, w: pageWidth - 28, h: pageHeight - 52 };
+      drawVectorBarChart(
+        doc,
+        `Evolucao Diaria - Lote ${lote}`,
+        dailyDates,
+        dailyValues,
+        (key) => formatDateBR(key),
+        color,
+        chartArea,
+      );
+    }
+
+    if (needsNewPage) doc.addPage(); else needsNewPage = true;
+    addPdfHeader(doc, pageWidth, fromFormatted, toFormatted, loteLabel, data.count, totalFormatted);
+    addLoteTable(doc, loteAreas, lote, 33);
+
+    if (isMultiMonth) {
+      const { months, values: monthlyValues } = buildMonthlyDataForLote(data.areas, lote);
+      if (months.length > 1) {
+        doc.addPage();
+        addPdfHeader(doc, pageWidth, fromFormatted, toFormatted, loteLabel, data.count, totalFormatted);
+        const chartArea = { x: 14, y: 36, w: pageWidth - 28, h: pageHeight - 52 };
+        drawVectorBarChart(
+          doc,
+          `Evolucao Mensal - Lote ${lote}`,
+          months,
+          monthlyValues,
+          (key) => {
+            const [y, m] = key.split('-');
+            return `${MONTH_NAMES[m] || m}/${y}`;
+          },
+          color,
+          chartArea,
+        );
+      }
+    }
+  }
+
+  if (lotes.length > 1) {
+    const lastPageNum = doc.getNumberOfPages();
+    doc.setPage(lastPageNum);
+    const finalY = (doc as any).lastAutoTable?.finalY || 33;
+    const y = Math.min(finalY + 6, pageHeight - 20);
+    doc.setFillColor(41, 128, 185);
+    doc.rect(14, y, pageWidth - 28, 8, 'F');
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(255, 255, 255);
+    doc.text(`TOTAL GERAL: ${data.count} areas  -  ${totalFormatted} m2`, pageWidth / 2, y + 5.5, { align: 'center' });
+  }
 
   const totalPages = doc.getNumberOfPages();
   for (let i = 1; i <= totalPages; i++) {
     doc.setPage(i);
     doc.setFontSize(8);
     doc.setFont('helvetica', 'normal');
+    doc.setTextColor(120, 120, 120);
     doc.text(`Pagina ${i} de ${totalPages}`, pageWidth - 15, pageHeight - 8, { align: 'right' });
     doc.text(`Gerado em: ${generatedAt}`, 15, pageHeight - 8);
   }
 
   const loteSlug = loteLabel.toLowerCase().replace(/\s+/g, '_').replace(/[()]/g, '');
   const dateSlug = `${data.periodo.from}_a_${data.periodo.to}`;
-  doc.save(`rocagem_${loteSlug}_${dateSlug}.pdf`);
+  const fileName = `rocagem_${loteSlug}_${dateSlug}.pdf`;
+
+  const blob = doc.output('blob');
+  const blobUrl = URL.createObjectURL(blob);
+  return { blobUrl, fileName };
 }
 
 interface MowingStatsBarProps {
@@ -551,6 +513,7 @@ export function MowingStatsBar({ visible = true, onPeriodChange, onPeriodClear }
   const [activeTo, setActiveTo] = useState('');
   const [showLoteSelector, setShowLoteSelector] = useState(false);
   const [generatingPdf, setGeneratingPdf] = useState(false);
+  const [pdfPreview, setPdfPreview] = useState<{ blobUrl: string; fileName: string } | null>(null);
   const { toast } = useToast();
 
   const queryParams = activeFrom && activeTo ? `?from=${activeFrom}&to=${activeTo}` : '';
@@ -608,13 +571,29 @@ export function MowingStatsBar({ visible = true, onPeriodChange, onPeriodClear }
       }
       
       const loteLabel = loteFilter === 'all' ? 'Ambos (1 e 2)' : `Lote ${loteFilter}`;
-      generatePdf(data, loteLabel);
-      toast({ title: 'PDF gerado!', description: `${data.count} areas exportadas.` });
+      if (pdfPreview) URL.revokeObjectURL(pdfPreview.blobUrl);
+      const result = generatePdf(data, loteLabel);
+      setPdfPreview(result);
     } catch (err) {
       console.error('PDF generation error:', err);
       toast({ title: 'Erro ao gerar PDF', description: 'Tente novamente.', variant: 'destructive' });
     } finally {
       setGeneratingPdf(false);
+    }
+  };
+
+  const handleDownloadPdf = () => {
+    if (!pdfPreview) return;
+    const link = document.createElement('a');
+    link.href = pdfPreview.blobUrl;
+    link.download = pdfPreview.fileName;
+    link.click();
+  };
+
+  const handleClosePdfPreview = () => {
+    if (pdfPreview) {
+      URL.revokeObjectURL(pdfPreview.blobUrl);
+      setPdfPreview(null);
     }
   };
 
@@ -827,6 +806,34 @@ export function MowingStatsBar({ visible = true, onPeriodChange, onPeriodClear }
                 {new Date(stats.periodo.to + 'T12:00:00').toLocaleDateString('pt-BR')}
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {pdfPreview && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60" data-testid="pdf-preview-overlay" onClick={handleClosePdfPreview}>
+          <div className="bg-background rounded-md shadow-xl flex flex-col" style={{ width: '92vw', height: '92vh' }} onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-border flex-wrap">
+              <span className="text-sm font-semibold text-foreground truncate">{pdfPreview.fileName}</span>
+              <div className="flex items-center gap-2">
+                <Button size="sm" onClick={handleDownloadPdf} data-testid="button-download-pdf">
+                  <FileDown className="h-3.5 w-3.5 mr-1.5" />
+                  Baixar PDF
+                </Button>
+                <Button size="sm" variant="outline" onClick={handleClosePdfPreview} data-testid="button-close-pdf-preview">
+                  <X className="h-3.5 w-3.5 mr-1.5" />
+                  Fechar
+                </Button>
+              </div>
+            </div>
+            <div className="flex-1 min-h-0">
+              <iframe
+                src={pdfPreview.blobUrl}
+                className="w-full h-full border-0"
+                title="Visualizacao do PDF"
+                data-testid="iframe-pdf-preview"
+              />
+            </div>
           </div>
         </div>
       )}
