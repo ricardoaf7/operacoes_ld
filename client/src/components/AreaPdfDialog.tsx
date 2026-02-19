@@ -81,8 +81,8 @@ function generateAreaPdf(area: ServiceArea): jsPDF {
     y += 5;
   }
 
-  if (area.metragem_m2) {
-    doc.text(`Metragem: ${area.metragem_m2.toLocaleString("pt-BR")} m²`, margin + 5, y);
+  if (area.metragem_m2 != null) {
+    doc.text(`Metragem: ${Number(area.metragem_m2).toLocaleString("pt-BR")} m²`, margin + 5, y);
     y += 5;
   }
 
@@ -91,8 +91,10 @@ function generateAreaPdf(area: ServiceArea): jsPDF {
     y += 5;
   }
 
-  doc.text(`Coordenadas: ${area.lat.toFixed(6)}, ${area.lng.toFixed(6)}`, margin + 5, y);
-  y += 5;
+  if (area.lat != null && area.lng != null) {
+    doc.text(`Coordenadas: ${Number(area.lat).toFixed(6)}, ${Number(area.lng).toFixed(6)}`, margin + 5, y);
+    y += 5;
+  }
 
   const servLabel = area.servico === "jardins" ? "Jardins" : "Capina e Roçagem";
   doc.text(`Serviço: ${servLabel}`, margin + 5, y);
