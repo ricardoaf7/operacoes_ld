@@ -244,7 +244,7 @@ export default function UserManagement() {
                 <SelectTrigger data-testid="select-user-role">
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="z-[9999]">
                   <SelectItem value="admin">Administrador - Acesso total</SelectItem>
                   <SelectItem value="gestor">Gestor - Visualização completa + relatórios</SelectItem>
                   <SelectItem value="fiscal">Fiscal - Registrar serviços + upload de fotos</SelectItem>
