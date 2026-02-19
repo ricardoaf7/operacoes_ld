@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Upload, X, Calendar, Image as ImageIcon } from "lucide-react";
+import { Upload, X, Calendar, Image as ImageIcon, Loader2 } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -12,7 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import type { ServiceArea } from "@shared/schema";
 import { formatDateBR } from "@/lib/utils";
-import { useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
@@ -30,57 +30,16 @@ export function PhotoGalleryModal({
   const { toast } = useToast();
   const [isUploading, setIsUploading] = useState(false);
 
-  const uploadPhotoMutation = useMutation({
-    mutationFn: async (file: File) => {
-      const formData = new FormData();
-      formData.append("file", file);
-
-      const res = await fetch("/api/photo/upload", {
-        method: "POST",
-        body: formData,
-      });
-
-      if (!res.ok) throw new Error("Upload failed");
-      const data = await res.json();
-      return data.url;
-    },
-    onSuccess: async (photoUrl) => {
-      const photoData = {
-        url: photoUrl,
-        data: new Date().toISOString(),
-      };
-
-      const currentFotos = area.fotos || [];
-      const updatedFotos = [...currentFotos, photoData];
-
-      const res = await apiRequest("PATCH", `/api/areas/${area.id}`, {
-        fotos: updatedFotos,
-      });
-
-      if (res.ok) {
-        toast({
-          title: "Foto Adicionada",
-          description: "A foto foi enviada com sucesso.",
-        });
-        queryClient.invalidateQueries({ queryKey: ["/api/areas", area.id] });
-        queryClient.invalidateQueries({ queryKey: ["/api/areas/light"] });
-      }
-    },
-    onError: () => {
-      toast({
-        variant: "destructive",
-        title: "Erro no Upload",
-        description: "Falha ao enviar a foto.",
-      });
-    },
-    onSettled: () => {
-      setIsUploading(false);
-    },
+  const { data: freshArea } = useQuery<ServiceArea>({
+    queryKey: ["/api/areas", area.id],
+    enabled: open,
   });
+
+  const liveArea = freshArea || area;
 
   const deletePhotoMutation = useMutation({
     mutationFn: async (photoUrl: string) => {
-      const currentFotos = area.fotos || [];
+      const currentFotos = liveArea.fotos || [];
       const updatedFotos = currentFotos.filter((p) => p.url !== photoUrl);
 
       const res = await apiRequest("PATCH", `/api/areas/${area.id}`, {
@@ -114,7 +73,6 @@ export function PhotoGalleryModal({
     const validTypes = ["image/jpeg", "image/png", "image/gif", "image/webp"];
     const filesToUpload: File[] = [];
 
-    // Validar todos os arquivos
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       
@@ -141,7 +99,6 @@ export function PhotoGalleryModal({
 
     if (filesToUpload.length === 0) return;
 
-    // Upload de todos os arquivos em paralelo
     setIsUploading(true);
     try {
       const uploadPromises = filesToUpload.map(async (file) => {
@@ -160,7 +117,7 @@ export function PhotoGalleryModal({
 
       const urls = await Promise.all(uploadPromises);
       
-      const currentFotos = area.fotos || [];
+      const currentFotos = liveArea.fotos || [];
       const newPhotos = urls.map((url) => ({
         url,
         data: new Date().toISOString(),
@@ -178,7 +135,6 @@ export function PhotoGalleryModal({
         });
         queryClient.invalidateQueries({ queryKey: ["/api/areas", area.id] });
         queryClient.invalidateQueries({ queryKey: ["/api/areas/light"] });
-        // Limpar input
         const input = document.getElementById("photo-input") as HTMLInputElement;
         if (input) input.value = "";
       }
@@ -194,7 +150,7 @@ export function PhotoGalleryModal({
     }
   };
 
-  const fotos = area.fotos || [];
+  const fotos = liveArea.fotos || [];
   const sortedFotos = [...fotos].sort(
     (a, b) => new Date(b.data).getTime() - new Date(a.data).getTime()
   );
@@ -205,11 +161,10 @@ export function PhotoGalleryModal({
         <DialogHeader>
           <DialogTitle data-testid="text-photo-gallery-title">Galeria de Fotos</DialogTitle>
           <DialogDescription data-testid="text-photo-gallery-desc">
-            {area.endereco}
+            {liveArea.endereco}
           </DialogDescription>
         </DialogHeader>
 
-        {/* Área de Upload */}
         <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-6">
           <label htmlFor="photo-input" className="flex flex-col items-center justify-center cursor-pointer gap-2">
             <Upload className="h-6 w-6 text-muted-foreground" />
@@ -232,8 +187,12 @@ export function PhotoGalleryModal({
 
         <Separator />
 
-        {/* Galeria de Fotos */}
-        {fotos.length === 0 ? (
+        {isUploading ? (
+          <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+            <Loader2 className="h-8 w-8 mb-2 animate-spin" />
+            <p className="text-sm">Enviando fotos...</p>
+          </div>
+        ) : fotos.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
             <ImageIcon className="h-8 w-8 mb-2" />
             <p className="text-sm">Nenhuma foto ainda.</p>
@@ -273,7 +232,6 @@ export function PhotoGalleryModal({
           </div>
         )}
 
-        {/* Resumo */}
         {fotos.length > 0 && (
           <>
             <Separator />
