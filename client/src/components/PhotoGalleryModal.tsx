@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Upload, X, Calendar, Image as ImageIcon, Loader2 } from "lucide-react";
+import { useState, useCallback } from "react";
+import { Upload, X, Calendar, Image as ImageIcon, Loader2, ChevronLeft, ChevronRight, ZoomIn } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -29,6 +29,7 @@ export function PhotoGalleryModal({
 }: PhotoGalleryModalProps) {
   const { toast } = useToast();
   const [isUploading, setIsUploading] = useState(false);
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
 
   const { data: freshArea } = useQuery<ServiceArea>({
     queryKey: ["/api/areas", area.id],
@@ -200,23 +201,27 @@ export function PhotoGalleryModal({
           </div>
         ) : (
           <div className="grid grid-cols-2 gap-4">
-            {sortedFotos.map((foto) => (
+            {sortedFotos.map((foto, index) => (
               <div
                 key={foto.url}
-                className="relative group rounded-lg overflow-hidden border"
+                className="relative group rounded-lg overflow-hidden border cursor-pointer"
                 data-testid={`photo-card-${foto.url}`}
+                onClick={() => setLightboxIndex(index)}
               >
                 <img
                   src={foto.url}
                   alt="Galeria"
                   className="w-full h-40 object-cover"
                 />
-                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/50 transition-colors flex flex-col items-center justify-between p-2 opacity-0 group-hover:opacity-100">
+                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
+                  <ZoomIn className="h-6 w-6 text-white drop-shadow-lg" />
+                </div>
+                <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity">
                   <Button
-                    onClick={() => deletePhotoMutation.mutate(foto.url)}
+                    onClick={(e) => { e.stopPropagation(); deletePhotoMutation.mutate(foto.url); }}
                     variant="ghost"
                     size="icon"
-                    className="h-6 w-6 text-white hover:bg-red-600/80"
+                    className="text-white bg-black/50"
                     disabled={deletePhotoMutation.isPending}
                     data-testid={`button-delete-photo-${foto.url}`}
                   >
@@ -242,6 +247,70 @@ export function PhotoGalleryModal({
           </>
         )}
       </DialogContent>
+
+      {lightboxIndex !== null && sortedFotos[lightboxIndex] && (
+        <div
+          className="fixed inset-0 bg-black/90 flex items-center justify-center"
+          style={{ zIndex: 10000 }}
+          onClick={() => setLightboxIndex(null)}
+          data-testid="lightbox-overlay"
+        >
+          <Button
+            variant="ghost"
+            size="icon"
+            className="absolute top-4 right-4 text-white bg-black/50"
+            onClick={() => setLightboxIndex(null)}
+            data-testid="button-lightbox-close"
+          >
+            <X className="h-5 w-5" />
+          </Button>
+
+          {sortedFotos.length > 1 && (
+            <>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="absolute left-4 text-white bg-black/50"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setLightboxIndex((prev) => (prev! > 0 ? prev! - 1 : sortedFotos.length - 1));
+                }}
+                data-testid="button-lightbox-prev"
+              >
+                <ChevronLeft className="h-6 w-6" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="absolute right-4 text-white bg-black/50"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setLightboxIndex((prev) => (prev! < sortedFotos.length - 1 ? prev! + 1 : 0));
+                }}
+                data-testid="button-lightbox-next"
+              >
+                <ChevronRight className="h-6 w-6" />
+              </Button>
+            </>
+          )}
+
+          <img
+            src={sortedFotos[lightboxIndex].url}
+            alt="Visualização"
+            className="max-w-[90vw] max-h-[85vh] object-contain rounded-lg"
+            onClick={(e) => e.stopPropagation()}
+            data-testid="img-lightbox"
+          />
+
+          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-2 text-white text-sm bg-black/60 px-4 py-2 rounded-full">
+            <Calendar className="h-3.5 w-3.5" />
+            <span>{formatDateBR(sortedFotos[lightboxIndex].data)}</span>
+            {sortedFotos.length > 1 && (
+              <span className="ml-2 text-white/70">{lightboxIndex + 1} / {sortedFotos.length}</span>
+            )}
+          </div>
+        </div>
+      )}
     </Dialog>
   );
 }
