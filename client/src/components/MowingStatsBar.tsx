@@ -203,8 +203,8 @@ function buildMonthlyDataForLote(areas: PdfAreaData[], lote: number) {
 }
 
 const LOTE_COLORS: Record<number, { r: number; g: number; b: number }> = {
-  1: { r: 41, g: 128, b: 185 },
-  2: { r: 230, g: 126, b: 34 },
+  1: { r: 59, g: 130, b: 246 },
+  2: { r: 139, g: 92, b: 246 },
 };
 
 const MONTH_NAMES: Record<string, string> = {
@@ -316,6 +316,7 @@ function addLoteTable(
   loteAreas: PdfAreaData[],
   lote: number,
   startY: number,
+  color: { r: number; g: number; b: number },
 ) {
   loteAreas.sort((a, b) => {
     const hasA = !!a.ultimaRocagem;
@@ -350,7 +351,7 @@ function addLoteTable(
 
   loteHeaderIndices.push(0);
   tableBody.push([
-    { content: `LOTE ${lote}  -  ${loteAreas.length} areas  -  ${formatMetragem(loteMetragem)} m2`, colSpan: 5, styles: { fontStyle: 'bold', fillColor: [41, 128, 185], textColor: 255, fontSize: 9, halign: 'left' } },
+    { content: `LOTE ${lote}  -  ${loteAreas.length} areas  -  ${formatMetragem(loteMetragem)} m2`, colSpan: 5, styles: { fontStyle: 'bold', fillColor: [color.r, color.g, color.b], textColor: 255, fontSize: 9, halign: 'left' } },
   ]);
 
   let idx = 0;
@@ -369,13 +370,13 @@ function addLoteTable(
     const dayMetragem = areasForDate.reduce((s, a) => s + (a.metragem || 0), 0);
     subtotalRowIndices.push(tableBody.length);
     tableBody.push([
-      { content: `Subtotal ${dateKey !== 'sem-data' ? formatDateBR(dateKey) : 'Sem data'}: ${areasForDate.length} areas  -  ${formatMetragem(dayMetragem)} m2`, colSpan: 5, styles: { fontStyle: 'bold', fillColor: [220, 230, 241], textColor: [30, 30, 30], fontSize: 8, halign: 'right' } },
+      { content: `Subtotal ${dateKey !== 'sem-data' ? formatDateBR(dateKey) : 'Sem data'}: ${areasForDate.length} areas  -  ${formatMetragem(dayMetragem)} m2`, colSpan: 5, styles: { fontStyle: 'bold', fillColor: [Math.round(color.r * 0.15 + 255 * 0.85), Math.round(color.g * 0.15 + 255 * 0.85), Math.round(color.b * 0.15 + 255 * 0.85)], textColor: [30, 30, 30], fontSize: 8, halign: 'right' } },
     ]);
   }
 
   subtotalRowIndices.push(tableBody.length);
   tableBody.push([
-    { content: `Total Lote ${lote}: ${loteAreas.length} areas  -  ${formatMetragem(loteMetragem)} m2`, colSpan: 5, styles: { fontStyle: 'bold', fillColor: [180, 210, 240], textColor: [0, 0, 0], fontSize: 9, halign: 'right' } },
+    { content: `Total Lote ${lote}: ${loteAreas.length} areas  -  ${formatMetragem(loteMetragem)} m2`, colSpan: 5, styles: { fontStyle: 'bold', fillColor: [Math.round(color.r * 0.3 + 255 * 0.7), Math.round(color.g * 0.3 + 255 * 0.7), Math.round(color.b * 0.3 + 255 * 0.7)], textColor: [0, 0, 0], fontSize: 9, halign: 'right' } },
   ]);
 
   autoTable(doc, {
@@ -384,7 +385,7 @@ function addLoteTable(
     body: tableBody,
     margin: { left: 14, right: 14 },
     styles: { fontSize: 8, cellPadding: 2 },
-    headStyles: { fillColor: [41, 128, 185], textColor: 255, fontStyle: 'bold', fontSize: 9 },
+    headStyles: { fillColor: [color.r, color.g, color.b], textColor: 255, fontStyle: 'bold', fontSize: 9 },
     alternateRowStyles: { fillColor: [245, 245, 245] },
     columnStyles: {
       0: { halign: 'center', cellWidth: 12 },
@@ -447,7 +448,7 @@ function generatePdf(data: PdfResponse, loteLabel: string): { pdfData: ArrayBuff
 
     if (needsNewPage) doc.addPage(); else needsNewPage = true;
     addPdfHeader(doc, pageWidth, fromFormatted, toFormatted, loteLabel, data.count, totalFormatted);
-    addLoteTable(doc, loteAreas, lote, 33);
+    addLoteTable(doc, loteAreas, lote, 33, color);
 
     if (isMultiMonth) {
       const { months, values: monthlyValues } = buildMonthlyDataForLote(data.areas, lote);
@@ -476,7 +477,7 @@ function generatePdf(data: PdfResponse, loteLabel: string): { pdfData: ArrayBuff
     doc.setPage(lastPageNum);
     const finalY = (doc as any).lastAutoTable?.finalY || 33;
     const y = Math.min(finalY + 6, pageHeight - 20);
-    doc.setFillColor(41, 128, 185);
+    doc.setFillColor(50, 50, 60);
     doc.rect(14, y, pageWidth - 28, 8, 'F');
     doc.setFontSize(10);
     doc.setFont('helvetica', 'bold');
