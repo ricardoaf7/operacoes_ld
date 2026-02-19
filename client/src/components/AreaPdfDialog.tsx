@@ -117,11 +117,8 @@ function generateAreaPdf(area: ServiceArea): jsPDF {
 
   if (isRocagem) {
     const infoRows = [
-      ["Última Roçagem", area.ultimaRocagem ? formatDateBR(area.ultimaRocagem) : "Sem registro"],
       ["Próxima Previsão", area.proximaPrevisao ? formatDateBR(area.proximaPrevisao) : "Não definida"],
       ["Previsão Manual", area.manualSchedule ? "Sim" : "Não"],
-      ["Registrado Por", area.registradoPor || "—"],
-      ["Data do Registro", area.dataRegistro ? formatDateBR(area.dataRegistro) : "—"],
       ["Status", area.executando ? "Em Execução" : area.status || "Pendente"],
     ];
 
@@ -161,13 +158,30 @@ function generateAreaPdf(area: ServiceArea): jsPDF {
 
   y += 8;
 
+  const allHistory: Array<{ date: string; status: string; observation?: string }> = [];
+  if (area.ultimaRocagem) {
+    allHistory.push({
+      date: area.ultimaRocagem,
+      status: "Concluído",
+      observation: area.registradoPor ? `Registrado por: ${area.registradoPor}` : undefined,
+    });
+  }
   if (area.history && area.history.length > 0) {
+    for (const entry of area.history) {
+      const isDuplicate = area.ultimaRocagem && entry.date === area.ultimaRocagem;
+      if (!isDuplicate) {
+        allHistory.push(entry);
+      }
+    }
+  }
+
+  if (allHistory.length > 0) {
     doc.setFillColor(loteColor.r, loteColor.g, loteColor.b);
     doc.roundedRect(margin, y, contentWidth, 8, 1, 1, "F");
     doc.setFont("helvetica", "bold");
     doc.setFontSize(10);
     doc.setTextColor(255, 255, 255);
-    doc.text(`HISTÓRICO DE ROÇAGENS (${area.history.length} registros)`, margin + 5, y + 5.5);
+    doc.text(`HISTÓRICO DE ROÇAGENS (${allHistory.length} registros)`, margin + 5, y + 5.5);
 
     y += 14;
 
@@ -185,9 +199,7 @@ function generateAreaPdf(area: ServiceArea): jsPDF {
     doc.setFont("helvetica", "normal");
     doc.setTextColor(50, 50, 50);
 
-    const sortedHistory = [...area.history].reverse();
-
-    sortedHistory.forEach((entry, idx) => {
+    allHistory.forEach((entry, idx) => {
       if (y > 270) {
         doc.addPage();
         y = 20;
@@ -253,9 +265,8 @@ export function AreaPdfDialog({ area, open, onOpenChange }: AreaPdfDialogProps) 
       setTimeout(() => {
         try {
           const doc = generateAreaPdf(area);
-          const blob = doc.output("blob");
-          const url = URL.createObjectURL(blob);
-          setPdfUrl(url);
+          const dataUri = doc.output("datauristring");
+          setPdfUrl(dataUri);
         } catch (err) {
           console.error("Error generating PDF:", err);
         } finally {
@@ -263,10 +274,7 @@ export function AreaPdfDialog({ area, open, onOpenChange }: AreaPdfDialogProps) 
         }
       }, 100);
     } else {
-      if (pdfUrl) {
-        URL.revokeObjectURL(pdfUrl);
-        setPdfUrl(null);
-      }
+      setPdfUrl(null);
     }
   }, [open, area]);
 
