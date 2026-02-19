@@ -1,5 +1,6 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
+import express from "express";
 import { storage } from "./storage";
 import { z } from "zod";
 import multer from "multer";
@@ -103,6 +104,8 @@ function convertToSupabaseCSV(areas: ServiceArea[]): string {
 }
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  app.use('/uploads', express.static(uploadDir));
+
   // Endpoint para deletar área
   app.delete("/api/areas/:id", async (req, res) => {
     try {
