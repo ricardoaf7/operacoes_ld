@@ -105,7 +105,6 @@ export default function RelatorioRocagensPage() {
         fileName += `_Lote${appliedFilters.lote}`;
       }
 
-      // Usar html2pdf para criar PDF com texto pesquisável
       const options: any = {
         margin: 10,
         filename: `${fileName}.pdf`,
@@ -114,7 +113,10 @@ export default function RelatorioRocagensPage() {
         jsPDF: { orientation: "p", unit: "mm", format: "a4" },
       };
 
-      await html2pdf().set(options).from(element).save();
+      const blob = await html2pdf().set(options).from(element).outputPdf("blob");
+      const url = URL.createObjectURL(blob);
+      window.open(url, "_blank");
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
     } catch (error) {
       console.error("Erro ao exportar PDF:", error);
       alert("Erro ao exportar PDF");
@@ -189,7 +191,7 @@ export default function RelatorioRocagensPage() {
                   data-testid="button-export-pdf"
                 >
                   <Download className="h-4 w-4" />
-                  {isExporting ? "Exportando..." : "Exportar PDF"}
+                  {isExporting ? "Gerando..." : "PDF"}
                 </Button>
               </div>
             </div>
