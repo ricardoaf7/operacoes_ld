@@ -19,6 +19,7 @@ import { formatDateBR } from "@/lib/utils";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/use-auth";
 import { PhotoGalleryModal } from "@/components/PhotoGalleryModal";
 import { generateAreaPdf } from "@/components/AreaPdfDialog";
 
@@ -36,6 +37,9 @@ interface MapInfoCardProps {
 
 export function MapInfoCard({ area, onClose, onRegisterMowing, onRegisterJardins, onSetManualForecast, onEdit, onChangeLocation, isRelocating = false, isPublicView = false }: MapInfoCardProps) {
   const { toast } = useToast();
+  const { user } = useAuth();
+  const isGestor = user?.role === "gestor";
+  const canPerformActions = !isPublicView && !isGestor;
   const [isExpanded, setIsExpanded] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showUndoMowingConfirm, setShowUndoMowingConfirm] = useState(false);
@@ -350,7 +354,7 @@ export function MapInfoCard({ area, onClose, onRegisterMowing, onRegisterJardins
 
         {/* Botões de ação */}
         <div className="flex flex-col gap-2">
-          {!isPublicView && isRocagem && (
+          {canPerformActions && isRocagem && (
             <>
               <Button
                 onClick={() => toggleExecutandoMutation.mutate()}
@@ -416,7 +420,7 @@ export function MapInfoCard({ area, onClose, onRegisterMowing, onRegisterJardins
             </>
           )}
 
-          {!isPublicView && isJardins && onRegisterJardins && (
+          {canPerformActions && isJardins && onRegisterJardins && (
             <Button
               onClick={onRegisterJardins}
               className="w-full h-9 bg-green-600 hover:bg-green-700 text-white"
@@ -446,7 +450,7 @@ export function MapInfoCard({ area, onClose, onRegisterMowing, onRegisterJardins
             )}
           </Button>
 
-          {!isPublicView && (
+          {canPerformActions && (
             <>
               <Separator />
 
