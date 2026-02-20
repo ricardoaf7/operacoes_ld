@@ -29,7 +29,7 @@ function daysBetween(dateA: string, dateB: string): number {
   return Math.round(diff / (1000 * 60 * 60 * 24));
 }
 
-function generateAreaPdf(area: ServiceArea): jsPDF {
+export function generateAreaPdf(area: ServiceArea): jsPDF {
   const doc = new jsPDF({
     orientation: "portrait",
     unit: "mm",

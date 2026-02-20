@@ -20,7 +20,7 @@ import { useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { PhotoGalleryModal } from "@/components/PhotoGalleryModal";
-import { AreaPdfDialog } from "@/components/AreaPdfDialog";
+import { generateAreaPdf } from "@/components/AreaPdfDialog";
 
 interface MapInfoCardProps {
   area: ServiceArea;
@@ -40,7 +40,6 @@ export function MapInfoCard({ area, onClose, onRegisterMowing, onRegisterJardins
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showUndoMowingConfirm, setShowUndoMowingConfirm] = useState(false);
   const [showPhotoGallery, setShowPhotoGallery] = useState(false);
-  const [showPdfDialog, setShowPdfDialog] = useState(false);
   const [fullArea, setFullArea] = useState<ServiceArea | null>(null);
   const [loadingHistory, setLoadingHistory] = useState(false);
 
@@ -327,7 +326,18 @@ export function MapInfoCard({ area, onClose, onRegisterMowing, onRegisterJardins
 
               <Button
                 variant="outline"
-                onClick={() => setShowPdfDialog(true)}
+                disabled={loadingHistory}
+                onClick={() => {
+                  try {
+                    const doc = generateAreaPdf(areaWithHistory);
+                    const blob = doc.output("blob");
+                    const url = URL.createObjectURL(blob);
+                    window.open(url, "_blank");
+                    setTimeout(() => URL.revokeObjectURL(url), 10000);
+                  } catch (err) {
+                    console.error("Error generating PDF:", err);
+                  }
+                }}
                 className="w-full h-8"
                 data-testid="button-print-pdf"
               >
@@ -487,11 +497,6 @@ export function MapInfoCard({ area, onClose, onRegisterMowing, onRegisterJardins
           onOpenChange={setShowPhotoGallery}
         />
 
-        <AreaPdfDialog
-          area={areaWithHistory}
-          open={showPdfDialog}
-          onOpenChange={setShowPdfDialog}
-        />
       </CardContent>
 
       {/* Dialogs renderizados via Portal com z-index alto para ficar acima do card (z-1000) */}
