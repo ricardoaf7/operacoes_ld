@@ -5,8 +5,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Download, Calendar, Filter } from "lucide-react";
-import html2pdf from "html2pdf.js";
+import { Calendar, Filter, FileText } from "lucide-react";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 import type { ServiceArea } from "@shared/schema";
 import { formatDateBR } from "@/lib/utils";
 
@@ -14,7 +15,6 @@ export default function RelatorioRocagensPage() {
   const [dateFrom, setDateFrom] = useState<string>("");
   const [dateTo, setDateTo] = useState<string>("");
   const [selectedLote, setSelectedLote] = useState<string>("");
-  const [isExporting, setIsExporting] = useState(false);
   const [appliedFilters, setAppliedFilters] = useState<{ dateFrom: string; dateTo: string; lote: string }>({
     dateFrom: "",
     dateTo: "",
@@ -76,52 +76,108 @@ export default function RelatorioRocagensPage() {
     return acc;
   }, {} as Record<string, ServiceArea[]>);
 
-  // Exportar para PDF com texto pesquisável
-  const handleExportPDF = async () => {
-    if (rocagensFiltered.length === 0) {
-      alert("Nenhuma roçagem para exportar no período selecionado");
-      return;
-    }
+  const handleExportPDF = () => {
+    if (rocagensFiltered.length === 0) return;
 
-    setIsExporting(true);
     try {
-      const element = document.getElementById("relatorio-content");
-      if (!element) {
-        alert("Erro ao encontrar conteúdo do relatório");
-        return;
-      }
+      const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const margin = 14;
 
-      // Gerar nome do arquivo
-      let fileName = "Relatorio_Rocagens";
-      if (appliedFilters.dateFrom) {
-        const fromDate = new Date(appliedFilters.dateFrom + "T00:00:00");
-        fileName += `_${fromDate.toLocaleDateString("pt-BR").replace(/\//g, "-")}`;
-      }
-      if (appliedFilters.dateTo) {
-        const toDate = new Date(appliedFilters.dateTo + "T00:00:00");
-        fileName += `_a_${toDate.toLocaleDateString("pt-BR").replace(/\//g, "-")}`;
-      }
-      if (appliedFilters.lote) {
-        fileName += `_Lote${appliedFilters.lote}`;
-      }
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(16);
+      doc.text("Relatorio de Rocagens - Capina e Rocagem", margin, 20);
 
-      const options: any = {
-        margin: 10,
-        filename: `${fileName}.pdf`,
-        image: { type: "png" as const, quality: 0.98 },
-        html2canvas: { scale: 2 },
-        jsPDF: { orientation: "p", unit: "mm", format: "a4" },
-      };
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(10);
+      const periodoFrom = appliedFilters.dateFrom
+        ? new Date(appliedFilters.dateFrom + "T00:00:00").toLocaleDateString("pt-BR")
+        : "Desde o inicio";
+      const periodoTo = appliedFilters.dateTo
+        ? new Date(appliedFilters.dateTo + "T00:00:00").toLocaleDateString("pt-BR")
+        : "Ate hoje";
+      doc.text(`Periodo: ${periodoFrom} ate ${periodoTo}`, margin, 28);
+      if (appliedFilters.lote && appliedFilters.lote !== "todos") {
+        doc.text(`Lote: ${appliedFilters.lote}`, margin, 34);
+      }
+      doc.text(
+        `Data do relatorio: ${new Date().toLocaleDateString("pt-BR")} as ${new Date().toLocaleTimeString("pt-BR")}`,
+        margin,
+        appliedFilters.lote && appliedFilters.lote !== "todos" ? 40 : 34
+      );
 
-      const blob = await html2pdf().set(options).from(element).outputPdf("blob");
+      let startY = appliedFilters.lote && appliedFilters.lote !== "todos" ? 48 : 42;
+
+      Object.entries(rocagensPorData).forEach(([data, areasGroup]) => {
+        if (startY > doc.internal.pageSize.getHeight() - 30) {
+          doc.addPage();
+          startY = 20;
+        }
+
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(11);
+        doc.text(`${data} (${areasGroup.length} areas)`, margin, startY);
+        startY += 2;
+
+        autoTable(doc, {
+          startY,
+          margin: { left: margin, right: margin },
+          head: [["ID", "Endereco", "Bairro", "Metragem (m2)", "Lote", "Data Rocagem", "Registrado Por"]],
+          body: areasGroup.map((a) => [
+            String(a.id),
+            a.endereco || "-",
+            a.bairro || "-",
+            a.metragem_m2 ? a.metragem_m2.toLocaleString("pt-BR") : "-",
+            a.lote ? String(a.lote) : "-",
+            a.ultimaRocagem ? formatDateBR(a.ultimaRocagem) : "-",
+            a.registradoPor || "-",
+          ]),
+          styles: { fontSize: 8, cellPadding: 2 },
+          headStyles: { fillColor: [80, 80, 80], textColor: 255, fontStyle: "bold" },
+          alternateRowStyles: { fillColor: [245, 245, 245] },
+          didDrawPage: () => {
+            doc.setFontSize(8);
+            doc.setTextColor(150);
+            doc.text(
+              `Zeladoria em Tempo Real - CMTU-LD`,
+              margin,
+              doc.internal.pageSize.getHeight() - 8
+            );
+            doc.text(
+              `Pagina ${doc.getNumberOfPages()}`,
+              pageWidth - margin - 20,
+              doc.internal.pageSize.getHeight() - 8
+            );
+            doc.setTextColor(0);
+          },
+        });
+
+        startY = (doc as any).lastAutoTable.finalY + 8;
+      });
+
+      if (startY > doc.internal.pageSize.getHeight() - 30) {
+        doc.addPage();
+        startY = 20;
+      }
+      doc.setDrawColor(180);
+      doc.line(margin, startY, pageWidth - margin, startY);
+      startY += 6;
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(10);
+      doc.text(`Total de areas rocadas: ${rocagensFiltered.length}`, margin, startY);
+      startY += 6;
+      doc.text(
+        `Metragem total: ${rocagensFiltered.reduce((sum, a) => sum + (a.metragem_m2 || 0), 0).toLocaleString("pt-BR")} m2`,
+        margin,
+        startY
+      );
+
+      const blob = doc.output("blob");
       const url = URL.createObjectURL(blob);
       window.open(url, "_blank");
       setTimeout(() => URL.revokeObjectURL(url), 10000);
     } catch (error) {
       console.error("Erro ao exportar PDF:", error);
-      alert("Erro ao exportar PDF");
-    } finally {
-      setIsExporting(false);
     }
   };
 
@@ -186,12 +242,12 @@ export default function RelatorioRocagensPage() {
                 </Button>
                 <Button
                   onClick={handleExportPDF}
-                  disabled={rocagensFiltered.length === 0 || isExporting}
+                  disabled={rocagensFiltered.length === 0}
                   className="gap-2"
                   data-testid="button-export-pdf"
                 >
-                  <Download className="h-4 w-4" />
-                  {isExporting ? "Gerando..." : "PDF"}
+                  <FileText className="h-4 w-4" />
+                  PDF
                 </Button>
               </div>
             </div>
