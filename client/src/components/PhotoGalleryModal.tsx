@@ -106,17 +106,27 @@ export function PhotoGalleryModal({
     setIsUploading(true);
     try {
       const uploadPromises = filesToUpload.map(async (file) => {
-        const formData = new FormData();
-        formData.append("file", file);
-
-        const res = await fetch("/api/photo/upload", {
+        const metaRes = await fetch("/api/uploads/request-url", {
           method: "POST",
-          body: formData,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: file.name,
+            size: file.size,
+            contentType: file.type || "application/octet-stream",
+          }),
         });
 
-        if (!res.ok) throw new Error(`Upload failed for ${file.name}`);
-        const data = await res.json();
-        return data.url;
+        if (!metaRes.ok) throw new Error(`Failed to get upload URL for ${file.name}`);
+        const { uploadURL, objectPath } = await metaRes.json();
+
+        const putRes = await fetch(uploadURL, {
+          method: "PUT",
+          body: file,
+          headers: { "Content-Type": file.type || "application/octet-stream" },
+        });
+
+        if (!putRes.ok) throw new Error(`Upload failed for ${file.name}`);
+        return objectPath;
       });
 
       const urls = await Promise.all(uploadPromises);

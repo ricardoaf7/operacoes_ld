@@ -3,22 +3,11 @@ import { createServer, type Server } from "http";
 import express from "express";
 import { storage } from "./storage";
 import { z } from "zod";
-import multer from "multer";
 import * as fs from "fs";
 import * as path from "path";
 import type { ServiceArea } from "@shared/schema";
-import { randomUUID } from "crypto";
 import bcrypt from "bcryptjs";
-
-const upload = multer({ 
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024 }
-});
-
-const uploadDir = path.join(process.cwd(), 'public', 'uploads');
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
-}
+import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 
 // Função para converter ServiceArea[] para CSV compatível com Supabase
 function convertToSupabaseCSV(areas: ServiceArea[]): string {
@@ -139,7 +128,7 @@ async function ensureAdminExists() {
 }
 
 export async function registerRoutes(app: Express): Promise<Server> {
-  app.use('/uploads', express.static(uploadDir));
+  registerObjectStorageRoutes(app);
 
   await ensureAdminExists();
 
@@ -331,30 +320,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Endpoint para upload de fotos
-  app.post("/api/photo/upload", requireAuth, upload.single("file"), async (req, res) => {
-    try {
-      if (!req.file) {
-        return res.status(400).json({ error: "Nenhum arquivo enviado" });
-      }
-
-      const ext = path.extname(req.file.originalname).toLowerCase();
-      const validExts = ['.jpg', '.jpeg', '.png', '.gif', '.webp'];
-      if (!validExts.includes(ext)) {
-        return res.status(400).json({ error: "Tipo de arquivo não permitido" });
-      }
-
-      const filename = `${randomUUID()}${ext}`;
-      const filepath = path.join(uploadDir, filename);
-      
-      fs.writeFileSync(filepath, req.file.buffer);
-      
-      res.json({ url: `/uploads/${filename}` });
-    } catch (error) {
-      console.error("Photo upload error:", error);
-      res.status(500).json({ error: "Falha ao fazer upload" });
-    }
-  });
+  // Photo uploads now use Object Storage presigned URL flow:
+  // 1. Client calls POST /api/uploads/request-url (registered by registerObjectStorageRoutes)
+  // 2. Client uploads directly to presigned URL
+  // 3. Client saves the returned objectPath in the area's fotos array
+  // 4. Photos served via GET /objects/* (registered by registerObjectStorageRoutes)
 
   // Endpoint de backup: exportar todos os dados em JSON
   app.get("/api/backup", async (req, res) => {
