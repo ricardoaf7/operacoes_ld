@@ -15,6 +15,15 @@ export class DbStorage implements IStorage {
   constructor(connectionString: string) {
     this.pool = new Pool({ connectionString });
     this.db = drizzle(this.pool);
+    this.ensureExtensions();
+  }
+
+  private async ensureExtensions() {
+    try {
+      await this.db.execute(sql`CREATE EXTENSION IF NOT EXISTS unaccent`);
+    } catch (e) {
+      console.warn("Could not create unaccent extension:", e);
+    }
   }
 
   async getAllAreas(serviceType: string): Promise<ServiceArea[]> {
@@ -79,8 +88,8 @@ export class DbStorage implements IStorage {
         and(
           eq(serviceAreas.servico, serviceType),
           or(
-            ilike(serviceAreas.endereco, searchTerm),
-            ilike(serviceAreas.bairro, searchTerm),
+            sql`unaccent(lower(${serviceAreas.endereco})) LIKE unaccent(${searchTerm})`,
+            sql`unaccent(lower(${serviceAreas.bairro})) LIKE unaccent(${searchTerm})`,
             sql`CAST(${serviceAreas.lote} AS TEXT) LIKE ${searchTerm}`
           )
         )

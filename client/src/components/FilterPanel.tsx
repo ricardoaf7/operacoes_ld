@@ -44,15 +44,16 @@ export function FilterPanel({ areas, filters, onFilterChange, filteredCount }: F
   const suggestions = useMemo(() => {
     if (!filters.search || filters.search.length < 2) return [];
     
-    const searchLower = filters.search.toLowerCase();
+    const removeAccents = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    const searchNorm = removeAccents(filters.search.toLowerCase());
     const matches = new Set<string>();
     
     areas.forEach(area => {
-      if (area.endereco?.toLowerCase().includes(searchLower)) {
-        matches.add(area.endereco);
+      if (removeAccents((area.endereco || "").toLowerCase()).includes(searchNorm)) {
+        matches.add(area.endereco!);
       }
-      if (area.bairro?.toLowerCase().includes(searchLower)) {
-        matches.add(area.bairro);
+      if (removeAccents((area.bairro || "").toLowerCase()).includes(searchNorm)) {
+        matches.add(area.bairro!);
       }
     });
     

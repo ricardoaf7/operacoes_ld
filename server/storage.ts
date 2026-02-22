@@ -1,5 +1,9 @@
 import type { ServiceArea, Team, AppConfig, ExportHistory, InsertExportHistory, User, InsertUser } from "@shared/schema";
 
+function removeAccents(str: string): string {
+  return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+}
+
 export interface IStorage {
   // Service Areas
   getAllAreas(serviceType: string): Promise<ServiceArea[]>;
@@ -211,16 +215,16 @@ export class MemStorage implements IStorage {
 
   async searchAreas(query: string, serviceType: string, limit: number = 50): Promise<ServiceArea[]> {
     const areas = serviceType === "rocagem" ? this.rocagemAreas : this.jardinsAreas;
-    const searchLower = query.toLowerCase();
+    const searchNorm = removeAccents(query.toLowerCase());
     
     const filtered = areas.filter(area => {
-      const endereco = (area.endereco || "").toLowerCase();
-      const bairro = (area.bairro || "").toLowerCase();
+      const endereco = removeAccents((area.endereco || "").toLowerCase());
+      const bairro = removeAccents((area.bairro || "").toLowerCase());
       const lote = area.lote?.toString() || "";
       
-      return endereco.includes(searchLower) || 
-             bairro.includes(searchLower) || 
-             lote.includes(searchLower);
+      return endereco.includes(searchNorm) || 
+             bairro.includes(searchNorm) || 
+             lote.includes(searchNorm);
     });
     
     return filtered.slice(0, limit);

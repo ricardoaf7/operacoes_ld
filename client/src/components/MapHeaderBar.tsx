@@ -44,22 +44,62 @@ function escapeRegExp(string: string): string {
   return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+function removeAccents(str: string): string {
+  return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+}
+
 function highlightMatch(text: string, query: string): JSX.Element {
   const trimmedQuery = query.trim();
   if (!trimmedQuery) return <>{text}</>;
   
-  const escapedQuery = escapeRegExp(trimmedQuery);
-  const parts = text.split(new RegExp(`(${escapedQuery})`, 'gi'));
+  const normChars = Array.from(text).map(ch => ({
+    original: ch,
+    normalized: removeAccents(ch.toLowerCase()),
+  }));
+  
+  const normalizedQuery = removeAccents(trimmedQuery.toLowerCase());
+  
+  const parts: { text: string; isMatch: boolean }[] = [];
+  let i = 0;
+  
+  while (i < normChars.length) {
+    let matchLen = 0;
+    let j = 0;
+    while (j < normalizedQuery.length && (i + matchLen) < normChars.length) {
+      if (normChars[i + matchLen].normalized === normalizedQuery[j]) {
+        matchLen++;
+        j++;
+      } else {
+        break;
+      }
+    }
+    
+    if (j === normalizedQuery.length && matchLen > 0) {
+      const matchedText = normChars.slice(i, i + matchLen).map(c => c.original).join('');
+      parts.push({ text: matchedText, isMatch: true });
+      i += matchLen;
+    } else {
+      const lastPart = parts[parts.length - 1];
+      if (lastPart && !lastPart.isMatch) {
+        lastPart.text += normChars[i].original;
+      } else {
+        parts.push({ text: normChars[i].original, isMatch: false });
+      }
+      i++;
+    }
+  }
+  
+  if (parts.length === 0) return <>{text}</>;
   
   return (
     <>
-      {parts.map((part, i) => 
-        part.toLowerCase() === trimmedQuery.toLowerCase() ? (
-          <span key={i} className="font-semibold text-foreground bg-accent/50 rounded px-0.5">
-            {part}
+      {parts.map((part, idx) => 
+        part.isMatch ? (
+          <span key={idx} className="font-semibold text-foreground bg-accent/50 rounded px-0.5">
+            {part.text}
           </span>
         ) : (
-          <span key={i}>{part}</span>
+          <span key={idx}>{part.text}</span>
         )
       )}
     </>
