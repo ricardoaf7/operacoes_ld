@@ -22,12 +22,14 @@ interface PhotoGalleryModalProps {
   area: ServiceArea;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  readOnly?: boolean;
 }
 
 export function PhotoGalleryModal({
   area,
   open,
   onOpenChange,
+  readOnly = false,
 }: PhotoGalleryModalProps) {
   const { toast } = useToast();
   const [isUploading, setIsUploading] = useState(false);
@@ -181,40 +183,44 @@ export function PhotoGalleryModal({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-3">
-          <div className="flex items-center gap-2">
-            <Calendar className="h-4 w-4 text-muted-foreground shrink-0" />
-            <span className="text-sm text-muted-foreground shrink-0">Data das fotos:</span>
-            <Input
-              type="date"
-              value={photoDate}
-              onChange={(e) => setPhotoDate(e.target.value)}
-              className="max-w-[180px]"
-              data-testid="input-photo-date"
-            />
-          </div>
-          <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-6">
-            <label htmlFor="photo-input" className="flex flex-col items-center justify-center cursor-pointer gap-2">
-              <Upload className="h-6 w-6 text-muted-foreground" />
-              <span className="text-sm font-medium text-muted-foreground">
-                {isUploading ? "Enviando fotos..." : "Clique para enviar fotos"}
-              </span>
-              <span className="text-xs text-muted-foreground">Envie uma ou múltiplas fotos (JPG, PNG, GIF, WebP - máx. 10MB cada)</span>
-              <input
-                id="photo-input"
-                type="file"
-                accept="image/*"
-                multiple
-                onChange={handleFileSelect}
-                disabled={isUploading}
-                className="hidden"
-                data-testid="input-photo-file"
-              />
-            </label>
-          </div>
-        </div>
+        {!readOnly && (
+          <>
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <Calendar className="h-4 w-4 text-muted-foreground shrink-0" />
+                <span className="text-sm text-muted-foreground shrink-0">Data das fotos:</span>
+                <Input
+                  type="date"
+                  value={photoDate}
+                  onChange={(e) => setPhotoDate(e.target.value)}
+                  className="max-w-[180px]"
+                  data-testid="input-photo-date"
+                />
+              </div>
+              <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-6">
+                <label htmlFor="photo-input" className="flex flex-col items-center justify-center cursor-pointer gap-2">
+                  <Upload className="h-6 w-6 text-muted-foreground" />
+                  <span className="text-sm font-medium text-muted-foreground">
+                    {isUploading ? "Enviando fotos..." : "Clique para enviar fotos"}
+                  </span>
+                  <span className="text-xs text-muted-foreground">Envie uma ou múltiplas fotos (JPG, PNG, GIF, WebP - máx. 10MB cada)</span>
+                  <input
+                    id="photo-input"
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    onChange={handleFileSelect}
+                    disabled={isUploading}
+                    className="hidden"
+                    data-testid="input-photo-file"
+                  />
+                </label>
+              </div>
+            </div>
 
-        <Separator />
+            <Separator />
+          </>
+        )}
 
         {isUploading ? (
           <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
@@ -225,7 +231,7 @@ export function PhotoGalleryModal({
           <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
             <ImageIcon className="h-8 w-8 mb-2" />
             <p className="text-sm">Nenhuma foto ainda.</p>
-            <p className="text-xs">Envie sua primeira foto acima.</p>
+            {!readOnly && <p className="text-xs">Envie sua primeira foto acima.</p>}
           </div>
         ) : (
           <div className="grid grid-cols-2 gap-4">
@@ -244,18 +250,20 @@ export function PhotoGalleryModal({
                 <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
                   <ZoomIn className="h-6 w-6 text-white drop-shadow-lg" />
                 </div>
-                <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <Button
-                    onClick={(e) => { e.stopPropagation(); deletePhotoMutation.mutate(foto.url); }}
-                    variant="ghost"
-                    size="icon"
-                    className="text-white bg-black/50"
-                    disabled={deletePhotoMutation.isPending}
-                    data-testid={`button-delete-photo-${foto.url}`}
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
-                </div>
+                {!readOnly && (
+                  <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Button
+                      onClick={(e) => { e.stopPropagation(); deletePhotoMutation.mutate(foto.url); }}
+                      variant="ghost"
+                      size="icon"
+                      className="text-white bg-black/50"
+                      disabled={deletePhotoMutation.isPending}
+                      data-testid={`button-delete-photo-${foto.url}`}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                )}
                 <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-2 text-white text-xs flex items-center gap-1">
                   <Calendar className="h-3 w-3" />
                   {formatDateBR(foto.data)}

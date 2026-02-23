@@ -399,16 +399,6 @@ export function MapInfoCard({ area, onClose, onRegisterMowing, onRegisterJardins
               )}
 
               <Button
-                onClick={() => setShowPhotoGallery(true)}
-                variant="outline"
-                className="w-full h-9"
-                data-testid="button-open-photo-gallery"
-              >
-                <ImageIcon className="h-4 w-4 mr-2" />
-                Fotos
-              </Button>
-              
-              <Button
                 onClick={onSetManualForecast}
                 variant="outline"
                 className="w-full h-9 border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-950"
@@ -430,6 +420,16 @@ export function MapInfoCard({ area, onClose, onRegisterMowing, onRegisterJardins
               Registrar
             </Button>
           )}
+
+          <Button
+            onClick={() => setShowPhotoGallery(true)}
+            variant="outline"
+            className="w-full h-9"
+            data-testid="button-open-photo-gallery"
+          >
+            <ImageIcon className="h-4 w-4 mr-2" />
+            Fotos {(area.fotos?.length || 0) > 0 && `(${area.fotos?.length})`}
+          </Button>
           
           <Button
             variant="outline"
@@ -499,6 +499,7 @@ export function MapInfoCard({ area, onClose, onRegisterMowing, onRegisterJardins
           area={area}
           open={showPhotoGallery}
           onOpenChange={setShowPhotoGallery}
+          readOnly={isPublicView || isGestor}
         />
 
       </CardContent>
