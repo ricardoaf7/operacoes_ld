@@ -2187,50 +2187,7 @@ async function registerRoutes(app) {
 // server/vite.ts
 import express from "express";
 import fs2 from "fs";
-import path3 from "path";
-import { createServer as createViteServer, createLogger } from "vite";
-
-// vite.config.ts
-import { defineConfig } from "vite";
-import react from "@vitejs/plugin-react";
 import path2 from "path";
-import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
-var vite_config_default = defineConfig({
-  plugins: [
-    react(),
-    runtimeErrorOverlay(),
-    ...process.env.NODE_ENV !== "production" && process.env.REPL_ID !== void 0 ? [
-      await import("@replit/vite-plugin-cartographer").then(
-        (m) => m.cartographer()
-      ),
-      await import("@replit/vite-plugin-dev-banner").then(
-        (m) => m.devBanner()
-      )
-    ] : []
-  ],
-  resolve: {
-    alias: {
-      "@": path2.resolve(import.meta.dirname, "client", "src"),
-      "@shared": path2.resolve(import.meta.dirname, "shared"),
-      "@assets": path2.resolve(import.meta.dirname, "attached_assets")
-    }
-  },
-  root: path2.resolve(import.meta.dirname, "client"),
-  build: {
-    outDir: path2.resolve(import.meta.dirname, "dist/public"),
-    emptyOutDir: true
-  },
-  server: {
-    fs: {
-      strict: true,
-      deny: ["**/.*"]
-    }
-  }
-});
-
-// server/vite.ts
-import { nanoid } from "nanoid";
-var viteLogger = createLogger();
 function log(message, source = "express") {
   const formattedTime = (/* @__PURE__ */ new Date()).toLocaleTimeString("en-US", {
     hour: "numeric",
@@ -2241,14 +2198,16 @@ function log(message, source = "express") {
   console.log(`${formattedTime} [${source}] ${message}`);
 }
 async function setupVite(app, server) {
+  const { createServer: createViteServer, createLogger } = await import("vite");
+  const { nanoid } = await import("nanoid");
+  const viteLogger = createLogger();
   const serverOptions = {
     middlewareMode: true,
     hmr: { server },
     allowedHosts: true
   };
   const vite = await createViteServer({
-    ...vite_config_default,
-    configFile: false,
+    configFile: true,
     customLogger: {
       ...viteLogger,
       error: (msg, options) => {
@@ -2263,7 +2222,7 @@ async function setupVite(app, server) {
   app.use("*", async (req, res, next) => {
     const url = req.originalUrl;
     try {
-      const clientTemplate = path3.resolve(
+      const clientTemplate = path2.resolve(
         import.meta.dirname,
         "..",
         "client",
@@ -2283,7 +2242,7 @@ async function setupVite(app, server) {
   });
 }
 function serveStatic(app) {
-  const distPath = path3.resolve(import.meta.dirname, "public");
+  const distPath = path2.resolve(import.meta.dirname, "public");
   if (!fs2.existsSync(distPath)) {
     throw new Error(
       `Could not find the build directory: ${distPath}, make sure to build the client first`
@@ -2291,7 +2250,7 @@ function serveStatic(app) {
   }
   app.use(express.static(distPath));
   app.use("*", (_req, res) => {
-    res.sendFile(path3.resolve(distPath, "index.html"));
+    res.sendFile(path2.resolve(distPath, "index.html"));
   });
 }
 
@@ -2350,7 +2309,7 @@ function registerBaseMiddleware(app) {
   );
   app.use((req, res, next) => {
     const start = Date.now();
-    const path4 = req.path;
+    const path3 = req.path;
     let capturedJsonResponse;
     const originalResJson = res.json;
     res.json = function(bodyJson, ...args) {
@@ -2359,8 +2318,8 @@ function registerBaseMiddleware(app) {
     };
     res.on("finish", () => {
       const duration = Date.now() - start;
-      if (path4.startsWith("/api")) {
-        let logLine = `${req.method} ${path4} ${res.statusCode} in ${duration}ms`;
+      if (path3.startsWith("/api")) {
+        let logLine = `${req.method} ${path3} ${res.statusCode} in ${duration}ms`;
         if (capturedJsonResponse) {
           logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
         }
