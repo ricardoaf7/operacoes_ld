@@ -1885,7 +1885,6 @@ async function registerRoutes(app) {
           dataRegistro: (/* @__PURE__ */ new Date()).toISOString(),
           manualSchedule: false,
           proximaPrevisao,
-          // Previsão calculada diretamente
           status: "Conclu\xEDdo"
         };
         const updatedArea2 = await storage.updateArea(areaId, dataComTimestamp);
@@ -1893,7 +1892,14 @@ async function registerRoutes(app) {
           res.status(404).json({ error: "Area not found" });
           return;
         }
-        res.json(updatedArea2);
+        await storage.addHistoryEntry(areaId, {
+          date: data.ultimaRocagem,
+          type: "completed",
+          status: "Conclu\xEDdo",
+          observation: data.registradoPor ? `Ro\xE7agem conclu\xEDda por ${data.registradoPor}` : "Ro\xE7agem conclu\xEDda"
+        });
+        const areaComHistorico = await storage.getAreaById(areaId);
+        res.json(areaComHistorico);
         return;
       }
       const updatedArea = await storage.updateArea(areaId, data);

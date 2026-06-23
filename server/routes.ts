@@ -982,24 +982,35 @@ export async function registerRoutes(app: Express): Promise<void> {
         const nextMowingDate = new Date(lastMowing);
         nextMowingDate.setDate(lastMowing.getDate() + 60);
         const proximaPrevisao = nextMowingDate.toISOString().split('T')[0];
-        
+
         const dataComTimestamp = {
           ...data,
           dataRegistro: new Date().toISOString(),
           manualSchedule: false,
-          proximaPrevisao, // Previsão calculada diretamente
+          proximaPrevisao,
           status: "Concluído" as const,
         };
-        
-        // Aplicar atualizações incluindo auditoria e previsão - APENAS nesta área
+
+        // Aplicar atualizações incluindo auditoria e previsão
         const updatedArea = await storage.updateArea(areaId, dataComTimestamp);
-        
+
         if (!updatedArea) {
           res.status(404).json({ error: "Area not found" });
           return;
         }
-        
-        res.json(updatedArea);
+
+        // Registrar no histórico automaticamente a cada roçagem concluída
+        await storage.addHistoryEntry(areaId, {
+          date: data.ultimaRocagem,
+          type: "completed",
+          status: "Concluído",
+          observation: data.registradoPor
+            ? `Roçagem concluída por ${data.registradoPor}`
+            : "Roçagem concluída",
+        });
+
+        const areaComHistorico = await storage.getAreaById(areaId);
+        res.json(areaComHistorico);
         return;
       }
       
