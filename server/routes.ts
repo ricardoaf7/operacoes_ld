@@ -8,7 +8,7 @@ import type { ServiceArea } from "@shared/schema";
 import bcrypt from "bcryptjs";
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
 import { ObjectStorageService, ObjectNotFoundError } from "./replit_integrations/object_storage/objectStorage";
-import { ZipArchive } from "archiver";
+import archiver from "archiver";
 
 // Função para converter ServiceArea[] para CSV compatível com Supabase
 function convertToSupabaseCSV(areas: ServiceArea[]): string {
@@ -465,7 +465,7 @@ export async function registerRoutes(app: Express): Promise<void> {
       res.setHeader('Content-Type', 'application/zip');
       res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
 
-      const archive = new ZipArchive({ zlib: { level: 6 } });
+      const archive = archiver('zip', { zlib: { level: 6 } });
       let aborted = false;
       const onAbort = () => {
         aborted = true;
@@ -476,10 +476,10 @@ export async function registerRoutes(app: Express): Promise<void> {
         if (!res.writableEnded) onAbort();
       });
 
-      archive.on('warning', (err) => {
+      archive.on('warning', (err: NodeJS.ErrnoException) => {
         if (err.code !== 'ENOENT') console.error('Archive warning:', err);
       });
-      archive.on('error', (err) => {
+      archive.on('error', (err: Error) => {
         console.error('Archive error:', err);
         if (!res.headersSent) {
           res.status(500).json({ error: 'Falha ao gerar ZIP' });
