@@ -421,15 +421,6 @@ export async function registerRoutes(app: Express): Promise<void> {
     }
   });
 
-  // Endpoint de exportação de fotos — desativado temporariamente
-  // O armazenamento de fotos está sendo migrado do Replit para Supabase Storage
-  app.get("/api/export/photos", requireAuth, async (req, res) => {
-    res.status(503).json({
-      error: "Funcionalidade temporariamente indisponível",
-      message: "O download de fotos está sendo migrado para o Supabase Storage. Em breve estará disponível novamente.",
-    });
-  });
-
   app.get("/api/areas/rocagem", async (req, res) => {
     try {
       const areas = await storage.getAllAreas("rocagem");

@@ -48,37 +48,6 @@ export interface IStorage {
   deleteUser(id: number): Promise<boolean>;
 }
 
-// Função legada de cálculo de agendamento - DEPRECADA
-// Use shared/schedulingAlgorithm.ts para novos cálculos
-async function calculateMowingScheduleWithHolidays(areas: ServiceArea[], config: AppConfig): Promise<void> {
-  const { calculateMowingSchedule } = await import('@shared/schedulingAlgorithm');
-  
-  // Calcular para lote 1
-  const lote1Results = calculateMowingSchedule(
-    areas,
-    1,
-    config.mowingProductionRate.lote1,
-    new Date()
-  );
-  
-  // Calcular para lote 2
-  const lote2Results = calculateMowingSchedule(
-    areas,
-    2,
-    config.mowingProductionRate.lote2,
-    new Date()
-  );
-  
-  // Aplicar resultados às áreas
-  const allResults = [...lote1Results, ...lote2Results];
-  for (const result of allResults) {
-    const area = areas.find(a => a.id === result.areaId);
-    if (area) {
-      area.proximaPrevisao = result.proximaPrevisao;
-      area.daysToComplete = result.daysToComplete;
-    }
-  }
-}
 
 export class MemStorage implements IStorage {
   private rocagemAreas: ServiceArea[];

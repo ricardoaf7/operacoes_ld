@@ -1422,12 +1422,6 @@ async function registerRoutes(app) {
       res.status(500).json({ error: "Falha ao exportar CSV" });
     }
   });
-  app.get("/api/export/photos", requireAuth, async (req, res) => {
-    res.status(503).json({
-      error: "Funcionalidade temporariamente indispon\xEDvel",
-      message: "O download de fotos est\xE1 sendo migrado para o Supabase Storage. Em breve estar\xE1 dispon\xEDvel novamente."
-    });
-  });
   app.get("/api/areas/rocagem", async (req, res) => {
     try {
       const areas = await storage.getAllAreas("rocagem");
