@@ -10,24 +10,26 @@ Dashboard operacional para gestão de serviços urbanos em Londrina, Brasil.
 2. Crie um novo projeto
 3. Aguarde a criação do banco de dados
 4. Vá em **Settings** → **Database**
-5. Copie a **Connection String** (formato: `postgresql://...`)
+5. Copie a **Connection String** PostgreSQL do Supabase
+6. Para hospedagem na Vercel, prefira a URL de pool/conexão compartilhada do Supabase
 
 ### 2. Configurar Migrations e Seed
 
 No seu ambiente local, configure a variável de ambiente:
 
 ```bash
-export DATABASE_URL="sua-connection-string-do-supabase"
+cp .env.example .env
 ```
 
-Execute as migrations para criar as tabelas:
+Depois edite o arquivo `.env` e preencha `DATABASE_URL` e `SESSION_SECRET`.
+
+Execute a sincronização do schema para criar as tabelas:
 
 ```bash
-npm run db:generate
-npm run db:migrate
+npm run db:push
 ```
 
-Popule o banco com dados iniciais:
+Se quiser, depois popule o banco com dados iniciais usando os scripts da pasta `db/`.
 
 ```bash
 npm run db:seed
@@ -40,6 +42,7 @@ npm run db:seed
 3. Importe seu repositório do GitHub
 4. Configure as variáveis de ambiente:
    - `DATABASE_URL`: sua connection string do Supabase
+   - `SESSION_SECRET`: uma senha longa e aleatória para proteger o login
 5. Clique em **Deploy**
 
 ### 4. Configurar Domínio (Opcional)
@@ -53,14 +56,11 @@ npm run db:seed
 # Desenvolvimento local
 npm run dev
 
-# Gerar migrations do Drizzle
-npm run db:generate
+# Verificar TypeScript
+npm run check
 
-# Aplicar migrations
-npm run db:migrate
-
-# Popular banco com dados iniciais
-npm run db:seed
+# Sincronizar schema com o banco
+npm run db:push
 
 # Build para produção
 npm run build
@@ -101,6 +101,7 @@ npm start
 ### Desenvolvimento
 ```env
 DATABASE_URL=postgresql://...
+SESSION_SECRET=uma-chave-local
 PORT=5000
 NODE_ENV=development
 ```
@@ -108,14 +109,23 @@ NODE_ENV=development
 ### Produção (Vercel)
 Configure no painel da Vercel:
 - `DATABASE_URL`: Connection string do Supabase
+- `SESSION_SECRET`: chave longa e aleatória para sessão/login
 
 ## 💡 Dicas
 
 ### Trocar entre MemStorage e DbStorage
 
 A aplicação detecta automaticamente:
-- Se `DATABASE_URL` está definida → usa PostgreSQL (DbStorage)
-- Se não → usa memória (MemStorage)
+- Em desenvolvimento: se `DATABASE_URL` estiver ausente, usa memória
+- Em produção: `DATABASE_URL` é obrigatória
+
+### Supabase como banco oficial
+
+O projeto agora usa driver PostgreSQL genérico, que funciona melhor com Supabase do que a configuração anterior herdada do Neon/Replit.
+
+### Uploads
+
+O upload de fotos ainda usa integração de storage herdada do Replit. A aplicação pode ser publicada antes disso, mas essa parte deve ser migrada depois para uma solução compatível com Vercel, como Supabase Storage.
 
 ### Backup do Banco
 

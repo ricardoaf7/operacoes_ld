@@ -73,7 +73,6 @@ export function EditAreaModal({ area, open, onOpenChange }: EditAreaModalProps) 
         description: `${updatedArea.endereco} foi atualizada com sucesso.`,
       });
       queryClient.invalidateQueries({ queryKey: ["/api/areas/light", "rocagem"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/areas/light", "jardins"] });
       queryClient.invalidateQueries({ queryKey: ["/api/areas", area?.id] });
       onOpenChange(false);
     },

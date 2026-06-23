@@ -1,11 +1,7 @@
-import { drizzle } from "drizzle-orm/neon-serverless";
-import { Pool, neonConfig } from "@neondatabase/serverless";
-import ws from "ws";
 import { serviceAreas, teams, appConfig } from "./schema";
 import * as fs from "fs";
 import * as path from "path";
-
-neonConfig.webSocketConstructor = ws;
+import { createDb } from "./client";
 
 function parseCSVLine(line: string): string[] {
   const result: string[] = [];
@@ -39,14 +35,7 @@ function convertBrazilianNumber(value: string): number | null {
 }
 
 export async function importRealData(csvContent?: string) {
-  const connectionString = process.env.DATABASE_URL;
-  
-  if (!connectionString) {
-    throw new Error("DATABASE_URL não está definida");
-  }
-
-  const pool = new Pool({ connectionString });
-  const db = drizzle(pool);
+  const { pool, db } = createDb();
 
   try {
     let content: string;

@@ -1,5 +1,4 @@
 import type { Express, Request, Response, NextFunction } from "express";
-import { createServer, type Server } from "http";
 import express from "express";
 import { storage } from "./storage";
 import { z } from "zod";
@@ -129,7 +128,7 @@ async function ensureAdminExists() {
   }
 }
 
-export async function registerRoutes(app: Express): Promise<Server> {
+export async function registerRoutes(app: Express): Promise<void> {
   registerObjectStorageRoutes(app);
 
   await ensureAdminExists();
@@ -438,10 +437,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/export/photos", requireAuth, async (req, res) => {
     try {
       const objectStorageService = new ObjectStorageService();
-      const allAreas = [
-        ...(await storage.getAllAreas("rocagem")),
-        ...(await storage.getAllAreas("jardins")),
-      ];
+      const allAreas = await storage.getAllAreas("rocagem");
 
       // Construir lista de fotos com correspondência de áreas
       type PhotoEntry = {
@@ -633,22 +629,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/areas/jardins", async (req, res) => {
-    try {
-      const areas = await storage.getAllAreas("jardins");
-      res.json(areas);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch jardins areas" });
-    }
-  });
-
   // Novo endpoint otimizado: dados leves para mapa (com suporte a viewport bounds)
   app.get("/api/areas/light", async (req, res) => {
     try {
-      const servico = req.query.servico as string || "rocagem";
       const boundsParam = req.query.bounds as string;
       
-      let areas = await storage.getAllAreas(servico);
+      let areas = await storage.getAllAreas("rocagem");
       
       // Filtrar por bounds se fornecido (viewport do mapa)
       if (boundsParam) {
@@ -701,7 +687,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/areas/search", async (req, res) => {
     try {
       const query = (req.query.q as string || "").trim();
-      const servico = req.query.servico as string || "rocagem";
       
       if (!query) {
         res.json([]);
@@ -709,7 +694,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       // Usar método otimizado do storage que filtra direto no banco
-      const results = await storage.searchAreas(query, servico, 50);
+      const results = await storage.searchAreas(query, "rocagem", 50);
       
       res.json(results);
     } catch (error) {
@@ -805,7 +790,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         lat: z.number().min(-90).max(90),
         lng: z.number().min(-180).max(180),
         lote: z.number().int().min(1).max(2).optional(),
-        servico: z.enum(["rocagem", "jardins"]).default("rocagem"),
+        servico: z.literal("rocagem").optional().default("rocagem"),
         status: z.enum(["Pendente", "Em Execução", "Concluído"]).default("Pendente"),
         ultimaRocagem: z.string().optional(),
       });
@@ -850,6 +835,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         registradoPor: null,
         dataRegistro: null,
         fotos: [],
+        executando: false,
+        executandoDesde: null,
       });
 
       res.status(201).json(newArea);
@@ -1563,7 +1550,4 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  const httpServer = createServer(app);
-
-  return httpServer;
 }

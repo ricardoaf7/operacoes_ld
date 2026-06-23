@@ -501,14 +501,19 @@ import { DbStorage } from "./db-storage";
 // Inicializar storage baseado em variável de ambiente
 function initializeStorage() {
   const databaseUrl = process.env.DATABASE_URL;
+  const isProduction = process.env.NODE_ENV === "production";
   
   if (databaseUrl && databaseUrl.trim() !== "") {
     console.log("🗄️  Usando DbStorage (PostgreSQL)");
     return new DbStorage(databaseUrl);
-  } else {
-    console.log("💾 Usando MemStorage (in-memory)");
-    return new MemStorage();
   }
+
+  if (isProduction) {
+    throw new Error("DATABASE_URL is required in production");
+  }
+
+  console.log("💾 Usando MemStorage (in-memory)");
+  return new MemStorage();
 }
 
 export const storage = initializeStorage();

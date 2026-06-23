@@ -113,7 +113,7 @@ export function generateAreaPdf(area: ServiceArea): jsPDF {
     y += 5;
   }
 
-  const servLabel = area.servico === "jardins" ? "Jardins" : "Capina e Roçagem";
+  const servLabel = "Capina e Roçagem";
   doc.text(`Serviço: ${servLabel}`, margin + 5, y);
 
   y += 15;
@@ -130,48 +130,19 @@ export function generateAreaPdf(area: ServiceArea): jsPDF {
   doc.setFont("helvetica", "normal");
   doc.setFontSize(9);
 
-  const isRocagem = area.servico === "rocagem" || !area.servico;
+  const infoRows = [
+    ["Próxima Previsão", area.proximaPrevisao ? formatDateBR(area.proximaPrevisao) : "Não definida"],
+    ["Previsão Manual", area.manualSchedule ? "Sim" : "Não"],
+    ["Status", area.executando ? "Em Execução" : area.status || "Pendente"],
+  ];
 
-  if (isRocagem) {
-    const infoRows = [
-      ["Próxima Previsão", area.proximaPrevisao ? formatDateBR(area.proximaPrevisao) : "Não definida"],
-      ["Previsão Manual", area.manualSchedule ? "Sim" : "Não"],
-      ["Status", area.executando ? "Em Execução" : area.status || "Pendente"],
-    ];
-
-    infoRows.forEach(([label, value]) => {
-      doc.setFont("helvetica", "bold");
-      doc.text(`${label}:`, margin + 5, y);
-      doc.setFont("helvetica", "normal");
-      doc.text(value, margin + 55, y);
-      y += 6;
-    });
-  } else {
-    const infoRows = [
-      ["Última Manutenção", area.ultimaManutencao ? formatDateBR(area.ultimaManutencao) : "Sem registro"],
-      ["Última Irrigação", area.ultimaIrrigacao ? formatDateBR(area.ultimaIrrigacao) : "Sem registro"],
-      ["Último Plantio", area.ultimaPlantio ? formatDateBR(area.ultimaPlantio) : "Sem registro"],
-    ];
-
-    infoRows.forEach(([label, value]) => {
-      doc.setFont("helvetica", "bold");
-      doc.text(`${label}:`, margin + 5, y);
-      doc.setFont("helvetica", "normal");
-      doc.text(value, margin + 55, y);
-      y += 6;
-    });
-
-    if (area.observacoes) {
-      y += 2;
-      doc.setFont("helvetica", "bold");
-      doc.text("Observações:", margin + 5, y);
-      y += 5;
-      doc.setFont("helvetica", "normal");
-      const obsLines = doc.splitTextToSize(area.observacoes, contentWidth - 10);
-      doc.text(obsLines, margin + 5, y);
-      y += obsLines.length * 4.5;
-    }
-  }
+  infoRows.forEach(([label, value]) => {
+    doc.setFont("helvetica", "bold");
+    doc.text(`${label}:`, margin + 5, y);
+    doc.setFont("helvetica", "normal");
+    doc.text(value, margin + 55, y);
+    y += 6;
+  });
 
   y += 8;
 

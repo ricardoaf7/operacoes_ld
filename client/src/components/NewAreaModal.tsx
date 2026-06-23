@@ -63,7 +63,6 @@ const newAreaSchema = z.object({
   bairro: z.string().optional(),
   metragem_m2: z.string().optional(),
   lote: z.string().min(1, "Selecione um lote"),
-  servico: z.enum(["rocagem", "jardins"]).default("rocagem"),
 });
 
 type NewAreaFormData = z.infer<typeof newAreaSchema>;
@@ -81,7 +80,6 @@ export function NewAreaModal({ open, onOpenChange, lat, lng, defaultServico = "r
       bairro: "",
       metragem_m2: "",
       lote: "1",
-      servico: defaultServico,
     },
   });
 
@@ -130,7 +128,6 @@ export function NewAreaModal({ open, onOpenChange, lat, lng, defaultServico = "r
         bairro: "",
         metragem_m2: "",
         lote: "1",
-        servico: defaultServico,
       });
       setShowCustomTipo(false);
       setCustomTipo("");
@@ -162,7 +159,7 @@ export function NewAreaModal({ open, onOpenChange, lat, lng, defaultServico = "r
         lat,
         lng,
         lote,
-        servico: data.servico,
+        servico: "rocagem",
         status: "Pendente",
       });
     },

@@ -17,7 +17,6 @@ export default function RelatoriosPage() {
     pendente: areas.filter(a => a.status === "Pendente").length,
     concluido: areas.filter(a => a.status === "Concluído").length,
     rocagem: areas.filter(a => a.servico === "rocagem" || !a.servico).length,
-    jardins: areas.filter(a => a.servico === "jardins").length,
   };
 
   // Dados por status
@@ -29,8 +28,7 @@ export default function RelatoriosPage() {
 
   // Dados por serviço
   const servicoData = [
-    { name: "Roçagem", value: stats.rocagem, fill: "#0086ff" },
-    { name: "Jardins", value: stats.jardins, fill: "#10b981" },
+    { name: "Capina e Roçagem", value: stats.rocagem, fill: "#0086ff" },
   ];
 
   // Dados por lote
@@ -186,8 +184,7 @@ export default function RelatoriosPage() {
             </CardHeader>
             <CardContent>
               <div className="flex gap-2">
-                <Badge variant="outline">{stats.rocagem} Roç.</Badge>
-                <Badge variant="outline">{stats.jardins} Jard.</Badge>
+                <Badge variant="outline">{stats.rocagem} áreas ativas</Badge>
               </div>
             </CardContent>
           </Card>
@@ -228,7 +225,7 @@ export default function RelatoriosPage() {
           <Card>
             <CardHeader>
               <CardTitle>Distribuição por Serviço</CardTitle>
-              <CardDescription>Áreas por tipo de serviço</CardDescription>
+              <CardDescription>Áreas do módulo ativo do sistema</CardDescription>
             </CardHeader>
             <CardContent>
               <ResponsiveContainer width="100%" height={300}>

@@ -1,16 +1,7 @@
-import { Pool, neonConfig } from "@neondatabase/serverless";
-import ws from "ws";
-
-neonConfig.webSocketConstructor = ws;
+import { createDbPool } from "./client";
 
 async function setup() {
-  const connectionString = process.env.DATABASE_URL;
-  
-  if (!connectionString) {
-    throw new Error("DATABASE_URL não está definida");
-  }
-
-  const pool = new Pool({ connectionString });
+  const pool = createDbPool();
 
   console.log("🔧 Criando tabelas no Supabase...");
 

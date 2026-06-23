@@ -47,7 +47,6 @@ export function AreaInfoCard({ area, onClose, onUpdate }: AreaInfoCardProps) {
     },
     onSuccess: (updatedArea: ServiceArea) => {
       queryClient.invalidateQueries({ queryKey: ["/api/areas/light", "rocagem"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/areas/light", "jardins"] });
       toast({
         title: "Area Atualizada",
         description: "As informacoes da area foram atualizadas com sucesso.",

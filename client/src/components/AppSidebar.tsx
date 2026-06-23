@@ -2,7 +2,6 @@ import {
   MapPin, 
   Layers, 
   Leaf, 
-  Flower2, 
   TreeDeciduous, 
   Waves, 
   Paintbrush, 
@@ -60,8 +59,10 @@ export function AppSidebar({
 
   const handleServiceClick = (service: string) => {
     if (onServiceSelect) {
-      // Toggle: se clicar no serviço já selecionado, desseleciona
-      if (selectedService === service) {
+      // Mantém rocagem sempre ativa como módulo principal do sistema
+      if (service === 'rocagem') {
+        onServiceSelect('rocagem');
+      } else if (selectedService === service) {
         onServiceSelect('');
       } else {
         onServiceSelect(service);
@@ -140,19 +141,6 @@ export function AppSidebar({
                       </motion.div>
                     )}
                   </AnimatePresence>
-
-                  <button
-                    onClick={() => handleServiceClick('jardins')}
-                    className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-md text-sm transition-colors hover-elevate active-elevate-2 ${
-                      selectedService === 'jardins' 
-                        ? 'bg-accent text-accent-foreground font-medium' 
-                        : 'text-foreground/80 hover:text-foreground'
-                    }`}
-                    data-testid="service-jardins"
-                  >
-                    <Flower2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-                    <span>Jardins</span>
-                  </button>
 
                   <button
                     onClick={() => handleServiceClick('boa-praca')}

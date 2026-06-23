@@ -1,11 +1,7 @@
-import { drizzle } from "drizzle-orm/neon-serverless";
-import { Pool, neonConfig } from "@neondatabase/serverless";
-import ws from "ws";
 import { serviceAreas } from './schema';
 import * as fs from 'fs';
 import * as readline from 'readline';
-
-neonConfig.webSocketConstructor = ws;
+import { createDb } from "./client";
 
 // Função para converter formato brasileiro para número
 function parseBrazilianNumber(value: string): number {
@@ -46,18 +42,11 @@ interface CSVRow {
   lat: number;
   lng: number;
   lote: number;
-  observacoes: string;
 }
 
 async function importAreas() {
   // Conectar ao banco
-  const connectionString = process.env.DATABASE_URL;
-  if (!connectionString) {
-    throw new Error('DATABASE_URL não configurada');
-  }
-  
-  const pool = new Pool({ connectionString });
-  const db = drizzle(pool);
+  const { pool, db } = createDb();
   
   const csvPath = '/tmp/areas_londrina.csv';
   
@@ -110,8 +99,6 @@ async function importAreas() {
     const lat = parseBrazilianNumber(fields[4] || '0');
     const lng = parseBrazilianNumber(fields[5] || '0');
     const lote = parseInt(fields[6] || '1');
-    const observacoes = fields[7] || '';
-
     // Validar dados essenciais
     if (!endereco || lat === 0 || lng === 0) {
       console.warn(`⚠️  Linha ${lineNumber}: dados inválidos, pulando...`);

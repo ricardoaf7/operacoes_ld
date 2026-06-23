@@ -11,11 +11,9 @@ import type { TimeRangeFilter } from "./MapLegend";
 
 interface DashboardMapProps {
   rocagemAreas: ServiceArea[];
-  jardinsAreas: ServiceArea[];
   layerFilters: {
     rocagemLote1: boolean;
     rocagemLote2: boolean;
-    jardins: boolean;
   };
   onAreaClick: (area: ServiceArea) => void;
   onMapClick?: (lat: number, lng: number) => void;
@@ -34,7 +32,6 @@ interface DashboardMapProps {
 
 export function DashboardMap({
   rocagemAreas,
-  jardinsAreas,
   layerFilters,
   onAreaClick,
   onMapClick,
@@ -144,7 +141,6 @@ export function DashboardMap({
     layerGroupsRef.current = {
       rocagemLote1: L.layerGroup().addTo(map),
       rocagemLote2: L.layerGroup().addTo(map),
-      jardins: L.layerGroup().addTo(map),
     };
 
     mapRef.current = map;
@@ -393,34 +389,6 @@ export function DashboardMap({
       marker.addTo(layerGroup);
     });
   }, [rocagemAreas, onAreaClick, filteredAreaIds, searchQuery, relocatingAreaId, onPositionChange, selectedAreaId, activeFilter]);
-
-  useEffect(() => {
-    if (!mapRef.current) return;
-
-    layerGroupsRef.current.jardins?.clearLayers();
-
-    jardinsAreas.forEach((area) => {
-      const icon = L.divIcon({
-        className: "custom-marker-garden",
-        html: `<div style="background-color: #059669; width: 10px; height: 10px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"></div>`,
-        iconSize: [10, 10],
-        iconAnchor: [5, 5],
-      });
-
-      const marker = L.marker([area.lat, area.lng], { icon });
-
-      marker.bindPopup(
-        `<div class="font-sans">
-          <strong>${area.endereco}</strong><br/>
-          Tipo: ${area.tipo}<br/>
-          ${area.servico ? `Serviço: ${area.servico}` : ''}
-        </div>`
-      );
-
-      marker.on("click", () => onAreaClick(area));
-      marker.addTo(layerGroupsRef.current.jardins!);
-    });
-  }, [jardinsAreas, onAreaClick]);
 
   return (
     <div className="relative w-full h-full">

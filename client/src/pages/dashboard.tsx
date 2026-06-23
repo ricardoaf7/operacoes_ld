@@ -4,7 +4,6 @@ import { AppSidebar } from "@/components/AppSidebar";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { MapInfoCard } from "@/components/MapInfoCard";
 import { QuickRegisterModal } from "@/components/QuickRegisterModal";
-import { JardinsRegisterModal } from "@/components/JardinsRegisterModal";
 import { ManualForecastModal } from "@/components/ManualForecastModal";
 import { NewAreaModal } from "@/components/NewAreaModal";
 import { EditAreaModal } from "@/components/EditAreaModal";
@@ -68,12 +67,11 @@ export default function Dashboard({ isPublicView = false }: DashboardProps) {
   const [selectedArea, setSelectedArea] = useState<ServiceArea | null>(null);
   const [showMapCard, setShowMapCard] = useState(false);
   const [showQuickRegisterModal, setShowQuickRegisterModal] = useState(false);
-  const [showJardinsRegisterModal, setShowJardinsRegisterModal] = useState(false);
   const [showManualForecastModal, setShowManualForecastModal] = useState(false);
   const [showNewAreaModal, setShowNewAreaModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [newAreaCoords, setNewAreaCoords] = useState<{ lat: number; lng: number } | null>(null);
-  const [selectedService, setSelectedService] = useState<string>('');
+  const [selectedService, setSelectedService] = useState<string>('rocagem');
   const [bottomSheetState, setBottomSheetState] = useState<BottomSheetState>("minimized");
   const [filters, setFilters] = useState<FilterCriteria>({
     search: "",
@@ -128,7 +126,6 @@ export default function Dashboard({ isPublicView = false }: DashboardProps) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/areas/light", "rocagem"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/areas/light", "jardins"] });
       toast({
         title: "Localização Atualizada",
         description: "A localização da área foi alterada com sucesso.",
@@ -213,16 +210,6 @@ export default function Dashboard({ isPublicView = false }: DashboardProps) {
     queryKey: ["/api/areas/light", "rocagem"],
     queryFn: async () => {
       const res = await fetch(`/api/areas/light?servico=rocagem`);
-      if (!res.ok) throw new Error("Failed to fetch areas");
-      return res.json();
-    },
-    staleTime: 30000, // Cache por 30 segundos
-  });
-
-  const { data: jardinsAreas = [] } = useQuery<ServiceArea[]>({
-    queryKey: ["/api/areas/light", "jardins"],
-    queryFn: async () => {
-      const res = await fetch(`/api/areas/light?servico=jardins`);
       if (!res.ok) throw new Error("Failed to fetch areas");
       return res.json();
     },
@@ -393,8 +380,8 @@ export default function Dashboard({ isPublicView = false }: DashboardProps) {
   // Zoom automático só na primeira seleção de cada área (não em re-renders)
   // DESABILITADO quando modal de registro está aberto para preservar zoom do usuário
   useEffect(() => {
-    // Não fazer zoom automático se algum modal de registro está aberto
-    if (showQuickRegisterModal || showJardinsRegisterModal) {
+    // Não fazer zoom automático se modal de registro estiver aberto
+    if (showQuickRegisterModal) {
       return;
     }
     
@@ -422,7 +409,7 @@ export default function Dashboard({ isPublicView = false }: DashboardProps) {
         }
       }
     }
-  }, [selectedArea, showQuickRegisterModal, showJardinsRegisterModal]);
+  }, [selectedArea, showQuickRegisterModal]);
 
   // Largura responsiva: 85% em mobile, 21rem em desktop
   const style = {
@@ -450,11 +437,6 @@ export default function Dashboard({ isPublicView = false }: DashboardProps) {
     }
     setShowMapCard(false);
     setShowQuickRegisterModal(true);
-  };
-
-  const handleOpenJardinsRegister = () => {
-    setShowMapCard(false);
-    setShowJardinsRegisterModal(true);
   };
 
   const handleOpenManualForecast = () => {
@@ -631,11 +613,9 @@ export default function Dashboard({ isPublicView = false }: DashboardProps) {
         <main className="flex-1 overflow-hidden relative">
           <DashboardMap
             rocagemAreas={rocagemAreas}
-            jardinsAreas={jardinsAreas}
             layerFilters={{
               rocagemLote1: selectedService === 'rocagem' || isPublicView,
               rocagemLote2: selectedService === 'rocagem' || isPublicView,
-              jardins: selectedService === 'jardins',
             }}
             onAreaClick={handleAreaClick}
             onMapClick={isPublicView ? undefined : handleMapClick}
@@ -654,7 +634,6 @@ export default function Dashboard({ isPublicView = false }: DashboardProps) {
                 area={selectedArea}
                 onClose={handleCloseMapCard}
                 onRegisterMowing={isPublicView ? undefined : handleOpenQuickRegister}
-                onRegisterJardins={isPublicView ? undefined : handleOpenJardinsRegister}
                 onSetManualForecast={isPublicView ? undefined : handleOpenManualForecast}
                 onEdit={isPublicView ? undefined : handleOpenEdit}
                 onChangeLocation={isPublicView ? undefined : handleStartRelocation}
@@ -691,11 +670,6 @@ export default function Dashboard({ isPublicView = false }: DashboardProps) {
                 mapRef={mapRef}
                 savedMapZoom={savedMapZoom}
                 savedMapCenter={savedMapCenter}
-              />
-              <JardinsRegisterModal
-                area={selectedArea}
-                open={showJardinsRegisterModal}
-                onOpenChange={setShowJardinsRegisterModal}
               />
               {newAreaCoords && (
                 <NewAreaModal
@@ -746,11 +720,9 @@ export default function Dashboard({ isPublicView = false }: DashboardProps) {
         <main className="flex-1 overflow-hidden relative">
           <DashboardMap
             rocagemAreas={rocagemAreas}
-            jardinsAreas={jardinsAreas}
             layerFilters={{
               rocagemLote1: true,
               rocagemLote2: true,
-              jardins: false,
             }}
             onAreaClick={handleAreaClick}
             filteredAreaIds={computedFilteredAreaIds}
@@ -871,11 +843,9 @@ export default function Dashboard({ isPublicView = false }: DashboardProps) {
           <main className="flex-1 overflow-hidden relative">
             <DashboardMap
               rocagemAreas={rocagemAreas}
-              jardinsAreas={jardinsAreas}
               layerFilters={{
                 rocagemLote1: selectedService === 'rocagem',
                 rocagemLote2: selectedService === 'rocagem',
-                jardins: selectedService === 'jardins',
               }}
               onAreaClick={handleAreaClick}
               onMapClick={handleMapClick}
@@ -895,7 +865,6 @@ export default function Dashboard({ isPublicView = false }: DashboardProps) {
                   area={selectedArea}
                   onClose={handleCloseMapCard}
                   onRegisterMowing={handleOpenQuickRegister}
-                  onRegisterJardins={handleOpenJardinsRegister}
                   onSetManualForecast={handleOpenManualForecast}
                   onEdit={handleOpenEdit}
                   onChangeLocation={handleStartRelocation}
@@ -914,12 +883,6 @@ export default function Dashboard({ isPublicView = false }: DashboardProps) {
         mapRef={mapRef}
         savedMapZoom={savedMapZoom}
         savedMapCenter={savedMapCenter}
-      />
-
-      <JardinsRegisterModal
-        area={selectedArea}
-        open={showJardinsRegisterModal}
-        onOpenChange={setShowJardinsRegisterModal}
       />
 
       <ManualForecastModal

@@ -33,7 +33,7 @@ export function AreaDetailsModal({ area, teams, onClose }: AreaDetailsModalProps
   const { toast } = useToast();
   const [selectedTeamId, setSelectedTeamId] = useState<string>("");
 
-  const idleTeams = teams.filter((t) => t.status === "Idle");
+  const idleTeams = teams.filter((t) => (t.service === "rocagem" || !t.service) && t.status === "Idle");
 
   const startServiceMutation = useMutation({
     mutationFn: async () => {
@@ -43,7 +43,6 @@ export function AreaDetailsModal({ area, teams, onClose }: AreaDetailsModalProps
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/areas/light", "rocagem"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/areas/light", "jardins"] });
       toast({
         title: "Serviço Iniciado",
         description: `O serviço em ${area.endereco} foi iniciado.`,
@@ -60,7 +59,6 @@ export function AreaDetailsModal({ area, teams, onClose }: AreaDetailsModalProps
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/areas/light", "rocagem"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/areas/light", "jardins"] });
       toast({
         title: "Serviço Concluído",
         description: `O serviço em ${area.endereco} foi marcado como concluído.`,

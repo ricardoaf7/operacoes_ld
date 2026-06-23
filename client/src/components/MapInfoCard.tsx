@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { X, Calendar, MapPin, Ruler, CheckCircle2, Info, ChevronDown, ChevronUp, Hash, CalendarClock, Trash2, Edit2, Image as ImageIcon, Move, Undo2, Play, Square, FileText } from "lucide-react";
+import { X, Calendar, MapPin, Ruler, CheckCircle2, ChevronDown, ChevronUp, Hash, CalendarClock, Trash2, Edit2, Image as ImageIcon, Move, Undo2, Play, Square, FileText } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -27,7 +27,6 @@ interface MapInfoCardProps {
   area: ServiceArea;
   onClose: () => void;
   onRegisterMowing?: () => void;
-  onRegisterJardins?: () => void;
   onSetManualForecast?: () => void;
   onEdit?: () => void;
   onChangeLocation?: () => void;
@@ -35,7 +34,7 @@ interface MapInfoCardProps {
   isPublicView?: boolean;
 }
 
-export function MapInfoCard({ area, onClose, onRegisterMowing, onRegisterJardins, onSetManualForecast, onEdit, onChangeLocation, isRelocating = false, isPublicView = false }: MapInfoCardProps) {
+export function MapInfoCard({ area, onClose, onRegisterMowing, onSetManualForecast, onEdit, onChangeLocation, isRelocating = false, isPublicView = false }: MapInfoCardProps) {
   const { toast } = useToast();
   const { user } = useAuth();
   const isGestor = user?.role === "gestor";
@@ -88,7 +87,6 @@ export function MapInfoCard({ area, onClose, onRegisterMowing, onRegisterJardins
         description: `${area.endereco} foi removida com sucesso.`,
       });
       queryClient.invalidateQueries({ queryKey: ["/api/areas/light", "rocagem"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/areas/light", "jardins"] });
       onClose();
     },
     onError: () => {
@@ -172,7 +170,6 @@ export function MapInfoCard({ area, onClose, onRegisterMowing, onRegisterJardins
 
   const daysUntil = getDaysUntilMowing();
   const isExecuting = area.executando === true;
-  const isJardins = area.servico === "jardins";
   const isRocagem = area.servico === "rocagem" || !area.servico;
 
   return (
@@ -256,40 +253,6 @@ export function MapInfoCard({ area, onClose, onRegisterMowing, onRegisterJardins
             </>
           )}
 
-          {isJardins && (
-            <>
-              {area.ultimaManutencao && (
-                <div className="flex items-center gap-2 text-xs">
-                  <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
-                  <span className="text-muted-foreground">Última Manutenção:</span>
-                  <span className="font-medium">{formatDateBR(area.ultimaManutencao)}</span>
-                </div>
-              )}
-              {area.ultimaIrrigacao && (
-                <div className="flex items-center gap-2 text-xs">
-                  <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
-                  <span className="text-muted-foreground">Última Irrigação:</span>
-                  <span className="font-medium">{formatDateBR(area.ultimaIrrigacao)}</span>
-                </div>
-              )}
-              {area.ultimaPlantio && (
-                <div className="flex items-center gap-2 text-xs">
-                  <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
-                  <span className="text-muted-foreground">Último Plantio:</span>
-                  <span className="font-medium">{formatDateBR(area.ultimaPlantio)}</span>
-                </div>
-              )}
-              {area.observacoes && (
-                <div className="flex items-start gap-2 text-xs">
-                  <Info className="h-3.5 w-3.5 text-muted-foreground mt-0.5 flex-shrink-0" />
-                  <div className="flex-1">
-                    <span className="text-muted-foreground">Observações:</span>
-                    <p className="text-xs mt-1">{area.observacoes}</p>
-                  </div>
-                </div>
-              )}
-            </>
-          )}
         </div>
 
         {isExpanded && (
@@ -408,17 +371,6 @@ export function MapInfoCard({ area, onClose, onRegisterMowing, onRegisterJardins
                 Definir Previsão Manual
               </Button>
             </>
-          )}
-
-          {canPerformActions && isJardins && onRegisterJardins && (
-            <Button
-              onClick={onRegisterJardins}
-              className="w-full h-9 bg-green-600 hover:bg-green-700 text-white"
-              data-testid="button-register-jardins"
-            >
-              <CheckCircle2 className="h-4 w-4 mr-2" />
-              Registrar
-            </Button>
           )}
 
           <Button

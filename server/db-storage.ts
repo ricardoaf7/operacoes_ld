@@ -1,20 +1,19 @@
-import { drizzle } from "drizzle-orm/neon-serverless";
 import { eq, inArray, or, ilike, and, sql, gt, lt, desc } from "drizzle-orm";
-import { Pool, neonConfig } from "@neondatabase/serverless";
-import ws from "ws";
+import type { NodePgDatabase } from "drizzle-orm/node-postgres";
+import type { Pool } from "pg";
 import type { ServiceArea, Team, AppConfig, ExportHistory, InsertExportHistory, User, InsertUser } from "@shared/schema";
 import { serviceAreas, teams, appConfig, exportHistory, users } from "@shared/schema";
 import type { IStorage } from "./storage";
-
-neonConfig.webSocketConstructor = ws;
+import { createDb } from "../db/client";
 
 export class DbStorage implements IStorage {
-  private db;
-  private pool;
+  private db: NodePgDatabase<Record<string, never>>;
+  private pool: Pool;
 
   constructor(connectionString: string) {
-    this.pool = new Pool({ connectionString });
-    this.db = drizzle(this.pool);
+    const { pool, db } = createDb(connectionString);
+    this.pool = pool;
+    this.db = db;
     this.ensureExtensions();
   }
 

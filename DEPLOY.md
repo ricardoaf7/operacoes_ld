@@ -35,7 +35,8 @@ Este guia vai te ajudar a fazer o deploy da aplicação CMTU-LD Dashboard na Ver
 4. Selecione **URI** (não Session)
 5. Copie a string que começa com `postgresql://`
 6. **IMPORTANTE**: Substitua `[YOUR-PASSWORD]` pela senha que você criou no passo 2.1
-7. Salve essa connection string - você vai precisar dela!
+7. Para usar na Vercel, prefira a URL de pool/conexão compartilhada do Supabase
+8. Salve essa connection string - você vai precisar dela!
 
 ### 2.3. Criar as Tabelas no Banco
 
@@ -122,11 +123,14 @@ npm run db:seed
 ### 3.2. Configurar Variáveis de Ambiente
 
 1. Antes de clicar em Deploy, role até **Environment Variables**
-2. Adicione a variável:
+2. Adicione as variáveis:
    - **Key**: `DATABASE_URL`
    - **Value**: cole sua connection string do Supabase
    - Marque os 3 ambientes: Production, Preview, Development
-3. Clique em **Add**
+   - **Key**: `SESSION_SECRET`
+   - **Value**: use uma senha longa e aleatória para proteger o login
+   - Marque os 3 ambientes: Production, Preview, Development
+3. Clique em **Add** para cada uma
 
 ### 3.3. Fazer Deploy
 
@@ -142,7 +146,7 @@ npm run db:seed
 3. Clique em **LIMPEZA URBANA** → **Roçagem Áreas Públicas**
 4. Deve aparecer os marcadores no mapa
 
-Se aparecer erro "Failed to fetch", volte ao Passo 3.2 e confirme que a DATABASE_URL está correta.
+Se aparecer erro "Failed to fetch", volte ao Passo 3.2 e confirme que a `DATABASE_URL` e a `SESSION_SECRET` estão corretas.
 
 ## Parte 5: Popular com Dados (Opcional)
 

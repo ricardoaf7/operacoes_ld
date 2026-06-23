@@ -1,19 +1,8 @@
-import { drizzle } from "drizzle-orm/neon-serverless";
-import { Pool, neonConfig } from "@neondatabase/serverless";
-import ws from "ws";
 import { serviceAreas, teams, appConfig } from "./schema";
-
-neonConfig.webSocketConstructor = ws;
+import { createDb } from "./client";
 
 async function seed() {
-  const connectionString = process.env.DATABASE_URL;
-  
-  if (!connectionString) {
-    throw new Error("DATABASE_URL não está definida");
-  }
-
-  const pool = new Pool({ connectionString });
-  const db = drizzle(pool);
+  const { pool, db } = createDb();
 
   console.log("🌱 Iniciando seed do banco de dados...");
 

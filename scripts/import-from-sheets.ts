@@ -14,7 +14,6 @@ interface RawAreaData {
   latidude: string; // typo na planilha
   longitude: string;
   lote: string;
-  observacoes: string;
 }
 
 interface ProcessedArea {
@@ -104,11 +103,8 @@ function processAreas(rawData: RawAreaData[]): ProcessedArea[] {
       scheduledDate: null,
       proximaPrevisao: null,
       manualSchedule: false,
+      servico: "rocagem",
     };
-    
-    if (row.observacoes) {
-      area.servico = row.observacoes;
-    }
     
     processed.push(area);
   });
