@@ -6,9 +6,6 @@ import * as fs from "fs";
 import * as path from "path";
 import type { ServiceArea } from "@shared/schema";
 import bcrypt from "bcryptjs";
-import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
-import { ObjectStorageService, ObjectNotFoundError } from "./replit_integrations/object_storage/objectStorage";
-import archiver from "archiver";
 
 // Função para converter ServiceArea[] para CSV compatível com Supabase
 function convertToSupabaseCSV(areas: ServiceArea[]): string {
@@ -129,8 +126,6 @@ async function ensureAdminExists() {
 }
 
 export async function registerRoutes(app: Express): Promise<void> {
-  registerObjectStorageRoutes(app);
-
   await ensureAdminExists();
 
   // ===================== AUTH ROUTES =====================
@@ -321,12 +316,6 @@ export async function registerRoutes(app: Express): Promise<void> {
     }
   });
 
-  // Photo uploads now use Object Storage presigned URL flow:
-  // 1. Client calls POST /api/uploads/request-url (registered by registerObjectStorageRoutes)
-  // 2. Client uploads directly to presigned URL
-  // 3. Client saves the returned objectPath in the area's fotos array
-  // 4. Photos served via GET /objects/* (registered by registerObjectStorageRoutes)
-
   // Endpoint de backup: exportar todos os dados em JSON
   app.get("/api/backup", async (req, res) => {
     try {
@@ -432,192 +421,13 @@ export async function registerRoutes(app: Express): Promise<void> {
     }
   });
 
-  // Endpoint de exportação de fotos com correspondência de áreas (ZIP)
-  // Útil para migração para Vercel + Supabase
+  // Endpoint de exportação de fotos — desativado temporariamente
+  // O armazenamento de fotos está sendo migrado do Replit para Supabase Storage
   app.get("/api/export/photos", requireAuth, async (req, res) => {
-    try {
-      const objectStorageService = new ObjectStorageService();
-      const allAreas = await storage.getAllAreas("rocagem");
-
-      // Construir lista de fotos com correspondência de áreas
-      type PhotoEntry = {
-        area: ServiceArea;
-        photoIndex: number;
-        objectPath: string;
-        photoDate: string;
-      };
-      const entries: PhotoEntry[] = [];
-      for (const area of allAreas) {
-        const fotos = area.fotos || [];
-        fotos.forEach((foto, idx) => {
-          if (foto?.url) {
-            entries.push({
-              area,
-              photoIndex: idx + 1,
-              objectPath: foto.url,
-              photoDate: foto.data || '',
-            });
-          }
-        });
-      }
-
-      const filename = `zeladoria_fotos_${new Date().toISOString().split('T')[0]}.zip`;
-      res.setHeader('Content-Type', 'application/zip');
-      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-
-      const archive = archiver('zip', { zlib: { level: 6 } });
-      let aborted = false;
-      const onAbort = () => {
-        aborted = true;
-        try { archive.abort(); } catch {}
-      };
-      req.on('aborted', onAbort);
-      req.on('close', () => {
-        if (!res.writableEnded) onAbort();
-      });
-
-      archive.on('warning', (err: NodeJS.ErrnoException) => {
-        if (err.code !== 'ENOENT') console.error('Archive warning:', err);
-      });
-      archive.on('error', (err: Error) => {
-        console.error('Archive error:', err);
-        if (!res.headersSent) {
-          res.status(500).json({ error: 'Falha ao gerar ZIP' });
-        } else {
-          res.destroy(err);
-        }
-      });
-
-      archive.pipe(res);
-
-      // Construir manifesto CSV (também incluído como JSON)
-      const manifestRows: string[][] = [
-        [
-          'arquivo',
-          'area_id',
-          'ordem',
-          'sequencia_cadastro',
-          'tipo',
-          'servico',
-          'endereco',
-          'bairro',
-          'lote',
-          'lat',
-          'lng',
-          'foto_indice',
-          'foto_data',
-          'object_path',
-          'extensao',
-        ],
-      ];
-      const manifestJson: any[] = [];
-
-      // Adicionar cada foto ao ZIP
-      let added = 0;
-      let failed = 0;
-      for (const entry of entries) {
-        if (aborted) return;
-        try {
-          const file = await objectStorageService.getObjectEntityFile(entry.objectPath);
-          const [metadata] = await file.getMetadata();
-          const contentType = metadata.contentType || 'image/jpeg';
-          const ext = (() => {
-            if (contentType.includes('png')) return 'png';
-            if (contentType.includes('webp')) return 'webp';
-            if (contentType.includes('gif')) return 'gif';
-            return 'jpg';
-          })();
-
-          const safeFilename = `area_${entry.area.id}_foto_${entry.photoIndex}.${ext}`;
-          const stream = file.createReadStream();
-          archive.append(stream, { name: `fotos/${safeFilename}` });
-
-          manifestRows.push([
-            safeFilename,
-            String(entry.area.id),
-            String(entry.area.ordem ?? ''),
-            String(entry.area.sequenciaCadastro ?? ''),
-            entry.area.tipo ?? '',
-            entry.area.servico ?? '',
-            entry.area.endereco ?? '',
-            entry.area.bairro ?? '',
-            String(entry.area.lote ?? ''),
-            String(entry.area.lat ?? ''),
-            String(entry.area.lng ?? ''),
-            String(entry.photoIndex),
-            entry.photoDate,
-            entry.objectPath,
-            ext,
-          ]);
-          manifestJson.push({
-            arquivo: `fotos/${safeFilename}`,
-            areaId: entry.area.id,
-            ordem: entry.area.ordem ?? null,
-            sequenciaCadastro: entry.area.sequenciaCadastro ?? null,
-            tipo: entry.area.tipo,
-            servico: entry.area.servico ?? null,
-            endereco: entry.area.endereco,
-            bairro: entry.area.bairro ?? null,
-            lote: entry.area.lote ?? null,
-            lat: entry.area.lat,
-            lng: entry.area.lng,
-            fotoIndice: entry.photoIndex,
-            fotoData: entry.photoDate || null,
-            objectPath: entry.objectPath,
-            contentType,
-          });
-          added++;
-        } catch (err) {
-          failed++;
-          if (err instanceof ObjectNotFoundError) {
-            console.warn(`Foto não encontrada: ${entry.objectPath} (área ${entry.area.id})`);
-          } else {
-            console.warn(`Falha ao adicionar foto ${entry.objectPath}:`, err);
-          }
-        }
-      }
-
-      // Escapar valores CSV
-      const escapeCsv = (v: string) => {
-        if (v.includes(',') || v.includes('"') || v.includes('\n')) {
-          return `"${v.replace(/"/g, '""')}"`;
-        }
-        return v;
-      };
-      const csvContent = manifestRows.map((r) => r.map(escapeCsv).join(',')).join('\n') + '\n';
-
-      archive.append(csvContent, { name: 'manifest.csv' });
-      archive.append(JSON.stringify(manifestJson, null, 2), { name: 'manifest.json' });
-
-      const readme = [
-        'Zeladoria em Tempo Real - Pacote de Fotos para Migração',
-        '=========================================================',
-        '',
-        `Data de exportação: ${new Date().toISOString()}`,
-        `Total de fotos: ${added}`,
-        `Falhas: ${failed}`,
-        '',
-        'Conteúdo:',
-        '  - fotos/area_{ID}_foto_{N}.{ext}  (cada foto, nome inclui o ID da área)',
-        '  - manifest.csv                     (correspondência foto -> área, importável no Supabase)',
-        '  - manifest.json                    (mesma correspondência em JSON)',
-        '',
-        'Como usar para migração Supabase + Vercel:',
-        '  1. Faça upload da pasta "fotos/" para um bucket Supabase Storage.',
-        '  2. Use o "manifest.csv" para atualizar a coluna "fotos" das áreas',
-        '     com as novas URLs públicas do Supabase, mantendo a correspondência',
-        '     pelo "area_id" e "foto_indice".',
-        '',
-      ].join('\n');
-      archive.append(readme, { name: 'README.txt' });
-
-      await archive.finalize();
-    } catch (error) {
-      console.error('Error exporting photos:', error);
-      if (!res.headersSent) {
-        res.status(500).json({ error: 'Falha ao exportar fotos' });
-      }
-    }
+    res.status(503).json({
+      error: "Funcionalidade temporariamente indisponível",
+      message: "O download de fotos está sendo migrado para o Supabase Storage. Em breve estará disponível novamente.",
+    });
   });
 
   app.get("/api/areas/rocagem", async (req, res) => {
