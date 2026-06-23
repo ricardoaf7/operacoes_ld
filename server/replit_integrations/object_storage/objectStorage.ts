@@ -11,23 +11,38 @@ import {
 
 const REPLIT_SIDECAR_ENDPOINT = "http://127.0.0.1:1106";
 
-// The object storage client is used to interact with the object storage service.
-export const objectStorageClient = new Storage({
-  credentials: {
-    audience: "replit",
-    subject_token_type: "access_token",
-    token_url: `${REPLIT_SIDECAR_ENDPOINT}/token`,
-    type: "external_account",
-    credential_source: {
-      url: `${REPLIT_SIDECAR_ENDPOINT}/credential`,
-      format: {
-        type: "json",
-        subject_token_field_name: "access_token",
+// Lazy initialization — only creates the client when first used (not at import time).
+// This prevents crashes on non-Replit environments like Vercel.
+let _objectStorageClient: Storage | null = null;
+
+export function getObjectStorageClient(): Storage {
+  if (!_objectStorageClient) {
+    _objectStorageClient = new Storage({
+      credentials: {
+        audience: "replit",
+        subject_token_type: "access_token",
+        token_url: `${REPLIT_SIDECAR_ENDPOINT}/token`,
+        type: "external_account",
+        credential_source: {
+          url: `${REPLIT_SIDECAR_ENDPOINT}/credential`,
+          format: {
+            type: "json",
+            subject_token_field_name: "access_token",
+          },
+        },
+        universe_domain: "googleapis.com",
       },
-    },
-    universe_domain: "googleapis.com",
+      projectId: "",
+    });
+  }
+  return _objectStorageClient;
+}
+
+// Backwards-compat export for code that still references objectStorageClient directly.
+export const objectStorageClient = new Proxy({} as Storage, {
+  get(_target, prop) {
+    return (getObjectStorageClient() as any)[prop];
   },
-  projectId: "",
 });
 
 export class ObjectNotFoundError extends Error {
