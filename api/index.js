@@ -272,7 +272,8 @@ var exportHistory = pgTable("export_history", {
 
 // db/client.ts
 import { drizzle } from "drizzle-orm/node-postgres";
-import { Pool } from "pg";
+import pg from "pg";
+var { Pool } = pg;
 function requireDatabaseUrl() {
   const connectionString = process.env.DATABASE_URL;
   if (!connectionString) {
