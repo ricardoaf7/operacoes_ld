@@ -1023,6 +1023,23 @@ export async function registerRoutes(app: Express): Promise<void> {
     }
   });
 
+  // Calcula ultimaRocagem e proximaPrevisao a partir das entradas concluídas do histórico
+  function syncFromHistory(history: { date: string; type?: string }[]) {
+    const completed = history
+      .filter((h) => h.type !== "forecast")
+      .map((h) => h.date)
+      .sort()
+      .reverse();
+    const ultimaRocagem = completed[0] ?? null;
+    let proximaPrevisao: string | null = null;
+    if (ultimaRocagem) {
+      const d = new Date(ultimaRocagem);
+      d.setDate(d.getDate() + 60);
+      proximaPrevisao = d.toISOString().split("T")[0];
+    }
+    return { ultimaRocagem, proximaPrevisao };
+  }
+
   app.post("/api/areas/:id/history", requireAuth, async (req, res) => {
     try {
       const areaId = parseInt(req.params.id);
@@ -1034,13 +1051,12 @@ export async function registerRoutes(app: Express): Promise<void> {
 
       const entry = historyEntrySchema.parse(req.body);
       const updatedArea = await storage.addHistoryEntry(areaId, entry);
+      if (!updatedArea) { res.status(404).json({ error: "Area not found" }); return; }
 
-      if (!updatedArea) {
-        res.status(404).json({ error: "Area not found" });
-        return;
-      }
-
-      res.json(updatedArea);
+      // Sincroniza ultima_rocagem com a data mais recente do histórico
+      const sync = syncFromHistory(updatedArea.history);
+      const final = await storage.updateArea(areaId, sync as any);
+      res.json(final);
     } catch (error) {
       if (error instanceof z.ZodError) {
         res.status(400).json({ error: "Invalid history entry", details: error.errors });
@@ -1062,7 +1078,8 @@ export async function registerRoutes(app: Express): Promise<void> {
       const area = await storage.getAreaById(areaId);
       if (!area) { res.status(404).json({ error: "Area not found" }); return; }
       const newHistory = area.history.filter((_, i) => i !== idx);
-      const updated = await storage.updateArea(areaId, { history: newHistory } as any);
+      const sync = syncFromHistory(newHistory);
+      const updated = await storage.updateArea(areaId, { history: newHistory, ...sync } as any);
       res.json(updated);
     } catch (error) {
       res.status(500).json({ error: "Failed to delete history entry" });
@@ -1086,10 +1103,9 @@ export async function registerRoutes(app: Express): Promise<void> {
       const entry = entrySchema.parse(req.body);
       const area = await storage.getAreaById(areaId);
       if (!area) { res.status(404).json({ error: "Area not found" }); return; }
-      const newHistory = area.history.map((h, i) =>
-        i === idx ? { ...h, ...entry } : h
-      );
-      const updated = await storage.updateArea(areaId, { history: newHistory } as any);
+      const newHistory = area.history.map((h, i) => i === idx ? { ...h, ...entry } : h);
+      const sync = syncFromHistory(newHistory);
+      const updated = await storage.updateArea(areaId, { history: newHistory, ...sync } as any);
       res.json(updated);
     } catch (error) {
       if (error instanceof z.ZodError) {

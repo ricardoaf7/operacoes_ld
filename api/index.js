@@ -1910,6 +1910,17 @@ async function registerRoutes(app) {
       }
     }
   });
+  function syncFromHistory(history) {
+    const completed = history.filter((h) => h.type !== "forecast").map((h) => h.date).sort().reverse();
+    const ultimaRocagem = completed[0] ?? null;
+    let proximaPrevisao = null;
+    if (ultimaRocagem) {
+      const d = new Date(ultimaRocagem);
+      d.setDate(d.getDate() + 60);
+      proximaPrevisao = d.toISOString().split("T")[0];
+    }
+    return { ultimaRocagem, proximaPrevisao };
+  }
   app.post("/api/areas/:id/history", requireAuth, async (req, res) => {
     try {
       const areaId = parseInt(req.params.id);
@@ -1924,7 +1935,9 @@ async function registerRoutes(app) {
         res.status(404).json({ error: "Area not found" });
         return;
       }
-      res.json(updatedArea);
+      const sync = syncFromHistory(updatedArea.history);
+      const final = await storage.updateArea(areaId, sync);
+      res.json(final);
     } catch (error) {
       if (error instanceof z2.ZodError) {
         res.status(400).json({ error: "Invalid history entry", details: error.errors });
@@ -1947,7 +1960,8 @@ async function registerRoutes(app) {
         return;
       }
       const newHistory = area.history.filter((_, i) => i !== idx);
-      const updated = await storage.updateArea(areaId, { history: newHistory });
+      const sync = syncFromHistory(newHistory);
+      const updated = await storage.updateArea(areaId, { history: newHistory, ...sync });
       res.json(updated);
     } catch (error) {
       res.status(500).json({ error: "Failed to delete history entry" });
@@ -1972,10 +1986,9 @@ async function registerRoutes(app) {
         res.status(404).json({ error: "Area not found" });
         return;
       }
-      const newHistory = area.history.map(
-        (h, i) => i === idx ? { ...h, ...entry } : h
-      );
-      const updated = await storage.updateArea(areaId, { history: newHistory });
+      const newHistory = area.history.map((h, i) => i === idx ? { ...h, ...entry } : h);
+      const sync = syncFromHistory(newHistory);
+      const updated = await storage.updateArea(areaId, { history: newHistory, ...sync });
       res.json(updated);
     } catch (error) {
       if (error instanceof z2.ZodError) {
