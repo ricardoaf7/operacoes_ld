@@ -270,9 +270,9 @@ export default function OrdemServicoPage() {
                 <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
               </div>
             ) : (
-              <div className="border rounded-lg overflow-hidden">
+              <div className="border rounded-lg overflow-auto max-h-[calc(100vh-280px)]">
                 <table className="w-full text-sm">
-                  <thead className="bg-muted/50">
+                  <thead className="bg-muted/50 sticky top-0 z-10">
                     <tr>
                       <th className="w-10 px-3 py-3 text-left">
                         <input
