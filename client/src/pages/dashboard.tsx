@@ -111,8 +111,7 @@ export default function Dashboard({ isPublicView = false }: DashboardProps) {
 
   const handleServiceSelect = (service: string) => {
     setSelectedService(service);
-    // No mobile, não abrir automaticamente o BottomSheet
-    // Deixar o usuário controlar via botão Menu
+    if (service !== 'rocagem') setReportOpen(false);
   };
 
   const handleMapZoomSaved = (zoom: number, center: { lat: number; lng: number }) => {

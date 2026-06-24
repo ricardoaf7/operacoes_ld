@@ -61,14 +61,7 @@ export function AppSidebar({
 
   const handleServiceClick = (service: string) => {
     if (onServiceSelect) {
-      // Mantém rocagem sempre ativa como módulo principal do sistema
-      if (service === 'rocagem') {
-        onServiceSelect('rocagem');
-      } else if (selectedService === service) {
-        onServiceSelect('');
-      } else {
-        onServiceSelect(service);
-      }
+      onServiceSelect(selectedService === service ? '' : service);
     }
   };
 
