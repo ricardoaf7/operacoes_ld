@@ -529,7 +529,9 @@ interface MowingStatsBarProps {
 }
 
 export function MowingStatsBar({ visible = true, onPeriodChange, onPeriodClear }: MowingStatsBarProps) {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(() => {
+    return new URLSearchParams(window.location.search).get('relatorio') === '1';
+  });
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
   const [activeFrom, setActiveFrom] = useState('');
