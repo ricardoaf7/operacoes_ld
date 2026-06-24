@@ -481,6 +481,7 @@ export async function registerRoutes(app: Express): Promise<void> {
         servico: area.servico,
         endereco: area.endereco,
         bairro: area.bairro,
+        tipo: area.tipo,
         ultimaRocagem: area.ultimaRocagem,
         metragem_m2: area.metragem_m2,
         manualSchedule: area.manualSchedule,
@@ -517,33 +518,39 @@ export async function registerRoutes(app: Express): Promise<void> {
   // Retorna IDs de áreas roçadas em um período específico
   app.get("/api/areas/by-period", async (req, res) => {
     try {
-      const { from, to, details, lote } = req.query;
+      const { from, to, details, lote, bairro, tipo } = req.query;
       if (!from || !to || typeof from !== 'string' || typeof to !== 'string') {
         return res.status(400).json({ error: "Parâmetros 'from' e 'to' são obrigatórios (YYYY-MM-DD)" });
       }
-      
+
       const allAreas = await storage.getAllAreas('rocagem');
       const fromDate = new Date(from + 'T00:00:00');
       const toDate = new Date(to + 'T23:59:59');
-      
+
       const matchingAreas = allAreas
         .filter(area => {
           if (!area.ultimaRocagem) return false;
           const mowDate = new Date(area.ultimaRocagem);
           if (mowDate < fromDate || mowDate > toDate) return false;
           if (lote && typeof lote === 'string' && lote !== 'all') {
-            const loteNum = parseInt(lote);
-            if (area.lote !== loteNum) return false;
+            if (area.lote !== parseInt(lote)) return false;
+          }
+          if (bairro && typeof bairro === 'string' && bairro !== 'all') {
+            if (area.bairro !== bairro) return false;
+          }
+          if (tipo && typeof tipo === 'string' && tipo !== 'all') {
+            if (area.tipo !== tipo) return false;
           }
           return true;
         });
-      
+
       if (details === 'true') {
         const detailedAreas = matchingAreas
           .map(area => ({
             id: area.id,
             endereco: area.endereco || '',
             bairro: area.bairro || '',
+            tipo: area.tipo || '',
             metragem: area.metragem_m2 || 0,
             lote: area.lote || 0,
             ultimaRocagem: area.ultimaRocagem,

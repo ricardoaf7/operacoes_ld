@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 
@@ -7,6 +7,7 @@ import { useQuery, useMutation } from '@tanstack/react-query';
 import { ChevronDown, ChevronUp, TrendingUp, Target, Calendar, BarChart3, AlertCircle, Pencil, Check, X, FileDown, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { queryClient, apiRequest } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
 import jsPDF from 'jspdf';
@@ -154,6 +155,7 @@ interface PdfAreaData {
   id: number;
   endereco: string;
   bairro: string;
+  tipo: string;
   metragem: number;
   lote: number;
   ultimaRocagem: string;
@@ -299,7 +301,16 @@ function drawVectorBarChart(
   doc.text('Metragem (m\u00B2)', yAxisX, yAxisY, { angle: 90 });
 }
 
-function addPdfHeader(doc: jsPDF, pageWidth: number, fromFormatted: string, toFormatted: string, loteLabel: string, count: number, totalFormatted: string) {
+function addPdfHeader(
+  doc: jsPDF,
+  pageWidth: number,
+  fromFormatted: string,
+  toFormatted: string,
+  loteLabel: string,
+  count: number,
+  totalFormatted: string,
+  extraFilters?: { bairro?: string; tipo?: string },
+) {
   doc.setFontSize(14);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(30, 30, 30);
@@ -308,7 +319,12 @@ function addPdfHeader(doc: jsPDF, pageWidth: number, fromFormatted: string, toFo
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(80, 80, 80);
   doc.text(`Periodo: ${fromFormatted} a ${toFormatted}`, pageWidth / 2, 20, { align: 'center' });
-  doc.text(`Lote: ${loteLabel}  |  Total de areas: ${count}  |  Metragem total: ${totalFormatted} m2`, pageWidth / 2, 26, { align: 'center' });
+
+  const filterParts: string[] = [`Lote: ${loteLabel}`];
+  if (extraFilters?.bairro) filterParts.push(`Bairro: ${extraFilters.bairro}`);
+  if (extraFilters?.tipo) filterParts.push(`Tipo: ${extraFilters.tipo}`);
+  filterParts.push(`Total: ${count} areas  |  ${totalFormatted} m2`);
+  doc.text(filterParts.join('  |  '), pageWidth / 2, 26, { align: 'center' });
 }
 
 function addLoteTable(
@@ -344,14 +360,15 @@ function addLoteTable(
   });
 
   const loteMetragem = loteAreas.reduce((s, a) => s + (a.metragem || 0), 0);
-  const headColumns = ['#', 'Local (Endereco)', 'Bairro', 'Metragem', 'Data da Rocagem'];
+  const COLS = 6;
+  const headColumns = ['#', 'Local (Endereco)', 'Bairro', 'Tipo', 'Metragem', 'Data da Rocagem'];
   const tableBody: any[][] = [];
   const subtotalRowIndices: number[] = [];
   const loteHeaderIndices: number[] = [];
 
   loteHeaderIndices.push(0);
   tableBody.push([
-    { content: `LOTE ${lote}  -  ${loteAreas.length} areas  -  ${formatMetragem(loteMetragem)} m2`, colSpan: 5, styles: { fontStyle: 'bold', fillColor: [color.r, color.g, color.b], textColor: 255, fontSize: 9, halign: 'left' } },
+    { content: `LOTE ${lote}  -  ${loteAreas.length} areas  -  ${formatMetragem(loteMetragem)} m2`, colSpan: COLS, styles: { fontStyle: 'bold', fillColor: [color.r, color.g, color.b], textColor: 255, fontSize: 9, halign: 'left' } },
   ]);
 
   let idx = 0;
@@ -363,6 +380,7 @@ function addLoteTable(
         idx.toString(),
         area.endereco || '-',
         area.bairro || '-',
+        area.tipo || '-',
         area.metragem ? formatMetragem(area.metragem) + ' m2' : '-',
         dateKey !== 'sem-data' ? formatDateBR(dateKey) : '-',
       ]);
@@ -370,13 +388,13 @@ function addLoteTable(
     const dayMetragem = areasForDate.reduce((s, a) => s + (a.metragem || 0), 0);
     subtotalRowIndices.push(tableBody.length);
     tableBody.push([
-      { content: `Subtotal ${dateKey !== 'sem-data' ? formatDateBR(dateKey) : 'Sem data'}: ${areasForDate.length} areas  -  ${formatMetragem(dayMetragem)} m2`, colSpan: 5, styles: { fontStyle: 'bold', fillColor: [Math.round(color.r * 0.15 + 255 * 0.85), Math.round(color.g * 0.15 + 255 * 0.85), Math.round(color.b * 0.15 + 255 * 0.85)], textColor: [30, 30, 30], fontSize: 8, halign: 'right' } },
+      { content: `Subtotal ${dateKey !== 'sem-data' ? formatDateBR(dateKey) : 'Sem data'}: ${areasForDate.length} areas  -  ${formatMetragem(dayMetragem)} m2`, colSpan: COLS, styles: { fontStyle: 'bold', fillColor: [Math.round(color.r * 0.15 + 255 * 0.85), Math.round(color.g * 0.15 + 255 * 0.85), Math.round(color.b * 0.15 + 255 * 0.85)], textColor: [30, 30, 30], fontSize: 8, halign: 'right' } },
     ]);
   }
 
   subtotalRowIndices.push(tableBody.length);
   tableBody.push([
-    { content: `Total Lote ${lote}: ${loteAreas.length} areas  -  ${formatMetragem(loteMetragem)} m2`, colSpan: 5, styles: { fontStyle: 'bold', fillColor: [Math.round(color.r * 0.3 + 255 * 0.7), Math.round(color.g * 0.3 + 255 * 0.7), Math.round(color.b * 0.3 + 255 * 0.7)], textColor: [0, 0, 0], fontSize: 9, halign: 'right' } },
+    { content: `Total Lote ${lote}: ${loteAreas.length} areas  -  ${formatMetragem(loteMetragem)} m2`, colSpan: COLS, styles: { fontStyle: 'bold', fillColor: [Math.round(color.r * 0.3 + 255 * 0.7), Math.round(color.g * 0.3 + 255 * 0.7), Math.round(color.b * 0.3 + 255 * 0.7)], textColor: [0, 0, 0], fontSize: 9, halign: 'right' } },
   ]);
 
   autoTable(doc, {
@@ -388,11 +406,12 @@ function addLoteTable(
     headStyles: { fillColor: [color.r, color.g, color.b], textColor: 255, fontStyle: 'bold', fontSize: 9 },
     alternateRowStyles: { fillColor: [245, 245, 245] },
     columnStyles: {
-      0: { halign: 'center', cellWidth: 12 },
+      0: { halign: 'center', cellWidth: 10 },
       1: { cellWidth: 'auto' },
-      2: { cellWidth: 55 },
-      3: { halign: 'right', cellWidth: 30 },
-      4: { halign: 'center', cellWidth: 32 },
+      2: { cellWidth: 45 },
+      3: { cellWidth: 35 },
+      4: { halign: 'right', cellWidth: 28 },
+      5: { halign: 'center', cellWidth: 30 },
     },
     didParseCell: (hookData: any) => {
       if (hookData.section === 'body') {
@@ -405,7 +424,7 @@ function addLoteTable(
   });
 }
 
-function generatePdf(data: PdfResponse, loteLabel: string): { pdfData: ArrayBuffer; fileName: string } {
+function generatePdf(data: PdfResponse, loteLabel: string, extraFilters?: { bairro?: string; tipo?: string }): { pdfData: ArrayBuffer; fileName: string } {
   const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
@@ -433,7 +452,7 @@ function generatePdf(data: PdfResponse, loteLabel: string): { pdfData: ArrayBuff
     if (dailyDates.length > 0) {
       if (needsNewPage) doc.addPage();
       needsNewPage = true;
-      addPdfHeader(doc, pageWidth, fromFormatted, toFormatted, loteLabel, data.count, totalFormatted);
+      addPdfHeader(doc, pageWidth, fromFormatted, toFormatted, loteLabel, data.count, totalFormatted, extraFilters);
       const chartArea = { x: 14, y: 36, w: pageWidth - 28, h: pageHeight - 52 };
       drawVectorBarChart(
         doc,
@@ -447,14 +466,14 @@ function generatePdf(data: PdfResponse, loteLabel: string): { pdfData: ArrayBuff
     }
 
     if (needsNewPage) doc.addPage(); else needsNewPage = true;
-    addPdfHeader(doc, pageWidth, fromFormatted, toFormatted, loteLabel, data.count, totalFormatted);
+    addPdfHeader(doc, pageWidth, fromFormatted, toFormatted, loteLabel, data.count, totalFormatted, extraFilters);
     addLoteTable(doc, loteAreas, lote, 33, color);
 
     if (isMultiMonth) {
       const { months, values: monthlyValues } = buildMonthlyDataForLote(data.areas, lote);
       if (months.length > 1) {
         doc.addPage();
-        addPdfHeader(doc, pageWidth, fromFormatted, toFormatted, loteLabel, data.count, totalFormatted);
+        addPdfHeader(doc, pageWidth, fromFormatted, toFormatted, loteLabel, data.count, totalFormatted, extraFilters);
         const chartArea = { x: 14, y: 36, w: pageWidth - 28, h: pageHeight - 52 };
         drawVectorBarChart(
           doc,
@@ -518,8 +537,24 @@ export function MowingStatsBar({ visible = true, onPeriodChange, onPeriodClear }
   const [showLoteSelector, setShowLoteSelector] = useState(false);
   const [generatingPdf, setGeneratingPdf] = useState(false);
   const [pdfPreview, setPdfPreview] = useState<{ pdfData: ArrayBuffer; fileName: string } | null>(null);
+  const [filterBairro, setFilterBairro] = useState('');
+  const [filterTipo, setFilterTipo] = useState('');
   const pdfContainerRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
+
+  const { data: lightAreas = [] } = useQuery<any[]>({
+    queryKey: ['/api/areas/light'],
+  });
+
+  const bairroOptions = useMemo(() =>
+    [...new Set(lightAreas.map((a: any) => a.bairro).filter(Boolean))].sort() as string[],
+    [lightAreas]
+  );
+
+  const tipoOptions = useMemo(() =>
+    [...new Set(lightAreas.map((a: any) => a.tipo).filter(Boolean))].sort() as string[],
+    [lightAreas]
+  );
 
   const queryParams = activeFrom && activeTo ? `?from=${activeFrom}&to=${activeTo}` : '';
 
@@ -565,18 +600,25 @@ export function MowingStatsBar({ visible = true, onPeriodChange, onPeriodClear }
     setGeneratingPdf(true);
     setShowLoteSelector(false);
     try {
-      const url = `/api/areas/by-period?from=${from}&to=${to}&details=true&lote=${loteFilter}`;
+      const params = new URLSearchParams({ from, to, details: 'true', lote: loteFilter });
+      if (filterBairro) params.set('bairro', filterBairro);
+      if (filterTipo) params.set('tipo', filterTipo);
+      const url = `/api/areas/by-period?${params.toString()}`;
       const res = await fetch(url);
       if (!res.ok) throw new Error('Falha ao buscar dados');
       const data: PdfResponse = await res.json();
-      
+
       if (data.count === 0) {
-        toast({ title: 'Nenhuma area encontrada', description: 'Nao ha areas rocadas neste periodo/lote.', variant: 'destructive' });
+        toast({ title: 'Nenhuma area encontrada', description: 'Nao ha areas rocadas neste periodo/filtro.', variant: 'destructive' });
         return;
       }
-      
+
       const loteLabel = loteFilter === 'all' ? 'Ambos (1 e 2)' : `Lote ${loteFilter}`;
-      const result = generatePdf(data, loteLabel);
+      const extraFilters = {
+        bairro: filterBairro || undefined,
+        tipo: filterTipo || undefined,
+      };
+      const result = generatePdf(data, loteLabel, extraFilters);
       setPdfPreview(result);
     } catch (err) {
       console.error('PDF generation error:', err);
@@ -765,6 +807,30 @@ export function MowingStatsBar({ visible = true, onPeriodChange, onPeriodClear }
 
           <div className="border-t border-border pt-3">
             <div className="text-xs font-semibold text-muted-foreground mb-2">Busca por periodo</div>
+            <div className="flex items-center gap-2 flex-wrap mb-2">
+              <Select value={filterBairro} onValueChange={setFilterBairro}>
+                <SelectTrigger className="h-8 w-[160px] text-xs" data-testid="select-filter-bairro">
+                  <SelectValue placeholder="Todos os bairros" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">Todos os bairros</SelectItem>
+                  {bairroOptions.map(b => (
+                    <SelectItem key={b} value={b}>{b}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={filterTipo} onValueChange={setFilterTipo}>
+                <SelectTrigger className="h-8 w-[150px] text-xs" data-testid="select-filter-tipo">
+                  <SelectValue placeholder="Todos os tipos" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">Todos os tipos</SelectItem>
+                  {tipoOptions.map(t => (
+                    <SelectItem key={t} value={t}>{t}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <div className="flex items-center gap-2 flex-wrap">
               <div className="flex items-center gap-1.5">
                 <label className="text-xs text-muted-foreground">De:</label>

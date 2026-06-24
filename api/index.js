@@ -1467,6 +1467,7 @@ async function registerRoutes(app) {
         servico: area.servico,
         endereco: area.endereco,
         bairro: area.bairro,
+        tipo: area.tipo,
         ultimaRocagem: area.ultimaRocagem,
         metragem_m2: area.metragem_m2,
         manualSchedule: area.manualSchedule,
@@ -1494,7 +1495,7 @@ async function registerRoutes(app) {
   });
   app.get("/api/areas/by-period", async (req, res) => {
     try {
-      const { from, to, details, lote } = req.query;
+      const { from, to, details, lote, bairro, tipo } = req.query;
       if (!from || !to || typeof from !== "string" || typeof to !== "string") {
         return res.status(400).json({ error: "Par\xE2metros 'from' e 'to' s\xE3o obrigat\xF3rios (YYYY-MM-DD)" });
       }
@@ -1506,8 +1507,13 @@ async function registerRoutes(app) {
         const mowDate = new Date(area.ultimaRocagem);
         if (mowDate < fromDate || mowDate > toDate) return false;
         if (lote && typeof lote === "string" && lote !== "all") {
-          const loteNum = parseInt(lote);
-          if (area.lote !== loteNum) return false;
+          if (area.lote !== parseInt(lote)) return false;
+        }
+        if (bairro && typeof bairro === "string" && bairro !== "all") {
+          if (area.bairro !== bairro) return false;
+        }
+        if (tipo && typeof tipo === "string" && tipo !== "all") {
+          if (area.tipo !== tipo) return false;
         }
         return true;
       });
@@ -1516,6 +1522,7 @@ async function registerRoutes(app) {
           id: area.id,
           endereco: area.endereco || "",
           bairro: area.bairro || "",
+          tipo: area.tipo || "",
           metragem: area.metragem_m2 || 0,
           lote: area.lote || 0,
           ultimaRocagem: area.ultimaRocagem
