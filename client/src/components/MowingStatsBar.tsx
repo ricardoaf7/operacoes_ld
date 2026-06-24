@@ -652,17 +652,21 @@ export function MowingStatsBar({ visible = true, onPeriodChange, onPeriodClear }
       try {
         const pdf = await pdfjsLib.getDocument({ data: pdfPreview.pdfData.slice(0) }).promise;
         const containerWidth = container.clientWidth || 800;
+        const dpr = window.devicePixelRatio || 1;
 
         for (let i = 1; i <= pdf.numPages; i++) {
           const page = await pdf.getPage(i);
           const unscaledViewport = page.getViewport({ scale: 1 });
-          const scale = (containerWidth - 32) / unscaledViewport.width;
-          const viewport = page.getViewport({ scale: Math.max(scale, 1) });
+          const cssScale = (containerWidth - 32) / unscaledViewport.width;
+          const renderScale = Math.max(cssScale, 1) * dpr;
+          const viewport = page.getViewport({ scale: renderScale });
+
           const canvas = document.createElement('canvas');
           canvas.width = viewport.width;
           canvas.height = viewport.height;
-          canvas.style.width = '100%';
-          canvas.style.height = 'auto';
+          canvas.style.width = `${viewport.width / dpr}px`;
+          canvas.style.height = `${viewport.height / dpr}px`;
+          canvas.style.maxWidth = '100%';
           canvas.style.marginBottom = '8px';
           canvas.style.borderRadius = '4px';
           canvas.style.boxShadow = '0 1px 3px rgba(0,0,0,0.2)';
