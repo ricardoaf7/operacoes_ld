@@ -123,14 +123,14 @@ export function AppSidebar({
                     <span className="text-left">Capina e Roçagem</span>
                   </button>
                   
-                  <AnimatePresence>
+                  <AnimatePresence initial={false}>
                     {selectedService === 'rocagem' && (
                       <motion.div
                         key="rocagem-tools"
-                        initial={{ opacity: 0, height: 0, y: -10 }}
-                        animate={{ opacity: 1, height: "auto", y: 0 }}
-                        exit={{ opacity: 0, height: 0, y: -10 }}
-                        transition={{ duration: 0.3, ease: "easeInOut" }}
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: "auto" }}
+                        exit={{ opacity: 0, height: 0 }}
+                        transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
                         className="overflow-hidden"
                       >
                         <button

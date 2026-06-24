@@ -33,6 +33,7 @@ import {
   ChevronRight,
   Search,
 } from "lucide-react";
+import { Link } from "wouter";
 import type { OrdemServico } from "@shared/schema";
 
 const MESES = [
@@ -168,14 +169,49 @@ export default function OrdemServicoPage() {
 
   const handleExcel = () => {
     if (!ordemDetalhada?.areas) return;
-    const cabecalho = `ORDEM DE SERVIÇO Nº ${ordemDetalhada.numero}\nLote ${ordemDetalhada.lote} — ${ordemDetalhada.mes_referencia}\nEmitida em: ${formatDate(ordemDetalhada.data_emissao)}\n\n`;
-    const header = "ID\tTIPO\tENDEREÇO\tBAIRRO\tMETRAGEM (m²)\n";
-    const rows = ordemDetalhada.areas
-      .map((a) => `${a.id}\t${a.tipo}\t${a.endereco}\t${a.bairro || ""}\t${a.metragem_m2 || ""}`)
-      .join("\n");
-    const total = `\n\nTOTAL DE ÁREAS: ${ordemDetalhada.areas.length}\nTOTAL M²: ${ordemDetalhada.areas.reduce((s, a) => s + (a.metragem_m2 || 0), 0).toLocaleString("pt-BR", { maximumFractionDigits: 2 })}`;
-    const content = "﻿" + cabecalho + header + rows + total;
-    const blob = new Blob([content], { type: "text/tab-separated-values;charset=utf-8" });
+    const totalM2 = ordemDetalhada.areas.reduce((s, a) => s + (a.metragem_m2 || 0), 0);
+    const rows = ordemDetalhada.areas.map((a, i) => `
+      <tr style="background:${i % 2 === 0 ? "#ffffff" : "#f2f7f4"}">
+        <td style="padding:6px 10px;border:1px solid #c8ddd4;text-align:center">${a.id}</td>
+        <td style="padding:6px 10px;border:1px solid #c8ddd4">${a.endereco}</td>
+        <td style="padding:6px 10px;border:1px solid #c8ddd4">${a.bairro || "—"}</td>
+        <td style="padding:6px 10px;border:1px solid #c8ddd4">${a.tipo}</td>
+        <td style="padding:6px 10px;border:1px solid #c8ddd4;text-align:right">${a.metragem_m2?.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) ?? "—"}</td>
+      </tr>`).join("");
+    const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+<head><meta charset="UTF-8">
+<!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet>
+<x:Name>OS ${ordemDetalhada.numero}</x:Name>
+<x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions>
+</x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]-->
+</head><body>
+<table style="font-family:Arial,sans-serif;font-size:12px;border-collapse:collapse;width:100%">
+  <tr><td colspan="5" style="padding:12px 10px;background:#1e5f3a;color:#ffffff;font-size:15px;font-weight:bold">
+    CMTU — Ordem de Serviço Nº ${ordemDetalhada.numero}
+  </td></tr>
+  <tr>
+    <td colspan="2" style="padding:6px 10px;background:#e8f3ee;border:1px solid #c8ddd4"><b>Lote:</b> ${ordemDetalhada.lote}</td>
+    <td colspan="2" style="padding:6px 10px;background:#e8f3ee;border:1px solid #c8ddd4"><b>Mês de referência:</b> ${ordemDetalhada.mes_referencia}</td>
+    <td style="padding:6px 10px;background:#e8f3ee;border:1px solid #c8ddd4"><b>Data de emissão:</b> ${formatDate(ordemDetalhada.data_emissao)}</td>
+  </tr>
+  ${ordemDetalhada.observacao ? `<tr><td colspan="5" style="padding:6px 10px;background:#e8f3ee;border:1px solid #c8ddd4"><b>Observação:</b> ${ordemDetalhada.observacao}</td></tr>` : ""}
+  <tr><td colspan="5" style="padding:4px"></td></tr>
+  <tr>
+    <th style="padding:8px 10px;background:#2d7a4f;color:#fff;border:1px solid #1e5f3a;text-align:center;width:55px">ID</th>
+    <th style="padding:8px 10px;background:#2d7a4f;color:#fff;border:1px solid #1e5f3a;text-align:left">Endereço</th>
+    <th style="padding:8px 10px;background:#2d7a4f;color:#fff;border:1px solid #1e5f3a;text-align:left;width:160px">Bairro</th>
+    <th style="padding:8px 10px;background:#2d7a4f;color:#fff;border:1px solid #1e5f3a;text-align:left;width:140px">Tipo</th>
+    <th style="padding:8px 10px;background:#2d7a4f;color:#fff;border:1px solid #1e5f3a;text-align:right;width:110px">Metragem (m²)</th>
+  </tr>
+  ${rows}
+  <tr>
+    <td colspan="4" style="padding:8px 10px;background:#1e5f3a;color:#fff;font-weight:bold;border:1px solid #1e5f3a;text-align:right">TOTAL</td>
+    <td style="padding:8px 10px;background:#1e5f3a;color:#fff;font-weight:bold;border:1px solid #1e5f3a;text-align:right">${totalM2.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+  </tr>
+  <tr><td colspan="5" style="padding:4px;font-size:10px;color:#999">Total de áreas: ${ordemDetalhada.areas.length} | Emitida por: ${ordemDetalhada.emitido_por || "—"}</td></tr>
+</table>
+</body></html>`;
+    const blob = new Blob([html], { type: "application/vnd.ms-excel;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -188,6 +224,11 @@ export default function OrdemServicoPage() {
     <div className="flex flex-col h-full">
       {/* Header */}
       <div className="flex items-center gap-3 p-6 pb-4 border-b">
+        <Link href="/">
+          <Button variant="ghost" size="sm" className="mr-1 text-muted-foreground hover:text-foreground">
+            <ChevronLeft className="h-4 w-4 mr-1" /> Voltar
+          </Button>
+        </Link>
         <ClipboardList className="h-6 w-6 text-emerald-600" />
         <div>
           <h1 className="text-xl font-bold">Ordem de Serviço</h1>
