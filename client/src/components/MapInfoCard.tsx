@@ -168,10 +168,10 @@ export function MapInfoCard({ area, onClose, onRegisterMowing, onSetManualForeca
     },
   });
   const getDaysUntilMowing = (): number | null => {
-    if (!area.proximaPrevisao) return null;
+    if (!areaWithHistory.proximaPrevisao) return null;
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const previsao = new Date(area.proximaPrevisao);
+    const previsao = new Date(areaWithHistory.proximaPrevisao);
     previsao.setHours(0, 0, 0, 0);
     const diffTime = previsao.getTime() - today.getTime();
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
@@ -261,16 +261,16 @@ export function MapInfoCard({ area, onClose, onRegisterMowing, onSetManualForeca
                 <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
                 <span className="text-muted-foreground">Última Roçagem:</span>
                 <span className="font-medium" data-testid="text-ultima-rocagem">
-                  {area.ultimaRocagem ? formatDateBR(area.ultimaRocagem) : "Nunca roçada"}
+                  {areaWithHistory.ultimaRocagem ? formatDateBR(areaWithHistory.ultimaRocagem) : "Nunca roçada"}
                 </span>
               </div>
 
-              {area.proximaPrevisao && (
+              {areaWithHistory.proximaPrevisao && (
                 <div className="flex items-center gap-2 text-xs flex-wrap">
                   <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
                   <span className="text-muted-foreground">Previsão:</span>
                   <span className="font-medium" data-testid="text-previsao">
-                    {formatDateBR(area.proximaPrevisao)}
+                    {formatDateBR(areaWithHistory.proximaPrevisao)}
                     {daysUntil !== null && (
                       <span className="ml-1 text-muted-foreground">
                         ({daysUntil === 0 ? 'hoje' : daysUntil === 1 ? 'amanhã' : `${daysUntil} dias`})
