@@ -45,30 +45,16 @@ export function PhotoGalleryModal({
 
   const deletePhotoMutation = useMutation({
     mutationFn: async (photoUrl: string) => {
-      const currentFotos = liveArea.fotos || [];
-      const updatedFotos = currentFotos.filter((p) => p.url !== photoUrl);
-
-      const res = await apiRequest("PATCH", `/api/areas/${area.id}`, {
-        fotos: updatedFotos,
-      });
-
-      if (!res.ok) throw new Error("Delete failed");
+      const res = await apiRequest("DELETE", `/api/areas/${area.id}/photos`, { photoUrl });
       return res.json();
     },
     onSuccess: () => {
-      toast({
-        title: "Foto Removida",
-        description: "A foto foi deletada com sucesso.",
-      });
+      toast({ title: "Foto removida com sucesso" });
       queryClient.invalidateQueries({ queryKey: ["/api/areas", area.id] });
-      queryClient.invalidateQueries({ queryKey: ["/api/areas/light"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/areas/rocagem"] });
     },
     onError: () => {
-      toast({
-        variant: "destructive",
-        title: "Erro ao Deletar",
-        description: "Falha ao remover a foto.",
-      });
+      toast({ variant: "destructive", title: "Erro ao remover foto" });
     },
   });
 
@@ -107,61 +93,30 @@ export function PhotoGalleryModal({
 
     setIsUploading(true);
     try {
-      const uploadPromises = filesToUpload.map(async (file) => {
-        const metaRes = await fetch("/api/uploads/request-url", {
+      for (const file of filesToUpload) {
+        const formData = new FormData();
+        formData.append("photo", file);
+        formData.append("date", photoDate);
+
+        const res = await fetch(`/api/areas/${area.id}/photos`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name: file.name,
-            size: file.size,
-            contentType: file.type || "application/octet-stream",
-          }),
+          body: formData,
+          credentials: "include",
         });
 
-        if (!metaRes.ok) throw new Error(`Failed to get upload URL for ${file.name}`);
-        const { uploadURL, objectPath } = await metaRes.json();
-
-        const putRes = await fetch(uploadURL, {
-          method: "PUT",
-          body: file,
-          headers: { "Content-Type": file.type || "application/octet-stream" },
-        });
-
-        if (!putRes.ok) throw new Error(`Upload failed for ${file.name}`);
-        return objectPath;
-      });
-
-      const urls = await Promise.all(uploadPromises);
-      
-      const currentFotos = liveArea.fotos || [];
-      const selectedDate = photoDate ? new Date(photoDate + "T12:00:00").toISOString() : new Date().toISOString();
-      const newPhotos = urls.map((url) => ({
-        url,
-        data: selectedDate,
-      }));
-      const updatedFotos = [...currentFotos, ...newPhotos];
-
-      const res = await apiRequest("PATCH", `/api/areas/${area.id}`, {
-        fotos: updatedFotos,
-      });
-
-      if (res.ok) {
-        toast({
-          title: `${filesToUpload.length} Foto${filesToUpload.length !== 1 ? "s" : ""} Adicionada${filesToUpload.length !== 1 ? "s" : ""}`,
-          description: "As fotos foram enviadas com sucesso.",
-        });
-        queryClient.invalidateQueries({ queryKey: ["/api/areas", area.id] });
-        queryClient.invalidateQueries({ queryKey: ["/api/areas/light"] });
-        const input = document.getElementById("photo-input") as HTMLInputElement;
-        if (input) input.value = "";
+        if (!res.ok) throw new Error(`Falha ao enviar ${file.name}`);
       }
+
+      toast({
+        title: `${filesToUpload.length} foto${filesToUpload.length !== 1 ? "s" : ""} enviada${filesToUpload.length !== 1 ? "s" : ""} com sucesso`,
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/areas", area.id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/areas/rocagem"] });
+      const input = document.getElementById("photo-input") as HTMLInputElement;
+      if (input) input.value = "";
     } catch (error) {
       console.error("Upload error:", error);
-      toast({
-        variant: "destructive",
-        title: "Erro no Upload",
-        description: "Falha ao enviar as fotos.",
-      });
+      toast({ variant: "destructive", title: "Erro no upload", description: "Falha ao enviar as fotos." });
     } finally {
       setIsUploading(false);
     }

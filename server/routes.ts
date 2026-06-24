@@ -6,6 +6,11 @@ import * as fs from "fs";
 import * as path from "path";
 import type { ServiceArea } from "@shared/schema";
 import bcrypt from "bcryptjs";
+import multer from "multer";
+
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+const SUPABASE_URL = process.env.SUPABASE_URL ?? "";
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY ?? "";
 
 // Função para converter ServiceArea[] para CSV compatível com Supabase
 function convertToSupabaseCSV(areas: ServiceArea[]): string {
@@ -1105,6 +1110,70 @@ export async function registerRoutes(app: Express): Promise<void> {
       } else {
         res.status(500).json({ error: "Failed to update history entry" });
       }
+    }
+  });
+
+  // Upload de foto para Supabase Storage
+  app.post("/api/areas/:id/photos", requireAuth, upload.single("photo"), async (req, res) => {
+    try {
+      if (!req.file) { res.status(400).json({ error: "Nenhum arquivo enviado" }); return; }
+      const areaId = parseInt(req.params.id);
+      const date = req.body.date || new Date().toISOString().split("T")[0];
+      const ext = req.file.originalname.split(".").pop() ?? "jpg";
+      const filePath = `areas/${areaId}/${Date.now()}.${ext}`;
+
+      const uploadRes = await fetch(`${SUPABASE_URL}/storage/v1/object/fotos/${filePath}`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${SUPABASE_SERVICE_KEY}`,
+          "Content-Type": req.file.mimetype,
+        },
+        body: req.file.buffer as any,
+      });
+
+      if (!uploadRes.ok) {
+        const err = await uploadRes.text();
+        console.error("Supabase upload error:", err);
+        res.status(500).json({ error: "Falha no upload para o Supabase" });
+        return;
+      }
+
+      const publicUrl = `${SUPABASE_URL}/storage/v1/object/public/fotos/${filePath}`;
+      const area = await storage.getAreaById(areaId);
+      if (!area) { res.status(404).json({ error: "Area not found" }); return; }
+      const fotos = [...(area.fotos || []), { url: publicUrl, data: new Date(date + "T12:00:00").toISOString() }];
+      const updated = await storage.updateArea(areaId, { fotos } as any);
+      res.json(updated);
+    } catch (error) {
+      console.error("Photo upload error:", error);
+      res.status(500).json({ error: "Erro ao fazer upload da foto" });
+    }
+  });
+
+  // Excluir foto do Supabase Storage
+  app.delete("/api/areas/:id/photos", requireAuth, async (req, res) => {
+    try {
+      const areaId = parseInt(req.params.id);
+      const { photoUrl } = req.body;
+      if (!photoUrl) { res.status(400).json({ error: "URL da foto não informada" }); return; }
+
+      // Extrai o path relativo dentro do bucket
+      const marker = `/storage/v1/object/public/fotos/`;
+      const filePath = photoUrl.includes(marker) ? photoUrl.split(marker)[1] : null;
+      if (filePath) {
+        await fetch(`${SUPABASE_URL}/storage/v1/object/fotos/${filePath}`, {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${SUPABASE_SERVICE_KEY}` },
+        });
+      }
+
+      const area = await storage.getAreaById(areaId);
+      if (!area) { res.status(404).json({ error: "Area not found" }); return; }
+      const fotos = (area.fotos || []).filter((f: any) => f.url !== photoUrl);
+      const updated = await storage.updateArea(areaId, { fotos } as any);
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ error: "Erro ao excluir foto" });
     }
   });
 
