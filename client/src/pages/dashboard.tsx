@@ -83,6 +83,7 @@ export default function Dashboard({ isPublicView = false }: DashboardProps) {
   const [timeRangeFilter, setTimeRangeFilter] = useState<TimeRangeFilter>(null);
   const [customFilterDateRange, setCustomFilterDateRange] = useState<{ from: Date | undefined; to: Date | undefined }>({ from: undefined, to: undefined });
   const [showExportDialog, setShowExportDialog] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
   const [statsPeriod, setStatsPeriod] = useState<{ from: string; to: string } | null>(null);
   const [savedMapZoom, setSavedMapZoom] = useState<number | null>(null);
   const [savedMapCenter, setSavedMapCenter] = useState<{ lat: number; lng: number } | null>(null);
@@ -608,7 +609,7 @@ export default function Dashboard({ isPublicView = false }: DashboardProps) {
             }}
           />
         )}
-        {(selectedService === 'rocagem' || isPublicView) && <MowingStatsBar onPeriodChange={handleStatsPeriodChange} onPeriodClear={handleStatsPeriodClear} />}
+        {(selectedService === 'rocagem' || isPublicView) && <MowingStatsBar forceExpand={reportOpen} onPeriodChange={handleStatsPeriodChange} onPeriodClear={handleStatsPeriodClear} />}
         
         <main className="flex-1 overflow-hidden relative">
           <DashboardMap
@@ -652,6 +653,7 @@ export default function Dashboard({ isPublicView = false }: DashboardProps) {
                 standalone
                 selectedService={selectedService}
                 onServiceSelect={handleServiceSelect}
+                onOpenReport={() => setReportOpen(true)}
                 selectedArea={selectedArea}
                 onAreaClose={() => setSelectedArea(null)}
                 onAreaUpdate={handleAreaUpdate}
@@ -715,7 +717,7 @@ export default function Dashboard({ isPublicView = false }: DashboardProps) {
             setShowMapCard(false);
           }}
         />
-        <MowingStatsBar onPeriodChange={handleStatsPeriodChange} onPeriodClear={handleStatsPeriodClear} />
+        <MowingStatsBar forceExpand={reportOpen} onPeriodChange={handleStatsPeriodChange} onPeriodClear={handleStatsPeriodClear} />
 
         <main className="flex-1 overflow-hidden relative">
           <DashboardMap
@@ -756,6 +758,7 @@ export default function Dashboard({ isPublicView = false }: DashboardProps) {
         <AppSidebar
           selectedService={selectedService}
           onServiceSelect={handleServiceSelect}
+          onOpenReport={() => setReportOpen(true)}
           selectedArea={selectedArea}
           onAreaClose={() => setSelectedArea(null)}
           onAreaUpdate={handleAreaUpdate}
@@ -838,7 +841,7 @@ export default function Dashboard({ isPublicView = false }: DashboardProps) {
               }}
             />
           )}
-          {selectedService === 'rocagem' && <MowingStatsBar onPeriodChange={handleStatsPeriodChange} onPeriodClear={handleStatsPeriodClear} />}
+          {selectedService === 'rocagem' && <MowingStatsBar forceExpand={reportOpen} onPeriodChange={handleStatsPeriodChange} onPeriodClear={handleStatsPeriodClear} />}
 
           <main className="flex-1 overflow-hidden relative">
             <DashboardMap

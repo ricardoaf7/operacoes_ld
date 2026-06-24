@@ -524,14 +524,17 @@ function generatePdf(data: PdfResponse, loteLabel: string, extraFilters?: { bair
 
 interface MowingStatsBarProps {
   visible?: boolean;
+  forceExpand?: boolean;
   onPeriodChange?: (from: string, to: string) => void;
   onPeriodClear?: () => void;
 }
 
-export function MowingStatsBar({ visible = true, onPeriodChange, onPeriodClear }: MowingStatsBarProps) {
-  const [expanded, setExpanded] = useState(() => {
-    return new URLSearchParams(window.location.search).get('relatorio') === '1';
-  });
+export function MowingStatsBar({ visible = true, forceExpand = false, onPeriodChange, onPeriodClear }: MowingStatsBarProps) {
+  const [expanded, setExpanded] = useState(false);
+
+  useEffect(() => {
+    if (forceExpand) setExpanded(true);
+  }, [forceExpand]);
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
   const [activeFrom, setActiveFrom] = useState('');

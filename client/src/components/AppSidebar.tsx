@@ -14,7 +14,7 @@ import {
   Package,
   BarChart3
 } from "lucide-react";
-import { Link } from "wouter";
+
 import { motion, AnimatePresence } from "framer-motion";
 import operacoesLogoPositivo from "@assets/Operacoes_Logo_Positivo_1762027620245.png";
 import operacoesLogoNegativo from "@assets/Operacoes_Logo_Negativo_1762032098603.png";
@@ -37,6 +37,7 @@ import type { ServiceArea } from "@shared/schema";
 interface AppSidebarProps {
   selectedService?: string;
   onServiceSelect?: (service: string) => void;
+  onOpenReport?: () => void;
   selectedArea?: ServiceArea | null;
   onAreaClose?: () => void;
   onAreaUpdate?: (area: ServiceArea) => void;
@@ -48,6 +49,7 @@ interface AppSidebarProps {
 export function AppSidebar({
   selectedService,
   onServiceSelect,
+  onOpenReport,
   selectedArea,
   onAreaClose,
   onAreaUpdate,
@@ -136,15 +138,14 @@ export function AppSidebar({
                         transition={{ duration: 0.3, ease: "easeInOut" }}
                         className="overflow-hidden"
                       >
-                        <Link href="/?relatorio=1">
-                          <button
-                            className="w-full flex items-center gap-3 pl-8 pr-4 py-2 rounded-md text-sm transition-colors text-foreground/70 hover:text-foreground hover:bg-accent/50"
-                            data-testid="button-relatorio-rocagem"
-                          >
-                            <BarChart3 className="h-4 w-4 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
-                            <span>Relatório</span>
-                          </button>
-                        </Link>
+                        <button
+                          onClick={() => onOpenReport?.()}
+                          className="w-full flex items-center gap-3 pl-8 pr-4 py-2 rounded-md text-sm transition-colors text-foreground/70 hover:text-foreground hover:bg-accent/50"
+                          data-testid="button-relatorio-rocagem"
+                        >
+                          <BarChart3 className="h-4 w-4 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
+                          <span>Relatório</span>
+                        </button>
                       </motion.div>
                     )}
                   </AnimatePresence>
