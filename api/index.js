@@ -1869,31 +1869,27 @@ async function registerRoutes(app) {
       });
       const data = updateSchema.parse(req.body);
       if (data.ultimaRocagem) {
-        const lastMowing = new Date(data.ultimaRocagem);
-        lastMowing.setHours(0, 0, 0, 0);
-        const nextMowingDate = new Date(lastMowing);
-        nextMowingDate.setDate(lastMowing.getDate() + 60);
-        const proximaPrevisao = nextMowingDate.toISOString().split("T")[0];
-        const dataComTimestamp = {
-          ...data,
-          dataRegistro: (/* @__PURE__ */ new Date()).toISOString(),
-          manualSchedule: false,
-          proximaPrevisao,
-          status: "Conclu\xEDdo"
-        };
-        const updatedArea2 = await storage.updateArea(areaId, dataComTimestamp);
-        if (!updatedArea2) {
+        const areaAtual = await storage.getAreaById(areaId);
+        if (!areaAtual) {
           res.status(404).json({ error: "Area not found" });
           return;
         }
+        await storage.updateArea(areaId, {
+          ...data,
+          status: "Conclu\xEDdo",
+          dataRegistro: (/* @__PURE__ */ new Date()).toISOString(),
+          manualSchedule: false
+        });
         await storage.addHistoryEntry(areaId, {
           date: data.ultimaRocagem,
           type: "completed",
           status: "Conclu\xEDdo",
           observation: data.registradoPor ? `Ro\xE7agem conclu\xEDda por ${data.registradoPor}` : "Ro\xE7agem conclu\xEDda"
         });
-        const areaComHistorico = await storage.getAreaById(areaId);
-        res.json(areaComHistorico);
+        const areaAtualizada = await storage.getAreaById(areaId);
+        const sync = syncFromHistory(areaAtualizada?.history ?? []);
+        const final = await storage.updateArea(areaId, sync);
+        res.json(final);
         return;
       }
       const updatedArea = await storage.updateArea(areaId, data);

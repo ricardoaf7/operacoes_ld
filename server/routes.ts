@@ -965,32 +965,20 @@ export async function registerRoutes(app: Express): Promise<void> {
 
       const data = updateSchema.parse(req.body);
       
-      // Se está registrando roçagem, adicionar timestamp automático
+      // Se está registrando roçagem, adicionar ao histórico e recalcular a partir do mais recente
       if (data.ultimaRocagem) {
-        // Calcular próxima previsão: última roçagem + 60 dias
-        const lastMowing = new Date(data.ultimaRocagem);
-        lastMowing.setHours(0, 0, 0, 0);
-        const nextMowingDate = new Date(lastMowing);
-        nextMowingDate.setDate(lastMowing.getDate() + 60);
-        const proximaPrevisao = nextMowingDate.toISOString().split('T')[0];
+        const areaAtual = await storage.getAreaById(areaId);
+        if (!areaAtual) { res.status(404).json({ error: "Area not found" }); return; }
 
-        const dataComTimestamp = {
+        // Salva campos básicos (status, registradoPor, fotos) sem alterar ultimaRocagem/previsao ainda
+        await storage.updateArea(areaId, {
           ...data,
+          status: "Concluído" as const,
           dataRegistro: new Date().toISOString(),
           manualSchedule: false,
-          proximaPrevisao,
-          status: "Concluído" as const,
-        };
+        });
 
-        // Aplicar atualizações incluindo auditoria e previsão
-        const updatedArea = await storage.updateArea(areaId, dataComTimestamp);
-
-        if (!updatedArea) {
-          res.status(404).json({ error: "Area not found" });
-          return;
-        }
-
-        // Registrar no histórico automaticamente a cada roçagem concluída
+        // Adiciona entrada ao histórico
         await storage.addHistoryEntry(areaId, {
           date: data.ultimaRocagem,
           type: "completed",
@@ -1000,8 +988,12 @@ export async function registerRoutes(app: Express): Promise<void> {
             : "Roçagem concluída",
         });
 
-        const areaComHistorico = await storage.getAreaById(areaId);
-        res.json(areaComHistorico);
+        // Recalcula ultimaRocagem e previsão a partir da data MAIS RECENTE do histórico
+        const areaAtualizada = await storage.getAreaById(areaId);
+        const sync = syncFromHistory(areaAtualizada?.history ?? []);
+        const final = await storage.updateArea(areaId, sync as any);
+
+        res.json(final);
         return;
       }
       
