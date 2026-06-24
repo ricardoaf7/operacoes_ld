@@ -1061,7 +1061,7 @@ export async function registerRoutes(app: Express): Promise<void> {
   // Excluir entrada do histórico (somente admin)
   app.delete("/api/areas/:id/history/:index", requireAuth, async (req, res) => {
     try {
-      if (req.user?.role !== "admin") {
+      if (req.session.userRole !== "admin") {
         res.status(403).json({ error: "Apenas administradores podem excluir histórico" });
         return;
       }
@@ -1081,7 +1081,7 @@ export async function registerRoutes(app: Express): Promise<void> {
   // Editar entrada do histórico (somente admin)
   app.patch("/api/areas/:id/history/:index", requireAuth, async (req, res) => {
     try {
-      if (req.user?.role !== "admin") {
+      if (req.session.userRole !== "admin") {
         res.status(403).json({ error: "Apenas administradores podem editar histórico" });
         return;
       }

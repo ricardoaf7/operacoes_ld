@@ -1944,7 +1944,7 @@ async function registerRoutes(app) {
   });
   app.delete("/api/areas/:id/history/:index", requireAuth, async (req, res) => {
     try {
-      if (req.user?.role !== "admin") {
+      if (req.session.userRole !== "admin") {
         res.status(403).json({ error: "Apenas administradores podem excluir hist\xF3rico" });
         return;
       }
@@ -1965,7 +1965,7 @@ async function registerRoutes(app) {
   });
   app.patch("/api/areas/:id/history/:index", requireAuth, async (req, res) => {
     try {
-      if (req.user?.role !== "admin") {
+      if (req.session.userRole !== "admin") {
         res.status(403).json({ error: "Apenas administradores podem editar hist\xF3rico" });
         return;
       }
