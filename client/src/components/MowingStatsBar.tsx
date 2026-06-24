@@ -1,10 +1,10 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useRef, useMemo } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { ChevronDown, ChevronUp, TrendingUp, Target, Calendar, BarChart3, AlertCircle, Pencil, Check, X, FileDown, Loader2 } from 'lucide-react';
+import { TrendingUp, Target, Calendar, BarChart3, AlertCircle, Pencil, Check, X, FileDown, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -524,17 +524,12 @@ function generatePdf(data: PdfResponse, loteLabel: string, extraFilters?: { bair
 
 interface MowingStatsBarProps {
   visible?: boolean;
-  forceExpand?: boolean;
+  expanded: boolean;
   onPeriodChange?: (from: string, to: string) => void;
   onPeriodClear?: () => void;
 }
 
-export function MowingStatsBar({ visible = true, forceExpand = false, onPeriodChange, onPeriodClear }: MowingStatsBarProps) {
-  const [expanded, setExpanded] = useState(false);
-
-  useEffect(() => {
-    if (forceExpand) setExpanded(true);
-  }, [forceExpand]);
+export function MowingStatsBar({ visible = true, expanded, onPeriodChange, onPeriodClear }: MowingStatsBarProps) {
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
   const [activeFrom, setActiveFrom] = useState('');
@@ -712,11 +707,7 @@ export function MowingStatsBar({ visible = true, forceExpand = false, onPeriodCh
 
   return (
     <div className="bg-background border-b border-border" data-testid="mowing-stats-bar">
-      <button
-        onClick={() => setExpanded(!expanded)}
-        className="w-full px-3 py-2 flex flex-col gap-1.5 transition-colors"
-        data-testid="button-toggle-stats"
-      >
+      <div className="w-full px-3 py-2 flex flex-col gap-1.5" data-testid="stats-progress-bars">
         <div className="flex items-center gap-3 w-full">
           <BarChart3 className="h-4 w-4 text-muted-foreground flex-shrink-0" />
           <div className="flex-1 flex items-center gap-2 min-w-0">
@@ -729,11 +720,6 @@ export function MowingStatsBar({ visible = true, forceExpand = false, onPeriodCh
               ({stats.lote1.percentualMeta.toFixed(1)}%)
             </span>
           </div>
-          {expanded ? (
-            <ChevronUp className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-          ) : (
-            <ChevronDown className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-          )}
         </div>
 
         <div className="flex items-center gap-3 w-full pl-7">
@@ -748,7 +734,7 @@ export function MowingStatsBar({ visible = true, forceExpand = false, onPeriodCh
             </span>
           </div>
         </div>
-      </button>
+      </div>
 
       {expanded && (
         <div className="px-3 pb-3 space-y-4 border-t border-border pt-3" data-testid="stats-expanded-panel">
