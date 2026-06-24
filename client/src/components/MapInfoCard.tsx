@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { X, Calendar, MapPin, Ruler, CheckCircle2, ChevronDown, ChevronUp, Hash, CalendarClock, Trash2, Edit2, Image as ImageIcon, Move, Undo2, Play, Square, FileText } from "lucide-react";
+import { X, Calendar, MapPin, Ruler, CheckCircle2, ChevronDown, ChevronUp, Hash, CalendarClock, Trash2, Edit2, Image as ImageIcon, Move, Undo2, Play, Square, FileText, Pencil } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -45,6 +45,11 @@ export function MapInfoCard({ area, onClose, onRegisterMowing, onSetManualForeca
   const [showPhotoGallery, setShowPhotoGallery] = useState(false);
   const [fullArea, setFullArea] = useState<ServiceArea | null>(null);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  const [editingHistoryIdx, setEditingHistoryIdx] = useState<number | null>(null);
+  const [editDate, setEditDate] = useState("");
+  const [editObs, setEditObs] = useState("");
+  const [deleteHistoryIdx, setDeleteHistoryIdx] = useState<number | null>(null);
+  const isAdmin = user?.role === "admin";
 
   useEffect(() => {
     setFullArea(null);
@@ -75,6 +80,36 @@ export function MapInfoCard({ area, onClose, onRegisterMowing, onSetManualForeca
   };
 
   const areaWithHistory = fullArea || area;
+
+  const deleteHistoryMutation = useMutation({
+    mutationFn: (idx: number) =>
+      apiRequest("DELETE", `/api/areas/${area.id}/history/${idx}`),
+    onSuccess: async () => {
+      const res = await fetch(`/api/areas/${area.id}`);
+      if (res.ok) setFullArea(await res.json());
+      queryClient.invalidateQueries({ queryKey: ["/api/areas/rocagem"] });
+      setDeleteHistoryIdx(null);
+      toast({ title: "Entrada excluída do histórico" });
+    },
+    onError: () => toast({ title: "Erro ao excluir", variant: "destructive" }),
+  });
+
+  const editHistoryMutation = useMutation({
+    mutationFn: ({ idx, date, observation }: { idx: number; date: string; observation: string }) =>
+      apiRequest("PATCH", `/api/areas/${area.id}/history/${idx}`, {
+        date,
+        status: "Concluído",
+        observation,
+      }),
+    onSuccess: async () => {
+      const res = await fetch(`/api/areas/${area.id}`);
+      if (res.ok) setFullArea(await res.json());
+      queryClient.invalidateQueries({ queryKey: ["/api/areas/rocagem"] });
+      setEditingHistoryIdx(null);
+      toast({ title: "Histórico atualizado" });
+    },
+    onError: () => toast({ title: "Erro ao editar", variant: "destructive" }),
+  });
 
   const deleteAreaMutation = useMutation({
     mutationFn: async () => {
@@ -271,21 +306,91 @@ export function MapInfoCard({ area, onClose, onRegisterMowing, onSetManualForeca
                 </div>
               ) : areaWithHistory.history && areaWithHistory.history.length > 0 ? (
                 <div className="space-y-1 max-h-52 overflow-y-auto">
-                  {[...areaWithHistory.history].reverse().map((entry, idx) => (
-                    <div key={idx} className="text-xs p-2 bg-muted/30 rounded">
-                      <div className="flex justify-between items-start gap-2">
-                        <span className="font-medium">{formatDateBR(entry.date)}</span>
-                        <Badge variant="outline" className="text-[10px] h-4 px-1">
-                          {entry.status}
-                        </Badge>
-                      </div>
-                      {entry.observation && (
-                        <p className="text-muted-foreground mt-1 text-[11px]">
-                          {entry.observation}
-                        </p>
-                      )}
-                    </div>
-                  ))}
+                  {[...areaWithHistory.history]
+                    .sort((a, b) => b.date.localeCompare(a.date))
+                    .map((entry, displayIdx) => {
+                      const realIdx = areaWithHistory.history.findIndex(
+                        (h) => h.date === entry.date && h.observation === entry.observation
+                      );
+                      const isEditing = editingHistoryIdx === realIdx;
+                      return (
+                        <div key={displayIdx} className="text-xs p-2 bg-muted/30 rounded">
+                          {isEditing ? (
+                            <div className="space-y-1">
+                              <input
+                                type="date"
+                                value={editDate}
+                                onChange={(e) => setEditDate(e.target.value)}
+                                className="w-full text-xs border rounded px-1 py-0.5 bg-background"
+                              />
+                              <input
+                                type="text"
+                                value={editObs}
+                                onChange={(e) => setEditObs(e.target.value)}
+                                placeholder="Observação"
+                                className="w-full text-xs border rounded px-1 py-0.5 bg-background"
+                              />
+                              <div className="flex gap-1">
+                                <Button
+                                  size="sm"
+                                  className="h-6 text-[10px] flex-1"
+                                  onClick={() => editHistoryMutation.mutate({ idx: realIdx, date: editDate, observation: editObs })}
+                                  disabled={editHistoryMutation.isPending}
+                                >
+                                  Salvar
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-6 text-[10px]"
+                                  onClick={() => setEditingHistoryIdx(null)}
+                                >
+                                  Cancelar
+                                </Button>
+                              </div>
+                            </div>
+                          ) : (
+                            <>
+                              <div className="flex justify-between items-start gap-2">
+                                <span className="font-medium">{formatDateBR(entry.date)}</span>
+                                <div className="flex items-center gap-1">
+                                  <Badge variant="outline" className="text-[10px] h-4 px-1">
+                                    {entry.status}
+                                  </Badge>
+                                  {isAdmin && (
+                                    <>
+                                      <button
+                                        onClick={() => {
+                                          setEditingHistoryIdx(realIdx);
+                                          setEditDate(entry.date);
+                                          setEditObs(entry.observation || "");
+                                        }}
+                                        className="text-muted-foreground hover:text-blue-500 ml-1"
+                                        title="Editar"
+                                      >
+                                        <Pencil className="h-3 w-3" />
+                                      </button>
+                                      <button
+                                        onClick={() => setDeleteHistoryIdx(realIdx)}
+                                        className="text-muted-foreground hover:text-red-500"
+                                        title="Excluir"
+                                      >
+                                        <Trash2 className="h-3 w-3" />
+                                      </button>
+                                    </>
+                                  )}
+                                </div>
+                              </div>
+                              {entry.observation && (
+                                <p className="text-muted-foreground mt-1 text-[11px]">
+                                  {entry.observation}
+                                </p>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      );
+                    })}
                 </div>
               ) : (
                 <p className="text-xs text-muted-foreground">Nenhum registro de roçagem encontrado.</p>
@@ -459,6 +564,27 @@ export function MapInfoCard({ area, onClose, onRegisterMowing, onSetManualForeca
       {/* Dialogs renderizados via Portal com z-index alto para ficar acima do card (z-1000) */}
       {createPortal(
         <>
+          <AlertDialog open={deleteHistoryIdx !== null} onOpenChange={(open) => !open && setDeleteHistoryIdx(null)}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Excluir entrada do histórico?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Esta ação não pode ser desfeita.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <div className="flex gap-2 justify-end">
+                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={() => deleteHistoryIdx !== null && deleteHistoryMutation.mutate(deleteHistoryIdx)}
+                  className="bg-red-600 hover:bg-red-700"
+                  disabled={deleteHistoryMutation.isPending}
+                >
+                  {deleteHistoryMutation.isPending ? "Excluindo..." : "Excluir"}
+                </AlertDialogAction>
+              </div>
+            </AlertDialogContent>
+          </AlertDialog>
+
           <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
             <AlertDialogContent data-testid="dialog-delete-confirm">
               <AlertDialogHeader>

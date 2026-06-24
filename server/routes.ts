@@ -1050,6 +1050,56 @@ export async function registerRoutes(app: Express): Promise<void> {
     }
   });
 
+  // Excluir entrada do histórico (somente admin)
+  app.delete("/api/areas/:id/history/:index", requireAuth, async (req, res) => {
+    try {
+      if (req.user?.role !== "admin") {
+        res.status(403).json({ error: "Apenas administradores podem excluir histórico" });
+        return;
+      }
+      const areaId = parseInt(req.params.id);
+      const idx = parseInt(req.params.index);
+      const area = await storage.getAreaById(areaId);
+      if (!area) { res.status(404).json({ error: "Area not found" }); return; }
+      const newHistory = area.history.filter((_, i) => i !== idx);
+      const updated = await storage.updateArea(areaId, { history: newHistory } as any);
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to delete history entry" });
+    }
+  });
+
+  // Editar entrada do histórico (somente admin)
+  app.patch("/api/areas/:id/history/:index", requireAuth, async (req, res) => {
+    try {
+      if (req.user?.role !== "admin") {
+        res.status(403).json({ error: "Apenas administradores podem editar histórico" });
+        return;
+      }
+      const areaId = parseInt(req.params.id);
+      const idx = parseInt(req.params.index);
+      const entrySchema = z.object({
+        date: z.string(),
+        status: z.string(),
+        observation: z.string().optional(),
+      });
+      const entry = entrySchema.parse(req.body);
+      const area = await storage.getAreaById(areaId);
+      if (!area) { res.status(404).json({ error: "Area not found" }); return; }
+      const newHistory = area.history.map((h, i) =>
+        i === idx ? { ...h, ...entry } : h
+      );
+      const updated = await storage.updateArea(areaId, { history: newHistory } as any);
+      res.json(updated);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res.status(400).json({ error: "Invalid data", details: error.errors });
+      } else {
+        res.status(500).json({ error: "Failed to update history entry" });
+      }
+    }
+  });
+
   app.post("/api/areas/register-daily", requireAuth, async (req, res) => {
     try {
       const registerSchema = z.object({
