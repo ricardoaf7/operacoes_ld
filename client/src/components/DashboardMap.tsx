@@ -28,6 +28,7 @@ interface DashboardMapProps {
   onMapZoomSaved?: (zoom: number, center: { lat: number; lng: number }) => void;
   relocatingAreaId?: number | null;
   onPositionChange?: (areaId: number, lat: number, lng: number) => void;
+  osMode?: boolean;
 }
 
 export function DashboardMap({
@@ -46,6 +47,7 @@ export function DashboardMap({
   onMapZoomSaved,
   relocatingAreaId = null,
   onPositionChange,
+  osMode = false,
 }: DashboardMapProps) {
   const { toast } = useToast();
   const internalMapRef = useRef<L.Map | null>(null);
@@ -289,7 +291,7 @@ export function DashboardMap({
       }
 
       const isSelected = selectedAreaId === area.id;
-      const color = getAreaColor(area, today, isSelected, activeFilter);
+      const color = osMode ? '#1e1c3e' : getAreaColor(area, today, isSelected, activeFilter);
       const isPulsing = area.executando === true;
 
       // Verificar se esta área está em modo de relocação

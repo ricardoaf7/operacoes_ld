@@ -648,6 +648,7 @@ export default function Dashboard({ isPublicView = false }: DashboardProps) {
             selectedAreaId={selectedArea?.id || null}
             relocatingAreaId={relocatingAreaId}
             onPositionChange={isPublicView ? undefined : handlePositionChange}
+            osMode={!!selectedOsId}
           />
 
           {showMapCard && selectedArea && (
