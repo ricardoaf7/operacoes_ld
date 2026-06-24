@@ -28,7 +28,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Menu, X, Download, FileText, LogOut, Users, Lock } from "lucide-react";
+import { Menu, X, Download, FileText, LogOut, Users, Lock, ClipboardList } from "lucide-react";
 import { ChangePasswordDialog } from "@/components/ChangePasswordDialog";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
@@ -84,6 +84,7 @@ export default function Dashboard({ isPublicView = false }: DashboardProps) {
   const [customFilterDateRange, setCustomFilterDateRange] = useState<{ from: Date | undefined; to: Date | undefined }>({ from: undefined, to: undefined });
   const [showExportDialog, setShowExportDialog] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
+  const [selectedOsId, setSelectedOsId] = useState<number | null>(null);
   const [statsPeriod, setStatsPeriod] = useState<{ from: string; to: string } | null>(null);
   const [savedMapZoom, setSavedMapZoom] = useState<number | null>(null);
   const [savedMapCenter, setSavedMapCenter] = useState<{ lat: number; lng: number } | null>(null);
@@ -111,7 +112,12 @@ export default function Dashboard({ isPublicView = false }: DashboardProps) {
 
   const handleServiceSelect = (service: string) => {
     setSelectedService(service);
-    if (service !== 'rocagem') setReportOpen(false);
+    if (service !== 'rocagem') { setReportOpen(false); setSelectedOsId(null); }
+  };
+
+  const handleOsSelect = (id: number | null) => {
+    setSelectedOsId(id);
+    if (id) setSelectedService('rocagem');
   };
 
   const handleMapZoomSaved = (zoom: number, center: { lat: number; lng: number }) => {
@@ -377,6 +383,22 @@ export default function Dashboard({ isPublicView = false }: DashboardProps) {
     return undefined;
   }, [filteredRocagemAreas, periodAreaIds, periodActive, hasOtherFilters]);
 
+  // Ordens de serviço para o sidebar
+  const { data: ordens = [] } = useQuery<any[]>({ queryKey: ["/api/ordens"] });
+
+  const { data: selectedOs } = useQuery<any>({
+    queryKey: ["/api/ordens", selectedOsId],
+    queryFn: async () => { const r = await apiRequest("GET", `/api/ordens/${selectedOsId}`); return r.json(); },
+    enabled: !!selectedOsId,
+  });
+
+  const osAreaIds = useMemo(() => {
+    if (!selectedOsId || !selectedOs?.areas) return null;
+    return new Set<number>(selectedOs.areas.map((a: any) => a.id));
+  }, [selectedOsId, selectedOs]);
+
+  const effectiveFilteredAreaIds = osAreaIds ?? computedFilteredAreaIds;
+
   // Zoom automático só na primeira seleção de cada área (não em re-renders)
   // DESABILITADO quando modal de registro está aberto para preservar zoom do usuário
   useEffect(() => {
@@ -614,12 +636,12 @@ export default function Dashboard({ isPublicView = false }: DashboardProps) {
           <DashboardMap
             rocagemAreas={rocagemAreas}
             layerFilters={{
-              rocagemLote1: selectedService === 'rocagem' || isPublicView,
-              rocagemLote2: selectedService === 'rocagem' || isPublicView,
+              rocagemLote1: selectedService === 'rocagem' || isPublicView || !!selectedOsId,
+              rocagemLote2: selectedService === 'rocagem' || isPublicView || !!selectedOsId,
             }}
             onAreaClick={handleAreaClick}
             onMapClick={isPublicView ? undefined : handleMapClick}
-            filteredAreaIds={computedFilteredAreaIds}
+            filteredAreaIds={effectiveFilteredAreaIds}
             mapRef={mapRef}
             searchQuery={filters.search}
             activeFilter={timeRangeFilter}
@@ -644,7 +666,7 @@ export default function Dashboard({ isPublicView = false }: DashboardProps) {
           )}
           
           {!isPublicView && (
-            <BottomSheet 
+            <BottomSheet
               state={bottomSheetState}
               onStateChange={setBottomSheetState}
             >
@@ -658,6 +680,9 @@ export default function Dashboard({ isPublicView = false }: DashboardProps) {
                 onAreaUpdate={handleAreaUpdate}
                 showQuickRegisterModal={showQuickRegisterModal}
                 showMapCard={showMapCard}
+                ordens={ordens}
+                selectedOsId={selectedOsId}
+                onOsSelect={(id) => { handleOsSelect(id); setBottomSheetState("minimized"); }}
               />
             </BottomSheet>
           )}
@@ -763,6 +788,9 @@ export default function Dashboard({ isPublicView = false }: DashboardProps) {
           onAreaUpdate={handleAreaUpdate}
           showQuickRegisterModal={showQuickRegisterModal}
           showMapCard={showMapCard}
+          ordens={ordens}
+          selectedOsId={selectedOsId}
+          onOsSelect={handleOsSelect}
         />
         
         <SidebarInset className="flex-1 overflow-hidden flex flex-col">
@@ -842,16 +870,35 @@ export default function Dashboard({ isPublicView = false }: DashboardProps) {
           )}
           <MowingStatsBar expanded={reportOpen} onPeriodChange={handleStatsPeriodChange} onPeriodClear={handleStatsPeriodClear} />
 
+          {selectedOsId && selectedOs && (
+            <div className="flex items-center gap-3 px-4 py-2 bg-emerald-600 text-white text-sm flex-shrink-0">
+              <ClipboardList className="h-4 w-4 flex-shrink-0" />
+              <span className="font-semibold">OS Nº {selectedOs.numero}</span>
+              <span className="opacity-80">·</span>
+              <span className="opacity-80">Lote {selectedOs.lote}</span>
+              <span className="opacity-80">·</span>
+              <span className="opacity-80">{selectedOs.mes_referencia}</span>
+              <span className="opacity-80">·</span>
+              <span className="opacity-80">{selectedOs.areas?.length} áreas</span>
+              <button
+                onClick={() => setSelectedOsId(null)}
+                className="ml-auto flex items-center gap-1 opacity-80 hover:opacity-100 transition-opacity"
+              >
+                <X className="h-4 w-4" /> Sair da visualização
+              </button>
+            </div>
+          )}
+
           <main className="flex-1 overflow-hidden relative">
             <DashboardMap
               rocagemAreas={rocagemAreas}
               layerFilters={{
-                rocagemLote1: selectedService === 'rocagem',
-                rocagemLote2: selectedService === 'rocagem',
+                rocagemLote1: selectedService === 'rocagem' || !!selectedOsId,
+                rocagemLote2: selectedService === 'rocagem' || !!selectedOsId,
               }}
               onAreaClick={handleAreaClick}
               onMapClick={handleMapClick}
-              filteredAreaIds={computedFilteredAreaIds}
+              filteredAreaIds={effectiveFilteredAreaIds}
               searchQuery={filters.search}
               activeFilter={timeRangeFilter}
               mapRef={mapRef}

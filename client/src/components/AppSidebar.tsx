@@ -14,8 +14,11 @@ import {
   Package,
   BarChart3,
   ClipboardList,
+  ChevronRight,
+  Settings,
 } from "lucide-react";
 import { Link } from "wouter";
+import { useState } from "react";
 
 import { motion, AnimatePresence } from "framer-motion";
 import operacoesLogoPositivo from "@assets/Operacoes_Logo_Positivo_1762027620245.png";
@@ -46,6 +49,9 @@ interface AppSidebarProps {
   standalone?: boolean;
   showQuickRegisterModal?: boolean;
   showMapCard?: boolean;
+  ordens?: any[];
+  selectedOsId?: number | null;
+  onOsSelect?: (id: number | null) => void;
 }
 
 export function AppSidebar({
@@ -58,8 +64,12 @@ export function AppSidebar({
   standalone = false,
   showQuickRegisterModal = false,
   showMapCard = false,
+  ordens = [],
+  selectedOsId,
+  onOsSelect,
 }: AppSidebarProps) {
   const { theme } = useTheme();
+  const [osListOpen, setOsListOpen] = useState(false);
 
   const handleServiceClick = (service: string) => {
     if (onServiceSelect) {
@@ -141,15 +151,57 @@ export function AppSidebar({
                           <BarChart3 className="h-4 w-4 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
                           <span>Relatório</span>
                         </button>
-                        <Link href="/ordem-servico">
-                          <button
-                            className="w-full flex items-center gap-3 pl-8 pr-4 py-2 rounded-md text-sm transition-colors text-foreground/70 hover:text-foreground hover:bg-accent/50"
-                            data-testid="button-ordem-servico"
-                          >
-                            <ClipboardList className="h-4 w-4 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
-                            <span>Ordem de Serviço</span>
-                          </button>
-                        </Link>
+                        <button
+                          onClick={() => setOsListOpen(v => !v)}
+                          className="w-full flex items-center gap-3 pl-8 pr-4 py-2 rounded-md text-sm transition-colors text-foreground/70 hover:text-foreground hover:bg-accent/50"
+                          data-testid="button-ordem-servico"
+                        >
+                          <ClipboardList className="h-4 w-4 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
+                          <span className="flex-1 text-left">Ordem de Serviço</span>
+                          <motion.div animate={{ rotate: osListOpen ? 90 : 0 }} transition={{ duration: 0.18 }}>
+                            <ChevronRight className="h-3.5 w-3.5 opacity-50" />
+                          </motion.div>
+                        </button>
+
+                        <AnimatePresence initial={false}>
+                          {osListOpen && (
+                            <motion.div
+                              initial={{ opacity: 0, height: 0 }}
+                              animate={{ opacity: 1, height: "auto" }}
+                              exit={{ opacity: 0, height: 0 }}
+                              transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
+                              className="overflow-hidden"
+                            >
+                              <div className="pl-12 pr-2 py-1 space-y-0.5">
+                                {ordens.length === 0 ? (
+                                  <p className="text-xs text-muted-foreground px-2 py-1">Nenhuma OS emitida</p>
+                                ) : (
+                                  ordens.map((os: any) => (
+                                    <button
+                                      key={os.id}
+                                      onClick={() => onOsSelect?.(selectedOsId === os.id ? null : os.id)}
+                                      className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs transition-colors text-left ${
+                                        selectedOsId === os.id
+                                          ? 'bg-emerald-600 text-white font-medium'
+                                          : 'text-foreground/70 hover:text-foreground hover:bg-accent/50'
+                                      }`}
+                                    >
+                                      <MapPin className="h-3 w-3 flex-shrink-0" />
+                                      <span className="flex-1 truncate">OS {os.numero}</span>
+                                      <span className="opacity-60 flex-shrink-0">L{os.lote}</span>
+                                    </button>
+                                  ))
+                                )}
+                                <Link href="/ordem-servico">
+                                  <button className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors mt-1 border-t border-border/40 pt-2">
+                                    <Settings className="h-3 w-3 flex-shrink-0" />
+                                    <span>Gerenciar / Nova OS</span>
+                                  </button>
+                                </Link>
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
                       </motion.div>
                     )}
                   </AnimatePresence>
