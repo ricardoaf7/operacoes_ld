@@ -537,8 +537,8 @@ export function MowingStatsBar({ visible = true, onPeriodChange, onPeriodClear }
   const [showLoteSelector, setShowLoteSelector] = useState(false);
   const [generatingPdf, setGeneratingPdf] = useState(false);
   const [pdfPreview, setPdfPreview] = useState<{ pdfData: ArrayBuffer; fileName: string } | null>(null);
-  const [filterBairro, setFilterBairro] = useState('');
-  const [filterTipo, setFilterTipo] = useState('');
+  const [filterBairro, setFilterBairro] = useState('all');
+  const [filterTipo, setFilterTipo] = useState('all');
   const pdfContainerRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
 
@@ -601,8 +601,8 @@ export function MowingStatsBar({ visible = true, onPeriodChange, onPeriodClear }
     setShowLoteSelector(false);
     try {
       const params = new URLSearchParams({ from, to, details: 'true', lote: loteFilter });
-      if (filterBairro) params.set('bairro', filterBairro);
-      if (filterTipo) params.set('tipo', filterTipo);
+      if (filterBairro && filterBairro !== 'all') params.set('bairro', filterBairro);
+      if (filterTipo && filterTipo !== 'all') params.set('tipo', filterTipo);
       const url = `/api/areas/by-period?${params.toString()}`;
       const res = await fetch(url);
       if (!res.ok) throw new Error('Falha ao buscar dados');
@@ -615,8 +615,8 @@ export function MowingStatsBar({ visible = true, onPeriodChange, onPeriodClear }
 
       const loteLabel = loteFilter === 'all' ? 'Ambos (1 e 2)' : `Lote ${loteFilter}`;
       const extraFilters = {
-        bairro: filterBairro || undefined,
-        tipo: filterTipo || undefined,
+        bairro: filterBairro !== 'all' ? filterBairro : undefined,
+        tipo: filterTipo !== 'all' ? filterTipo : undefined,
       };
       const result = generatePdf(data, loteLabel, extraFilters);
       setPdfPreview(result);
@@ -817,7 +817,7 @@ export function MowingStatsBar({ visible = true, onPeriodChange, onPeriodClear }
                   <SelectValue placeholder="Todos os bairros" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Todos os bairros</SelectItem>
+                  <SelectItem value="all">Todos os bairros</SelectItem>
                   {bairroOptions.map(b => (
                     <SelectItem key={b} value={b}>{b}</SelectItem>
                   ))}
@@ -828,7 +828,7 @@ export function MowingStatsBar({ visible = true, onPeriodChange, onPeriodClear }
                   <SelectValue placeholder="Todos os tipos" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Todos os tipos</SelectItem>
+                  <SelectItem value="all">Todos os tipos</SelectItem>
                   {tipoOptions.map(t => (
                     <SelectItem key={t} value={t}>{t}</SelectItem>
                   ))}
