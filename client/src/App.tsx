@@ -11,6 +11,7 @@ import RelatorioRocagensPage from "@/pages/relatorio-rocagens";
 import LoginPage from "@/pages/login";
 import PublicDashboard from "@/pages/public-dashboard";
 import UserManagement from "@/pages/user-management";
+import OrdemServicoPage from "@/pages/ordem-servico";
 import NotFound from "@/pages/not-found";
 import { Loader2 } from "lucide-react";
 
@@ -34,6 +35,7 @@ function AuthenticatedRoutes() {
       <Route path="/" component={Dashboard} />
       <Route path="/relatorios" component={RelatoriosPage} />
       <Route path="/relatorios/rocagens" component={RelatorioRocagensPage} />
+      <Route path="/ordem-servico" component={OrdemServicoPage} />
       {user.role === "admin" && (
         <Route path="/usuarios" component={UserManagement} />
       )}

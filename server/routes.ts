@@ -1494,4 +1494,95 @@ export async function registerRoutes(app: Express): Promise<void> {
     }
   });
 
+  // ===================== ORDENS DE SERVIÇO =====================
+
+  app.get("/api/ordens", requireAuth, async (req, res) => {
+    try {
+      const sb = getSupabase();
+      const { data, error } = await sb
+        .from("ordens_servico")
+        .select("*")
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      res.json(data);
+    } catch (error: any) {
+      res.status(500).json({ error: "Erro ao buscar ordens" });
+    }
+  });
+
+  app.get("/api/ordens/:id", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const sb = getSupabase();
+
+      const { data: ordem, error: e1 } = await sb
+        .from("ordens_servico")
+        .select("*")
+        .eq("id", id)
+        .single();
+      if (e1) throw e1;
+
+      const { data: areaLinks, error: e2 } = await sb
+        .from("ordens_servico_areas")
+        .select("area_id")
+        .eq("ordem_id", id);
+      if (e2) throw e2;
+
+      const areaIds = areaLinks.map((r: any) => r.area_id);
+      let areas: any[] = [];
+      if (areaIds.length > 0) {
+        const { data: areaData, error: e3 } = await sb
+          .from("service_areas")
+          .select("id, tipo, endereco, bairro, metragem_m2")
+          .in("id", areaIds)
+          .order("id");
+        if (e3) throw e3;
+        areas = areaData;
+      }
+
+      res.json({ ...ordem, areas });
+    } catch (error: any) {
+      res.status(500).json({ error: "Erro ao buscar ordem" });
+    }
+  });
+
+  app.post("/api/ordens", requireAuth, async (req, res) => {
+    try {
+      const { numero, lote, mes_referencia, data_emissao, emitido_por, observacao, area_ids } = req.body;
+      if (!numero || !lote || !mes_referencia || !data_emissao || !area_ids?.length) {
+        return res.status(400).json({ error: "Campos obrigatórios faltando" });
+      }
+
+      const sb = getSupabase();
+
+      const { data: ordem, error: e1 } = await sb
+        .from("ordens_servico")
+        .insert({ numero, lote, mes_referencia, data_emissao, emitido_por: emitido_por || req.session.userName, observacao })
+        .select()
+        .single();
+      if (e1) throw e1;
+
+      const links = area_ids.map((area_id: number) => ({ ordem_id: ordem.id, area_id }));
+      const { error: e2 } = await sb.from("ordens_servico_areas").insert(links);
+      if (e2) throw e2;
+
+      res.status(201).json(ordem);
+    } catch (error: any) {
+      console.error("Erro ao criar ordem:", error);
+      res.status(500).json({ error: "Erro ao criar ordem de serviço" });
+    }
+  });
+
+  app.delete("/api/ordens/:id", requireRole("admin", "gestor"), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const sb = getSupabase();
+      const { error } = await sb.from("ordens_servico").delete().eq("id", id);
+      if (error) throw error;
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ error: "Erro ao excluir ordem" });
+    }
+  });
+
 }

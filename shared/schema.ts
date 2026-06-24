@@ -183,6 +183,39 @@ export type User = z.infer<typeof userSchema>;
 export const insertUserSchema = userSchema.omit({ id: true });
 export type InsertUser = z.infer<typeof insertUserSchema>;
 
+// Ordens de Serviço
+export const ordemServicoSchema = z.object({
+  id: z.number(),
+  numero: z.string(),
+  lote: z.number(),
+  mes_referencia: z.string(),
+  data_emissao: z.string(),
+  emitido_por: z.string().nullable().optional(),
+  observacao: z.string().nullable().optional(),
+  created_at: z.string().optional(),
+  areas: z.array(z.object({
+    id: z.number(),
+    tipo: z.string(),
+    endereco: z.string(),
+    bairro: z.string().nullable().optional(),
+    metragem_m2: z.number().nullable().optional(),
+  })).optional(),
+});
+
+export type OrdemServico = z.infer<typeof ordemServicoSchema>;
+
+export const insertOrdemServicoSchema = z.object({
+  numero: z.string().min(1),
+  lote: z.number(),
+  mes_referencia: z.string().min(1),
+  data_emissao: z.string(),
+  emitido_por: z.string().optional(),
+  observacao: z.string().optional(),
+  area_ids: z.array(z.number()).min(1),
+});
+
+export type InsertOrdemServico = z.infer<typeof insertOrdemServicoSchema>;
+
 export const exportHistory = pgTable("export_history", {
   id: serial("id").primaryKey(),
   scope: text("scope").notNull(),
