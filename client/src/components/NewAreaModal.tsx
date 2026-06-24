@@ -33,18 +33,17 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
 export const AREA_TIPOS_PADRAO = [
-  "Area Publica",
-  "Canteiro",
-  "Viela",
-  "Praca",
-  "Lote",
-  "Fundo de Vale",
-  "Laterais",
-  "Rotatoria",
-  "Linha Ferrea",
-  "Campo de Futebol",
-  "Rua Projetada",
-  "Jardim",
+  "ÁREA PÚBLICA",
+  "CANTEIRO",
+  "CANTEIRO E LATERAL",
+  "CANTEIRO E BARRANCO",
+  "LATERAL",
+  "PRAÇA",
+  "FUNDO DE VALE",
+  "VIELA",
+  "LOTE PÚBLICO",
+  "ROTATÓRIA",
+  "CAMPO DE FUTEBOL",
 ];
 
 const CUSTOM_VALUE = "__custom__";
