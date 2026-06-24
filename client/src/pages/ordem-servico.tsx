@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
@@ -32,6 +32,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Search,
+  Printer,
+  X,
 } from "lucide-react";
 import { Link } from "wouter";
 import type { OrdemServico } from "@shared/schema";
@@ -62,6 +64,8 @@ export default function OrdemServicoPage() {
   );
   const [observacao, setObservacao] = useState("");
   const [visualizandoId, setVisualizandoId] = useState<number | null>(null);
+  const [pdfPreviewOpen, setPdfPreviewOpen] = useState(false);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
 
   const { data: areas = [], isLoading: loadingAreas } = useQuery<any[]>({
     queryKey: ["/api/areas/light"],
@@ -160,23 +164,27 @@ export default function OrdemServicoPage() {
 
   const handlePDF = () => {
     if (!ordemDetalhada) return;
-    const win = window.open("", "_blank");
-    if (!win) return;
-    win.document.write(gerarHTMLImpressao(ordemDetalhada));
-    win.document.close();
-    win.print();
+    setPdfPreviewOpen(true);
+  };
+
+  const handleImprimir = () => {
+    iframeRef.current?.contentWindow?.print();
   };
 
   const handleExcel = () => {
     if (!ordemDetalhada?.areas) return;
     const totalM2 = ordemDetalhada.areas.reduce((s, a) => s + (a.metragem_m2 || 0), 0);
+    const fmt = (v: number | null | undefined) =>
+      v != null ? v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—";
+    const cell = (content: string, extra = "") =>
+      `<td style="padding:8px;border:1px solid #c8ddd4;text-align:center;vertical-align:middle${extra}">${content}</td>`;
     const rows = ordemDetalhada.areas.map((a, i) => `
-      <tr style="background:${i % 2 === 0 ? "#ffffff" : "#f2f7f4"}">
-        <td style="padding:6px 10px;border:1px solid #c8ddd4;text-align:center">${a.id}</td>
-        <td style="padding:6px 10px;border:1px solid #c8ddd4">${a.endereco}</td>
-        <td style="padding:6px 10px;border:1px solid #c8ddd4">${a.bairro || "—"}</td>
-        <td style="padding:6px 10px;border:1px solid #c8ddd4">${a.tipo}</td>
-        <td style="padding:6px 10px;border:1px solid #c8ddd4;text-align:right">${a.metragem_m2?.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) ?? "—"}</td>
+      <tr height="30" style="background:${i % 2 === 0 ? "#ffffff" : "#f2f7f4"}">
+        ${cell(String(a.id))}
+        ${cell(a.endereco)}
+        ${cell(a.bairro || "—")}
+        ${cell(a.tipo)}
+        ${cell(fmt(a.metragem_m2))}
       </tr>`).join("");
     const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
 <head><meta charset="UTF-8">
@@ -184,31 +192,38 @@ export default function OrdemServicoPage() {
 <x:Name>OS ${ordemDetalhada.numero}</x:Name>
 <x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions>
 </x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]-->
+<style>td,th{font-family:Arial,sans-serif;font-size:11px;text-align:center;vertical-align:middle}</style>
 </head><body>
-<table style="font-family:Arial,sans-serif;font-size:12px;border-collapse:collapse;width:100%">
-  <tr><td colspan="5" style="padding:12px 10px;background:#1e5f3a;color:#ffffff;font-size:15px;font-weight:bold">
-    CMTU — Ordem de Serviço Nº ${ordemDetalhada.numero}
+<table style="border-collapse:collapse;width:100%">
+  <colgroup>
+    <col width="55">
+    <col width="500">
+    <col width="160">
+    <col width="140">
+    <col width="110">
+  </colgroup>
+  <tr height="36"><td colspan="5" style="padding:10px 14px;background:#1e5f3a;color:#fff;font-size:14px;font-weight:bold;text-align:center">
+    CMTU — Ordem de Serviço Nº ${ordemDetalhada.numero} — Lote ${ordemDetalhada.lote}
   </td></tr>
-  <tr>
-    <td colspan="2" style="padding:6px 10px;background:#e8f3ee;border:1px solid #c8ddd4"><b>Lote:</b> ${ordemDetalhada.lote}</td>
-    <td colspan="2" style="padding:6px 10px;background:#e8f3ee;border:1px solid #c8ddd4"><b>Mês de referência:</b> ${ordemDetalhada.mes_referencia}</td>
-    <td style="padding:6px 10px;background:#e8f3ee;border:1px solid #c8ddd4"><b>Data de emissão:</b> ${formatDate(ordemDetalhada.data_emissao)}</td>
+  <tr height="28">
+    <td colspan="2" style="padding:6px;background:#e8f3ee;border:1px solid #c8ddd4;text-align:center"><b>Mês:</b> ${ordemDetalhada.mes_referencia}</td>
+    <td style="padding:6px;background:#e8f3ee;border:1px solid #c8ddd4;text-align:center"><b>Emissão:</b> ${formatDate(ordemDetalhada.data_emissao)}</td>
+    <td style="padding:6px;background:#e8f3ee;border:1px solid #c8ddd4;text-align:center"><b>Áreas:</b> ${ordemDetalhada.areas.length}</td>
+    <td style="padding:6px;background:#e8f3ee;border:1px solid #c8ddd4;text-align:center"><b>Total m²:</b> ${fmt(totalM2)}</td>
   </tr>
-  ${ordemDetalhada.observacao ? `<tr><td colspan="5" style="padding:6px 10px;background:#e8f3ee;border:1px solid #c8ddd4"><b>Observação:</b> ${ordemDetalhada.observacao}</td></tr>` : ""}
-  <tr><td colspan="5" style="padding:4px"></td></tr>
-  <tr>
-    <th style="padding:8px 10px;background:#2d7a4f;color:#fff;border:1px solid #1e5f3a;text-align:center;width:55px">ID</th>
-    <th style="padding:8px 10px;background:#2d7a4f;color:#fff;border:1px solid #1e5f3a;text-align:left">Endereço</th>
-    <th style="padding:8px 10px;background:#2d7a4f;color:#fff;border:1px solid #1e5f3a;text-align:left;width:160px">Bairro</th>
-    <th style="padding:8px 10px;background:#2d7a4f;color:#fff;border:1px solid #1e5f3a;text-align:left;width:140px">Tipo</th>
-    <th style="padding:8px 10px;background:#2d7a4f;color:#fff;border:1px solid #1e5f3a;text-align:right;width:110px">Metragem (m²)</th>
+  ${ordemDetalhada.observacao ? `<tr height="26"><td colspan="5" style="padding:6px;background:#e8f3ee;border:1px solid #c8ddd4;text-align:center"><b>Observação:</b> ${ordemDetalhada.observacao}</td></tr>` : ""}
+  <tr height="30">
+    <th style="padding:8px;background:#2d7a4f;color:#fff;border:1px solid #1e5f3a;text-align:center">ID</th>
+    <th style="padding:8px;background:#2d7a4f;color:#fff;border:1px solid #1e5f3a;text-align:center">Endereço</th>
+    <th style="padding:8px;background:#2d7a4f;color:#fff;border:1px solid #1e5f3a;text-align:center">Bairro</th>
+    <th style="padding:8px;background:#2d7a4f;color:#fff;border:1px solid #1e5f3a;text-align:center">Tipo</th>
+    <th style="padding:8px;background:#2d7a4f;color:#fff;border:1px solid #1e5f3a;text-align:center">Metragem (m²)</th>
   </tr>
   ${rows}
-  <tr>
-    <td colspan="4" style="padding:8px 10px;background:#1e5f3a;color:#fff;font-weight:bold;border:1px solid #1e5f3a;text-align:right">TOTAL</td>
-    <td style="padding:8px 10px;background:#1e5f3a;color:#fff;font-weight:bold;border:1px solid #1e5f3a;text-align:right">${totalM2.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+  <tr height="30">
+    <td colspan="4" style="padding:8px;background:#1e5f3a;color:#fff;font-weight:bold;border:1px solid #1e5f3a;text-align:center">TOTAL</td>
+    <td style="padding:8px;background:#1e5f3a;color:#fff;font-weight:bold;border:1px solid #1e5f3a;text-align:center">${fmt(totalM2)}</td>
   </tr>
-  <tr><td colspan="5" style="padding:4px;font-size:10px;color:#999">Total de áreas: ${ordemDetalhada.areas.length} | Emitida por: ${ordemDetalhada.emitido_por || "—"}</td></tr>
 </table>
 </body></html>`;
     const blob = new Blob([html], { type: "application/vnd.ms-excel;charset=utf-8" });
@@ -497,6 +512,34 @@ export default function OrdemServicoPage() {
         )}
       </div>
 
+      {/* Preview PDF */}
+      {pdfPreviewOpen && ordemDetalhada && (
+        <div className="fixed inset-0 z-50 flex flex-col bg-background">
+          <div className="flex items-center gap-3 px-4 py-3 border-b bg-muted/30 flex-shrink-0">
+            <span className="font-semibold text-sm flex-1">
+              Pré-visualização — OS Nº {ordemDetalhada.numero}
+            </span>
+            <Button variant="outline" size="sm" onClick={handleImprimir}>
+              <Printer className="h-4 w-4 mr-2" /> Imprimir / Salvar PDF
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => setPdfPreviewOpen(false)}>
+              <X className="h-4 w-4 mr-1" /> Fechar
+            </Button>
+          </div>
+          <div className="flex-1 overflow-hidden bg-gray-200 p-4">
+            <iframe
+              ref={iframeRef}
+              srcDoc={gerarHTMLImpressao(ordemDetalhada)}
+              className="w-full h-full rounded shadow-lg bg-white"
+              title="Preview OS"
+            />
+          </div>
+          <div className="px-4 py-2 border-t bg-muted/20 text-xs text-muted-foreground text-center">
+            Para salvar como PDF: clique em "Imprimir / Salvar PDF" → selecione "Salvar como PDF" na impressora
+          </div>
+        </div>
+      )}
+
       {/* Dialog confirmar OS */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="sm:max-w-md">
@@ -585,14 +628,16 @@ function formatDate(d: string) {
 
 function gerarHTMLImpressao(os: OrdemServico): string {
   const totalM2 = os.areas?.reduce((s, a) => s + (a.metragem_m2 || 0), 0) ?? 0;
+  const fmt = (v: number | null | undefined) =>
+    v != null ? v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—";
   const rows = os.areas
     ?.map(
-      (a, i) => `<tr style="background:${i % 2 === 0 ? "#fff" : "#f9f9f9"}">
-        <td style="padding:6px 8px;border:1px solid #ddd">${a.id}</td>
-        <td style="padding:6px 8px;border:1px solid #ddd">${a.endereco}</td>
-        <td style="padding:6px 8px;border:1px solid #ddd">${a.bairro || "—"}</td>
-        <td style="padding:6px 8px;border:1px solid #ddd">${a.tipo}</td>
-        <td style="padding:6px 8px;border:1px solid #ddd;text-align:right">${a.metragem_m2?.toLocaleString("pt-BR", { maximumFractionDigits: 0 }) ?? "—"}</td>
+      (a, i) => `<tr style="background:${i % 2 === 0 ? "#fff" : "#f2f7f4"}">
+        <td style="padding:6px 8px;border:1px solid #c8ddd4;text-align:center">${a.id}</td>
+        <td style="padding:6px 8px;border:1px solid #c8ddd4">${a.endereco}</td>
+        <td style="padding:6px 8px;border:1px solid #c8ddd4;text-align:center">${a.bairro || "—"}</td>
+        <td style="padding:6px 8px;border:1px solid #c8ddd4;text-align:center">${a.tipo}</td>
+        <td style="padding:6px 8px;border:1px solid #c8ddd4;text-align:right">${fmt(a.metragem_m2)}</td>
       </tr>`
     )
     .join("");
@@ -600,17 +645,18 @@ function gerarHTMLImpressao(os: OrdemServico): string {
   return `<!DOCTYPE html><html><head><meta charset="utf-8">
 <title>OS ${os.numero}</title>
 <style>
+  *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
   body{font-family:Arial,sans-serif;font-size:12px;margin:20px;color:#222}
   h1{font-size:16px;margin:0}
   .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;border-bottom:2px solid #2d7a4f;padding-bottom:12px}
-  .meta{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px;background:#f5f5f5;padding:10px;border-radius:4px}
+  .meta{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px;background:#e8f3ee;padding:10px;border-radius:4px;border:1px solid #c8ddd4}
   .meta div{font-size:11px}.meta strong{display:block;font-size:12px}
   table{width:100%;border-collapse:collapse;font-size:11px}
-  th{background:#2d7a4f;color:#fff;padding:8px;text-align:left;border:1px solid #2d7a4f}
+  th{background:#2d7a4f;color:#fff;padding:8px;border:1px solid #1e5f3a}
   .total{margin-top:12px;text-align:right;font-size:13px;font-weight:bold;color:#2d7a4f}
   .assinaturas{display:grid;grid-template-columns:1fr 1fr;gap:60px;margin-top:60px}
   .assinatura{border-top:1px solid #222;padding-top:8px;text-align:center;font-size:11px}
-  @media print{body{margin:10px}}
+  @media print{body{margin:8px}}
 </style></head><body>
 <div class="header">
   <div>
@@ -626,20 +672,20 @@ function gerarHTMLImpressao(os: OrdemServico): string {
 <div class="meta">
   <div>Mês de referência<strong>${os.mes_referencia}</strong></div>
   <div>Total de áreas<strong>${os.areas?.length}</strong></div>
-  <div>Total m²<strong>${totalM2.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} m²</strong></div>
+  <div>Total m²<strong>${fmt(totalM2)} m²</strong></div>
   ${os.observacao ? `<div style="grid-column:span 3">Observação<strong>${os.observacao}</strong></div>` : ""}
 </div>
 <table>
   <thead><tr>
-    <th style="width:50px">ID</th>
-    <th>Endereço</th>
-    <th style="width:140px">Bairro</th>
-    <th style="width:120px">Tipo</th>
-    <th style="width:90px;text-align:right">Metragem (m²)</th>
+    <th style="width:50px;text-align:center">ID</th>
+    <th style="text-align:left">Endereço</th>
+    <th style="width:140px;text-align:center">Bairro</th>
+    <th style="width:120px;text-align:center">Tipo</th>
+    <th style="width:100px;text-align:right">Metragem (m²)</th>
   </tr></thead>
   <tbody>${rows}</tbody>
 </table>
-<div class="total">Total: ${totalM2.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} m²</div>
+<div class="total">Total: ${fmt(totalM2)} m²</div>
 <div class="assinaturas">
   <div class="assinatura">Fiscal responsável</div>
   <div class="assinatura">Responsável pela contratada</div>
