@@ -1077,9 +1077,13 @@ import * as fs from "fs";
 import * as path from "path";
 import bcrypt from "bcryptjs";
 import multer from "multer";
+import { createClient } from "@supabase/supabase-js";
 var upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
-var SUPABASE_URL = process.env.SUPABASE_URL ?? "";
-var SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY ?? "";
+function getSupabase() {
+  const url = process.env.SUPABASE_URL ?? "";
+  const key = process.env.SUPABASE_SERVICE_KEY ?? "";
+  return createClient(url, key, { auth: { persistSession: false } });
+}
 function convertToSupabaseCSV(areas) {
   if (areas.length === 0) {
     return "id,ordem,sequencia_cadastro,tipo,endereco,bairro,metragem_m2,lat,lng,lote,status,history,polygon,scheduled_date,proxima_previsao,ultima_rocagem,manual_schedule,days_to_complete,servico,registrado_por,data_registro,executando,executando_desde\n";
@@ -2008,21 +2012,14 @@ async function registerRoutes(app) {
       const date = req.body.date || (/* @__PURE__ */ new Date()).toISOString().split("T")[0];
       const ext = req.file.originalname.split(".").pop() ?? "jpg";
       const filePath = `areas/${areaId}/${Date.now()}.${ext}`;
-      const uploadRes = await fetch(`${SUPABASE_URL}/storage/v1/object/fotos/${filePath}`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${SUPABASE_SERVICE_KEY}`,
-          "Content-Type": req.file.mimetype
-        },
-        body: req.file.buffer
-      });
-      if (!uploadRes.ok) {
-        const err = await uploadRes.text();
-        console.error("Supabase upload error:", err);
-        res.status(500).json({ error: "Falha no upload para o Supabase" });
+      const supabase = getSupabase();
+      const { error: uploadError } = await supabase.storage.from("fotos").upload(filePath, req.file.buffer, { contentType: req.file.mimetype, upsert: false });
+      if (uploadError) {
+        console.error("Supabase upload error:", uploadError);
+        res.status(500).json({ error: uploadError.message });
         return;
       }
-      const publicUrl = `${SUPABASE_URL}/storage/v1/object/public/fotos/${filePath}`;
+      const { data: { publicUrl } } = supabase.storage.from("fotos").getPublicUrl(filePath);
       const area = await storage.getAreaById(areaId);
       if (!area) {
         res.status(404).json({ error: "Area not found" });
@@ -2047,10 +2044,8 @@ async function registerRoutes(app) {
       const marker = `/storage/v1/object/public/fotos/`;
       const filePath = photoUrl.includes(marker) ? photoUrl.split(marker)[1] : null;
       if (filePath) {
-        await fetch(`${SUPABASE_URL}/storage/v1/object/fotos/${filePath}`, {
-          method: "DELETE",
-          headers: { Authorization: `Bearer ${SUPABASE_SERVICE_KEY}` }
-        });
+        const supabase = getSupabase();
+        await supabase.storage.from("fotos").remove([filePath]);
       }
       const area = await storage.getAreaById(areaId);
       if (!area) {
