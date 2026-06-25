@@ -213,7 +213,7 @@ export function AppSidebar({
                         className="w-full flex items-center gap-2.5 pl-9 pr-3 py-1.5 rounded-md text-xs transition-colors text-foreground/60 hover:text-foreground hover:bg-muted/50"
                         data-testid="button-relatorio-rocagem"
                       >
-                        <BarChart3 className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
+                        <BarChart3 className="h-3.5 w-3.5 text-foreground/40 flex-shrink-0" />
                         <span>Relatório</span>
                       </button>
                       <button
@@ -221,7 +221,7 @@ export function AppSidebar({
                         className="w-full flex items-center gap-2.5 pl-9 pr-3 py-1.5 rounded-md text-xs transition-colors text-foreground/60 hover:text-foreground hover:bg-muted/50"
                         data-testid="button-ordem-servico"
                       >
-                        <ClipboardList className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
+                        <ClipboardList className="h-3.5 w-3.5 text-foreground/40 flex-shrink-0" />
                         <span className="flex-1 text-left">Ordem de Serviço</span>
                         <motion.div
                           animate={{ rotate: osListOpen ? 90 : 0 }}
@@ -277,7 +277,7 @@ export function AppSidebar({
 
                       <Link href="/cronograma">
                         <button className="w-full flex items-center gap-2.5 pl-9 pr-3 py-1.5 rounded-md text-xs transition-colors text-foreground/60 hover:text-foreground hover:bg-muted/50">
-                          <CalendarDays className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
+                          <CalendarDays className="h-3.5 w-3.5 text-foreground/40 flex-shrink-0" />
                           <span>Cronograma Semanal</span>
                         </button>
                       </Link>
@@ -467,10 +467,10 @@ function ServiceButton({
     <button
       onClick={onClick}
       data-testid={testId}
-      className={`w-full flex items-center px-3 py-1.5 rounded-md text-sm text-left transition-all duration-150 ${
+      className={`w-full flex items-center px-3 py-1.5 rounded-md text-xs uppercase tracking-wide text-left transition-all duration-150 ${
         active
-          ? "bg-muted/80 text-foreground font-medium"
-          : "text-foreground/60 hover:text-foreground hover:bg-muted/50"
+          ? "text-foreground font-semibold ring-1 ring-emerald-500/50"
+          : "text-foreground/55 hover:text-foreground hover:ring-1 hover:ring-emerald-500/25"
       }`}
     >
       <span className="truncate">{label}</span>

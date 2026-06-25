@@ -271,11 +271,13 @@ export function DashboardMap({
       }
     });
 
-    const selectedLayer = tileLayersRef.current[currentLayer];
+    // No modo escuro, o "Padrão" vira Híbrido (satélite + ruas)
+    const effectiveLayer = (currentLayer === "standard" && theme === "dark") ? "hybrid" : currentLayer;
+    const selectedLayer = tileLayersRef.current[effectiveLayer as keyof typeof tileLayersRef.current];
     if (selectedLayer && mapRef.current) {
       selectedLayer.addTo(mapRef.current);
     }
-  }, [currentLayer]);
+  }, [currentLayer, theme]);
 
   useEffect(() => {
     if (!mapRef.current) return;
