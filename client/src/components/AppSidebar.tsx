@@ -79,315 +79,319 @@ export function AppSidebar({
   };
 
   const header = (
-    <div className="flex flex-col gap-1.5">
-      <img 
-        src={theme === 'dark' ? operacoesLogoNegativo : operacoesLogoPositivo} 
-        alt="Diretoria de Operações"
-        className="h-14 w-auto object-contain"
-      />
-      <p className="text-xs text-muted-foreground text-center leading-tight">Zeladoria em Tempo Real</p>
+    <div className="flex flex-col gap-2">
+      {/* Logos institucionais */}
+      <div className="flex items-center justify-between gap-2 pb-2.5 border-b border-border/50">
+        <img
+          src="/logos/londrina.png"
+          alt="Prefeitura de Londrina"
+          className="h-6 object-contain opacity-90"
+          style={{ maxWidth: 82 }}
+        />
+        <img
+          src="/logos/cmtu.png"
+          alt="CMTU Londrina"
+          className="h-6 object-contain opacity-90"
+          style={{ maxWidth: 82 }}
+        />
+      </div>
+
+      {/* Logo principal */}
+      <div className="flex justify-center py-0.5">
+        <img
+          src={theme === "dark" ? operacoesLogoNegativo : operacoesLogoPositivo}
+          alt="Diretoria de Operações"
+          className="h-11 w-auto object-contain"
+        />
+      </div>
+
+      {/* Indicador ao vivo */}
+      <div className="flex items-center justify-center gap-1.5">
+        <span className="relative flex h-1.5 w-1.5 flex-shrink-0">
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+          <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500" />
+        </span>
+        <span className="text-[9.5px] uppercase tracking-widest font-semibold text-muted-foreground/55 select-none">
+          Zeladoria em Tempo Real
+        </span>
+      </div>
     </div>
   );
 
   const content = (
     <>
-        {selectedArea && onAreaClose && !showQuickRegisterModal && !showMapCard ? (
-          <div className="mb-4">
-            <AreaInfoCard 
-              area={selectedArea} 
-              onClose={onAreaClose}
-              onUpdate={onAreaUpdate}
-            />
-            <Separator className="my-4" />
-          </div>
-        ) : null}
-        
+      {selectedArea && onAreaClose && !showQuickRegisterModal && !showMapCard ? (
         <div className="mb-4">
-          <div className="flex items-center gap-2 px-3 py-2 text-sm font-semibold text-muted-foreground">
-            <Layers className="h-4 w-4" />
-            <span>Serviços</span>
-          </div>
-
-          <Accordion type="single" collapsible className="space-y-2">
-            <AccordionItem value="limpeza" className="border-0">
-              <AccordionTrigger 
-                className="rounded-lg bg-emerald-600/20 dark:bg-emerald-400/20 hover:bg-emerald-600/30 dark:hover:bg-emerald-400/30 px-4 py-3 hover:no-underline data-[state=open]:bg-emerald-600/30 dark:data-[state=open]:bg-emerald-400/30 border border-emerald-600/40 dark:border-emerald-400/40"
-                data-testid="accordion-limpeza-urbana"
-              >
-                <div className="flex items-center gap-3">
-                  <Leaf className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
-                  <span className="font-semibold text-sm text-emerald-700 dark:text-emerald-300">LIMPEZA URBANA</span>
-                </div>
-              </AccordionTrigger>
-              <AccordionContent className="pb-2 pt-2 px-2">
-                <div className="space-y-1">
-                  <button
-                    onClick={() => handleServiceClick('rocagem')}
-                    className={`w-full flex items-center justify-start gap-3 px-4 py-2.5 rounded-md text-sm text-left transition-colors hover-elevate active-elevate-2 ${
-                      selectedService === 'rocagem' 
-                        ? 'bg-accent text-accent-foreground font-medium' 
-                        : 'text-foreground/80 hover:text-foreground'
-                    }`}
-                    data-testid="service-rocagem"
-                  >
-                    <Scissors className="h-4 w-4 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
-                    <span className="text-left">Capina e Roçagem</span>
-                  </button>
-                  
-                  <AnimatePresence initial={false}>
-                    {selectedService === 'rocagem' && (
-                      <motion.div
-                        key="rocagem-tools"
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: "auto" }}
-                        exit={{ opacity: 0, height: 0 }}
-                        transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
-                        className="overflow-hidden"
-                      >
-                        <button
-                          onClick={() => onOpenReport?.()}
-                          className="w-full flex items-center gap-3 pl-8 pr-4 py-2 rounded-md text-sm transition-colors text-foreground/70 hover:text-foreground hover:bg-accent/50"
-                          data-testid="button-relatorio-rocagem"
-                        >
-                          <BarChart3 className="h-4 w-4 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
-                          <span>Relatório</span>
-                        </button>
-                        <button
-                          onClick={() => setOsListOpen(v => !v)}
-                          className="w-full flex items-center gap-3 pl-8 pr-4 py-2 rounded-md text-sm transition-colors text-foreground/70 hover:text-foreground hover:bg-accent/50"
-                          data-testid="button-ordem-servico"
-                        >
-                          <ClipboardList className="h-4 w-4 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
-                          <span className="flex-1 text-left">Ordem de Serviço</span>
-                          <motion.div animate={{ rotate: osListOpen ? 90 : 0 }} transition={{ duration: 0.18 }}>
-                            <ChevronRight className="h-3.5 w-3.5 opacity-50" />
-                          </motion.div>
-                        </button>
-
-                        <AnimatePresence initial={false}>
-                          {osListOpen && (
-                            <motion.div
-                              initial={{ opacity: 0, height: 0 }}
-                              animate={{ opacity: 1, height: "auto" }}
-                              exit={{ opacity: 0, height: 0 }}
-                              transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
-                              className="overflow-hidden"
-                            >
-                              <div className="pl-12 pr-2 py-1 space-y-0.5">
-                                {ordens.length === 0 ? (
-                                  <p className="text-xs text-muted-foreground px-2 py-1">Nenhuma OS emitida</p>
-                                ) : (
-                                  ordens.map((os: any) => (
-                                    <button
-                                      key={os.id}
-                                      onClick={() => onOsSelect?.(selectedOsId === os.id ? null : os.id)}
-                                      className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs transition-colors text-left ${
-                                        selectedOsId === os.id
-                                          ? 'bg-emerald-600 text-white font-medium'
-                                          : 'text-foreground/70 hover:text-foreground hover:bg-accent/50'
-                                      }`}
-                                    >
-                                      <MapPin className="h-3 w-3 flex-shrink-0" />
-                                      <span className="flex-1 truncate">OS {os.numero}</span>
-                                      <span className="opacity-60 flex-shrink-0">L{os.lote}</span>
-                                    </button>
-                                  ))
-                                )}
-                                <Link href="/ordem-servico">
-                                  <button className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors mt-1 border-t border-border/40 pt-2">
-                                    <Settings className="h-3 w-3 flex-shrink-0" />
-                                    <span>Gerenciar / Nova OS</span>
-                                  </button>
-                                </Link>
-                              </div>
-                            </motion.div>
-                          )}
-                        </AnimatePresence>
-
-                        <Link href="/cronograma">
-                          <button className="w-full flex items-center gap-3 pl-8 pr-4 py-2 rounded-md text-sm transition-colors text-foreground/70 hover:text-foreground hover:bg-accent/50">
-                            <CalendarDays className="h-4 w-4 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
-                            <span>Cronograma Semanal</span>
-                          </button>
-                        </Link>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-
-                  <button
-                    onClick={() => handleServiceClick('boa-praca')}
-                    className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-md text-sm transition-colors hover-elevate active-elevate-2 ${
-                      selectedService === 'boa-praca' 
-                        ? 'bg-accent text-accent-foreground font-medium' 
-                        : 'text-foreground/80 hover:text-foreground'
-                    }`}
-                    data-testid="service-boa-praca"
-                  >
-                    <MapPin className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-                    <span>Boa Praça</span>
-                  </button>
-
-                  <button
-                    onClick={() => handleServiceClick('manutencao-lagos')}
-                    className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-md text-sm transition-colors hover-elevate active-elevate-2 ${
-                      selectedService === 'manutencao-lagos' 
-                        ? 'bg-accent text-accent-foreground font-medium' 
-                        : 'text-foreground/80 hover:text-foreground'
-                    }`}
-                    data-testid="service-manutencao-lagos"
-                  >
-                    <Waves className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-                    <span>Manutenção Lagos</span>
-                  </button>
-
-                  <button
-                    onClick={() => handleServiceClick('varricao')}
-                    className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-md text-sm transition-colors hover-elevate active-elevate-2 ${
-                      selectedService === 'varricao' 
-                        ? 'bg-accent text-accent-foreground font-medium' 
-                        : 'text-foreground/80 hover:text-foreground'
-                    }`}
-                    data-testid="service-varricao"
-                  >
-                    <Paintbrush className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-                    <span>Varrição</span>
-                  </button>
-
-                  <button
-                    onClick={() => handleServiceClick('podas')}
-                    className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-md text-sm transition-colors hover-elevate active-elevate-2 ${
-                      selectedService === 'podas' 
-                        ? 'bg-accent text-accent-foreground font-medium' 
-                        : 'text-foreground/80 hover:text-foreground'
-                    }`}
-                    data-testid="service-podas"
-                  >
-                    <TreeDeciduous className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-                    <span>Podas</span>
-                  </button>
-
-                  <button
-                    onClick={() => handleServiceClick('chafariz')}
-                    className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-md text-sm transition-colors hover-elevate active-elevate-2 ${
-                      selectedService === 'chafariz' 
-                        ? 'bg-accent text-accent-foreground font-medium' 
-                        : 'text-foreground/80 hover:text-foreground'
-                    }`}
-                    data-testid="service-chafariz"
-                  >
-                    <Droplets className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-                    <span>Chafariz</span>
-                  </button>
-                </div>
-              </AccordionContent>
-            </AccordionItem>
-
-            <AccordionItem value="residuos" className="border-0">
-              <AccordionTrigger 
-                className="rounded-lg bg-blue-600/20 dark:bg-blue-400/20 hover:bg-blue-600/30 dark:hover:bg-blue-400/30 px-4 py-3 hover:no-underline data-[state=open]:bg-blue-600/30 dark:data-[state=open]:bg-blue-400/30 border border-blue-600/40 dark:border-blue-400/40"
-                data-testid="accordion-residuos"
-              >
-                <div className="flex items-center gap-3">
-                  <Recycle className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-                  <span className="font-semibold text-sm text-blue-700 dark:text-blue-300">RESÍDUOS</span>
-                </div>
-              </AccordionTrigger>
-              <AccordionContent className="pb-2 pt-2 px-2">
-                <div className="space-y-1">
-                  <button
-                    onClick={() => handleServiceClick('coleta-organicos')}
-                    className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-md text-sm transition-colors hover-elevate active-elevate-2 ${
-                      selectedService === 'coleta-organicos' 
-                        ? 'bg-accent text-accent-foreground font-medium' 
-                        : 'text-foreground/80 hover:text-foreground'
-                    }`}
-                    data-testid="service-coleta-organicos"
-                  >
-                    <Trash2 className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                    <span>Coleta Orgânicos e Rejeitos</span>
-                  </button>
-
-                  <button
-                    onClick={() => handleServiceClick('coleta-reciclaveis')}
-                    className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-md text-sm transition-colors hover-elevate active-elevate-2 ${
-                      selectedService === 'coleta-reciclaveis' 
-                        ? 'bg-accent text-accent-foreground font-medium' 
-                        : 'text-foreground/80 hover:text-foreground'
-                    }`}
-                    data-testid="service-coleta-reciclaveis"
-                  >
-                    <Recycle className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                    <span>Coleta Recicláveis</span>
-                  </button>
-
-                  <button
-                    onClick={() => handleServiceClick('coleta-especiais')}
-                    className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-md text-sm transition-colors hover-elevate active-elevate-2 ${
-                      selectedService === 'coleta-especiais' 
-                        ? 'bg-accent text-accent-foreground font-medium' 
-                        : 'text-foreground/80 hover:text-foreground'
-                    }`}
-                    data-testid="service-coleta-especiais"
-                  >
-                    <Sparkles className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                    <span>Coleta e Limpeza Especiais</span>
-                  </button>
-
-                  <button
-                    onClick={() => handleServiceClick('limpeza-bocas')}
-                    className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-md text-sm transition-colors hover-elevate active-elevate-2 ${
-                      selectedService === 'limpeza-bocas' 
-                        ? 'bg-accent text-accent-foreground font-medium' 
-                        : 'text-foreground/80 hover:text-foreground'
-                    }`}
-                    data-testid="service-limpeza-bocas"
-                  >
-                    <Wind className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                    <span>Limpeza de Bocas de Lobo</span>
-                  </button>
-
-                  <button
-                    onClick={() => handleServiceClick('pevs')}
-                    className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-md text-sm transition-colors hover-elevate active-elevate-2 ${
-                      selectedService === 'pevs' 
-                        ? 'bg-accent text-accent-foreground font-medium' 
-                        : 'text-foreground/80 hover:text-foreground'
-                    }`}
-                    data-testid="service-pevs"
-                  >
-                    <Package className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                    <span>PEV's</span>
-                  </button>
-                </div>
-              </AccordionContent>
-            </AccordionItem>
-          </Accordion>
-
+          <AreaInfoCard
+            area={selectedArea}
+            onClose={onAreaClose}
+            onUpdate={onAreaUpdate}
+          />
+          <Separator className="my-4" />
         </div>
+      ) : null}
+
+      <div className="mb-4">
+        {/* Seção header */}
+        <div className="flex items-center gap-2 px-1 mb-2.5">
+          <div className="h-px flex-1 bg-border/60" />
+          <span className="text-[9px] uppercase tracking-widest font-bold text-muted-foreground/45 flex items-center gap-1">
+            <Layers className="h-2.5 w-2.5" />
+            Serviços
+          </span>
+          <div className="h-px flex-1 bg-border/60" />
+        </div>
+
+        <Accordion type="single" collapsible className="space-y-1.5">
+          {/* LIMPEZA URBANA */}
+          <AccordionItem value="limpeza" className="border-0">
+            <AccordionTrigger
+              className="group rounded-lg px-3 py-2.5 hover:no-underline hover:bg-muted/60 transition-all duration-200 data-[state=open]:bg-muted/70 border border-transparent data-[state=open]:border-border/50"
+              data-testid="accordion-limpeza-urbana"
+            >
+              <div className="flex items-center gap-2.5">
+                <div className="h-7 w-7 rounded-md bg-emerald-500/10 dark:bg-emerald-400/15 flex items-center justify-center flex-shrink-0 transition-colors group-data-[state=open]:bg-emerald-500/20">
+                  <Leaf className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                </div>
+                <span className="font-semibold text-sm">Limpeza Urbana</span>
+              </div>
+            </AccordionTrigger>
+            <AccordionContent className="pb-1 pt-1 px-1">
+              <div className="space-y-0.5">
+                <ServiceButton
+                  active={selectedService === "rocagem"}
+                  onClick={() => handleServiceClick("rocagem")}
+                  icon={<Scissors className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />}
+                  label="Capina e Roçagem"
+                  testId="service-rocagem"
+                />
+
+                <AnimatePresence initial={false}>
+                  {selectedService === "rocagem" && (
+                    <motion.div
+                      key="rocagem-tools"
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: "auto" }}
+                      exit={{ opacity: 0, height: 0 }}
+                      transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
+                      className="overflow-hidden"
+                    >
+                      <button
+                        onClick={() => onOpenReport?.()}
+                        className="w-full flex items-center gap-2.5 pl-9 pr-3 py-1.5 rounded-md text-xs transition-colors text-foreground/60 hover:text-foreground hover:bg-muted/50"
+                        data-testid="button-relatorio-rocagem"
+                      >
+                        <BarChart3 className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
+                        <span>Relatório</span>
+                      </button>
+                      <button
+                        onClick={() => setOsListOpen((v) => !v)}
+                        className="w-full flex items-center gap-2.5 pl-9 pr-3 py-1.5 rounded-md text-xs transition-colors text-foreground/60 hover:text-foreground hover:bg-muted/50"
+                        data-testid="button-ordem-servico"
+                      >
+                        <ClipboardList className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
+                        <span className="flex-1 text-left">Ordem de Serviço</span>
+                        <motion.div
+                          animate={{ rotate: osListOpen ? 90 : 0 }}
+                          transition={{ duration: 0.18 }}
+                        >
+                          <ChevronRight className="h-3 w-3 opacity-40" />
+                        </motion.div>
+                      </button>
+
+                      <AnimatePresence initial={false}>
+                        {osListOpen && (
+                          <motion.div
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: "auto" }}
+                            exit={{ opacity: 0, height: 0 }}
+                            transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
+                            className="overflow-hidden"
+                          >
+                            <div className="pl-12 pr-2 py-1 space-y-0.5">
+                              {ordens.length === 0 ? (
+                                <p className="text-xs text-muted-foreground px-2 py-1">
+                                  Nenhuma OS emitida
+                                </p>
+                              ) : (
+                                ordens.map((os: any) => (
+                                  <button
+                                    key={os.id}
+                                    onClick={() =>
+                                      onOsSelect?.(selectedOsId === os.id ? null : os.id)
+                                    }
+                                    className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs transition-colors text-left ${
+                                      selectedOsId === os.id
+                                        ? "bg-emerald-600 text-white font-medium"
+                                        : "text-foreground/70 hover:text-foreground hover:bg-accent/50"
+                                    }`}
+                                  >
+                                    <MapPin className="h-3 w-3 flex-shrink-0" />
+                                    <span className="flex-1 truncate">OS {os.numero}</span>
+                                    <span className="opacity-60 flex-shrink-0">L{os.lote}</span>
+                                  </button>
+                                ))
+                              )}
+                              <Link href="/ordem-servico">
+                                <button className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors mt-1 border-t border-border/40 pt-2">
+                                  <Settings className="h-3 w-3 flex-shrink-0" />
+                                  <span>Gerenciar / Nova OS</span>
+                                </button>
+                              </Link>
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+
+                      <Link href="/cronograma">
+                        <button className="w-full flex items-center gap-2.5 pl-9 pr-3 py-1.5 rounded-md text-xs transition-colors text-foreground/60 hover:text-foreground hover:bg-muted/50">
+                          <CalendarDays className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
+                          <span>Cronograma Semanal</span>
+                        </button>
+                      </Link>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                <ServiceButton
+                  active={selectedService === "boa-praca"}
+                  onClick={() => handleServiceClick("boa-praca")}
+                  icon={<MapPin className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />}
+                  label="Boa Praça"
+                  testId="service-boa-praca"
+                />
+                <ServiceButton
+                  active={selectedService === "manutencao-lagos"}
+                  onClick={() => handleServiceClick("manutencao-lagos")}
+                  icon={<Waves className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />}
+                  label="Manutenção Lagos"
+                  testId="service-manutencao-lagos"
+                />
+                <ServiceButton
+                  active={selectedService === "varricao"}
+                  onClick={() => handleServiceClick("varricao")}
+                  icon={<Paintbrush className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />}
+                  label="Varrição"
+                  testId="service-varricao"
+                />
+                <ServiceButton
+                  active={selectedService === "podas"}
+                  onClick={() => handleServiceClick("podas")}
+                  icon={<TreeDeciduous className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />}
+                  label="Podas"
+                  testId="service-podas"
+                />
+                <ServiceButton
+                  active={selectedService === "chafariz"}
+                  onClick={() => handleServiceClick("chafariz")}
+                  icon={<Droplets className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />}
+                  label="Chafariz"
+                  testId="service-chafariz"
+                />
+              </div>
+            </AccordionContent>
+          </AccordionItem>
+
+          {/* RESÍDUOS */}
+          <AccordionItem value="residuos" className="border-0">
+            <AccordionTrigger
+              className="group rounded-lg px-3 py-2.5 hover:no-underline hover:bg-muted/60 transition-all duration-200 data-[state=open]:bg-muted/70 border border-transparent data-[state=open]:border-border/50"
+              data-testid="accordion-residuos"
+            >
+              <div className="flex items-center gap-2.5">
+                <div className="h-7 w-7 rounded-md bg-blue-500/10 dark:bg-blue-400/15 flex items-center justify-center flex-shrink-0 transition-colors group-data-[state=open]:bg-blue-500/20">
+                  <Recycle className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                </div>
+                <span className="font-semibold text-sm">Resíduos</span>
+              </div>
+            </AccordionTrigger>
+            <AccordionContent className="pb-1 pt-1 px-1">
+              <div className="space-y-0.5">
+                <ServiceButton
+                  active={selectedService === "coleta-organicos"}
+                  onClick={() => handleServiceClick("coleta-organicos")}
+                  icon={<Trash2 className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />}
+                  label="Coleta Orgânicos e Rejeitos"
+                  testId="service-coleta-organicos"
+                />
+                <ServiceButton
+                  active={selectedService === "coleta-reciclaveis"}
+                  onClick={() => handleServiceClick("coleta-reciclaveis")}
+                  icon={<Recycle className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />}
+                  label="Coleta Recicláveis"
+                  testId="service-coleta-reciclaveis"
+                />
+                <ServiceButton
+                  active={selectedService === "coleta-especiais"}
+                  onClick={() => handleServiceClick("coleta-especiais")}
+                  icon={<Sparkles className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />}
+                  label="Coleta e Limpeza Especiais"
+                  testId="service-coleta-especiais"
+                />
+                <ServiceButton
+                  active={selectedService === "limpeza-bocas"}
+                  onClick={() => handleServiceClick("limpeza-bocas")}
+                  icon={<Wind className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />}
+                  label="Limpeza de Bocas de Lobo"
+                  testId="service-limpeza-bocas"
+                />
+                <ServiceButton
+                  active={selectedService === "pevs"}
+                  onClick={() => handleServiceClick("pevs")}
+                  icon={<Package className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />}
+                  label="PEV's"
+                  testId="service-pevs"
+                />
+              </div>
+            </AccordionContent>
+          </AccordionItem>
+        </Accordion>
+      </div>
     </>
   );
 
   if (standalone) {
     return (
       <div className="flex flex-col h-full" data-testid="sidebar-standalone">
-        <div className="p-4 pb-3">
-          {header}
-        </div>
-        <div className="flex-1 overflow-auto px-3">
-          {content}
-        </div>
+        <div className="p-4 pb-3">{header}</div>
+        <div className="flex-1 overflow-auto px-3">{content}</div>
       </div>
     );
   }
 
   return (
     <Sidebar className="border-r-0 sm:!max-w-none" data-testid="sidebar-wrapped">
-      <SidebarHeader className="p-4 pb-3">
-        {header}
-      </SidebarHeader>
-      <SidebarContent className="px-3">
-        {content}
-      </SidebarContent>
+      <SidebarHeader className="p-4 pb-3">{header}</SidebarHeader>
+      <SidebarContent className="px-3">{content}</SidebarContent>
     </Sidebar>
+  );
+}
+
+function ServiceButton({
+  active,
+  onClick,
+  icon,
+  label,
+  testId,
+}: {
+  active: boolean;
+  onClick: () => void;
+  icon: React.ReactNode;
+  label: string;
+  testId?: string;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      data-testid={testId}
+      className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-sm text-left transition-all duration-150 ${
+        active
+          ? "bg-emerald-500/12 dark:bg-emerald-400/12 text-emerald-700 dark:text-emerald-300 font-medium ring-1 ring-emerald-500/20"
+          : "text-foreground/70 hover:text-foreground hover:bg-muted/50"
+      }`}
+    >
+      <span className="flex-shrink-0">{icon}</span>
+      <span className="truncate">{label}</span>
+    </button>
   );
 }
