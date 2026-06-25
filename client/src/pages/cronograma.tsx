@@ -8,6 +8,7 @@ import {
   ExternalLink,
   Pencil,
   Trash2,
+  CheckSquare,
 } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -45,7 +46,11 @@ export default function CronogramaPage() {
   const [page, setPage] = useState(1);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<number | null>(null);
-  const [osCarregada, setOsCarregada] = useState<string | null>(null);
+
+  // OS de referência do mês atual para o lote selecionado
+  const [osRef, setOsRef] = useState<{ id: number; numero: string; mes: string } | null>(null);
+  const [osAreasIds, setOsAreasIds] = useState<Set<number> | null>(null);
+  const [loadingOs, setLoadingOs] = useState(false);
 
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -62,44 +67,77 @@ export default function CronogramaPage() {
     queryKey: ["/api/ordens"],
   });
 
-  // Ao mudar o lote, pré-seleciona áreas da OS mais recente daquele lote
+  // Busca a OS do mês atual para o lote. Ao mudar de lote, reseta seleção.
   useEffect(() => {
     if (editingId) return;
-    const osDoLote = (ordens as any[])
-      .filter((o) => o.lote === lote)
-      .sort(
-        (a, b) =>
-          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-      );
-    if (osDoLote.length === 0) {
-      setSelectedIds(new Set());
-      setOsCarregada(null);
+
+    setSelectedIds(new Set());
+    setBusca("");
+    setPage(1);
+
+    const mesAtual = new Date().toISOString().slice(0, 7); // "2026-06"
+    const osDoMes = (ordens as any[])
+      .filter((o) => o.lote === lote && (o.mes_referencia || "").startsWith(mesAtual))
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+    if (osDoMes.length === 0) {
+      setOsRef(null);
+      setOsAreasIds(null);
       return;
     }
-    const ultima = osDoLote[0];
-    apiRequest("GET", `/api/ordens/${ultima.id}`)
+
+    const os = osDoMes[0];
+    setOsRef({ id: os.id, numero: os.numero, mes: os.mes_referencia });
+    setLoadingOs(true);
+
+    apiRequest("GET", `/api/ordens/${os.id}`)
       .then((r) => r.json())
       .then((data: any) => {
         if (data.areas) {
-          setSelectedIds(new Set(data.areas.map((a: any) => a.id)));
-          setOsCarregada(ultima.numero);
+          setOsAreasIds(new Set(data.areas.map((a: any) => a.id)));
         }
-      });
+      })
+      .finally(() => setLoadingOs(false));
   }, [lote, ordens, editingId]);
 
-  const areasFiltradas = useMemo(() => {
-    const base = todasAreas
-      .filter((a) => a.lote === lote)
+  // Mês da OS de referência (para verificar se área já foi executada)
+  const mesRef = osRef?.mes?.slice(0, 7) ?? new Date().toISOString().slice(0, 7);
+
+  // Áreas pendentes da OS (não executadas no mês de referência)
+  const areasPendentesOS = useMemo(() => {
+    if (!osAreasIds) return null;
+    return todasAreas
+      .filter((a) => osAreasIds.has(a.id))
+      .filter((a) => !a.ultimaRocagem || !a.ultimaRocagem.startsWith(mesRef))
       .sort((a, b) => a.id - b.id);
-    if (!busca.trim()) return base;
-    const q = busca.toLowerCase();
-    return base.filter(
-      (a) =>
-        a.endereco.toLowerCase().includes(q) ||
-        (a.bairro || "").toLowerCase().includes(q) ||
-        (a.tipo || "").toLowerCase().includes(q)
-    );
-  }, [todasAreas, lote, busca]);
+  }, [todasAreas, osAreasIds, mesRef]);
+
+  const totalOsAreas = osAreasIds?.size ?? 0;
+  const pendentesCount = areasPendentesOS?.length ?? 0;
+  const executadasCount = totalOsAreas - pendentesCount;
+
+  // Lista exibida na tabela:
+  // - sem busca → áreas pendentes da OS (ou todas do lote se não tiver OS)
+  // - com busca → todas as áreas do lote correspondendo à busca
+  const areasFiltradas = useMemo(() => {
+    if (busca.trim()) {
+      const q = busca.toLowerCase();
+      return todasAreas
+        .filter((a) => a.lote === lote)
+        .filter(
+          (a) =>
+            a.endereco.toLowerCase().includes(q) ||
+            (a.bairro || "").toLowerCase().includes(q) ||
+            (a.tipo || "").toLowerCase().includes(q)
+        )
+        .sort((a, b) => a.id - b.id);
+    }
+
+    if (areasPendentesOS !== null) return areasPendentesOS;
+
+    // Sem OS do mês → mostra todas as áreas do lote
+    return todasAreas.filter((a) => a.lote === lote).sort((a, b) => a.id - b.id);
+  }, [todasAreas, lote, busca, areasPendentesOS]);
 
   const totalPages = Math.ceil(areasFiltradas.length / PER_PAGE);
   const pageAreas = areasFiltradas.slice((page - 1) * PER_PAGE, page * PER_PAGE);
@@ -108,10 +146,7 @@ export default function CronogramaPage() {
     () => todasAreas.filter((a) => selectedIds.has(a.id)),
     [todasAreas, selectedIds]
   );
-  const totalMetragem = selectedAreas.reduce(
-    (s, a) => s + (a.metragem_m2 || 0),
-    0
-  );
+  const totalMetragem = selectedAreas.reduce((s, a) => s + (a.metragem_m2 || 0), 0);
 
   const createMutation = useMutation({
     mutationFn: async (data: any) => {
@@ -123,8 +158,7 @@ export default function CronogramaPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/cronogramas"] });
       resetForm();
     },
-    onError: () =>
-      toast({ title: "Erro ao salvar cronograma", variant: "destructive" }),
+    onError: () => toast({ title: "Erro ao salvar cronograma", variant: "destructive" }),
   });
 
   const updateMutation = useMutation({
@@ -137,8 +171,7 @@ export default function CronogramaPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/cronogramas"] });
       resetForm();
     },
-    onError: () =>
-      toast({ title: "Erro ao atualizar", variant: "destructive" }),
+    onError: () => toast({ title: "Erro ao atualizar", variant: "destructive" }),
   });
 
   const deleteMutation = useMutation({
@@ -160,8 +193,8 @@ export default function CronogramaPage() {
     setSemanaFim("");
     setObservacao("");
     setEditingId(null);
-    setOsCarregada(null);
     setPage(1);
+    setBusca("");
   }
 
   async function handleEdit(cronograma: any) {
@@ -267,7 +300,6 @@ export default function CronogramaPage() {
                   value={lote}
                   onChange={(e) => {
                     setLote(Number(e.target.value));
-                    setSelectedIds(new Set());
                     setPage(1);
                   }}
                   className="w-full border rounded-md px-3 py-2 bg-background text-sm"
@@ -324,16 +356,49 @@ export default function CronogramaPage() {
               </button>
             </div>
 
-            {/* Summary */}
+            {/* Banner OS de referência */}
+            {!editingId && (
+              osRef ? (
+                <div className="bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 rounded-lg px-4 py-3">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <div className="flex items-center gap-2">
+                      <CheckSquare className="h-4 w-4 text-emerald-600 flex-shrink-0" />
+                      <span className="text-sm text-emerald-800 dark:text-emerald-300">
+                        Base: OS <span className="font-semibold">{osRef.numero}</span>
+                        {loadingOs ? (
+                          <span className="text-emerald-600 ml-2">carregando...</span>
+                        ) : (
+                          <span className="ml-2 text-emerald-600 dark:text-emerald-400">
+                            — <span className="font-semibold text-emerald-700 dark:text-emerald-300">{pendentesCount}</span> de {totalOsAreas} áreas ainda pendentes
+                            {executadasCount > 0 && (
+                              <span className="text-emerald-500 ml-1">({executadasCount} já executadas neste mês)</span>
+                            )}
+                          </span>
+                        )}
+                      </span>
+                    </div>
+                    {busca && (
+                      <span className="text-xs text-emerald-600 dark:text-emerald-400 italic">
+                        Buscando em todas as áreas do lote
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ) : !loadingOs && ordens.length > 0 ? (
+                <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-700 rounded-lg px-4 py-3 text-sm text-amber-700 dark:text-amber-300">
+                  Nenhuma OS encontrada para o Lote {lote} neste mês. Exibindo todas as áreas do lote.
+                </div>
+              ) : null
+            )}
+
+            {/* Selecionadas */}
             {selectedIds.size > 0 && (
-              <div className="bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 rounded-lg p-4 flex items-center justify-between">
+              <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg p-4 flex items-center justify-between">
                 <div>
-                  <span className="text-sm font-medium text-emerald-800 dark:text-emerald-300">
-                    {selectedIds.size} área
-                    {selectedIds.size !== 1 ? "s" : ""} selecionada
-                    {selectedIds.size !== 1 ? "s" : ""}
+                  <span className="text-sm font-medium text-blue-800 dark:text-blue-300">
+                    {selectedIds.size} área{selectedIds.size !== 1 ? "s" : ""} selecionada{selectedIds.size !== 1 ? "s" : ""}
                   </span>
-                  <span className="text-sm text-emerald-600 dark:text-emerald-400 ml-3">
+                  <span className="text-sm text-blue-600 dark:text-blue-400 ml-3">
                     Total:{" "}
                     {totalMetragem.toLocaleString("pt-BR", {
                       minimumFractionDigits: 2,
@@ -344,24 +409,9 @@ export default function CronogramaPage() {
                 </div>
                 <button
                   onClick={() => setSelectedIds(new Set())}
-                  className="text-xs text-emerald-700 dark:text-emerald-400 hover:underline"
+                  className="text-xs text-blue-700 dark:text-blue-400 hover:underline"
                 >
                   Limpar seleção
-                </button>
-              </div>
-            )}
-
-            {/* Banner OS carregada */}
-            {osCarregada && !editingId && (
-              <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg px-4 py-2.5 flex items-center justify-between">
-                <p className="text-sm text-blue-700 dark:text-blue-300">
-                  Áreas da OS <span className="font-semibold">{osCarregada}</span> pré-selecionadas. Adicione ou remova conforme necessário.
-                </p>
-                <button
-                  onClick={() => { setSelectedIds(new Set()); setOsCarregada(null); }}
-                  className="text-xs text-blue-600 hover:underline ml-4 flex-shrink-0"
-                >
-                  Limpar
                 </button>
               </div>
             )}
@@ -372,7 +422,11 @@ export default function CronogramaPage() {
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <input
                   type="text"
-                  placeholder="Buscar por endereço, bairro ou tipo..."
+                  placeholder={
+                    osRef
+                      ? "Buscar em todas as áreas do lote (inclusive fora da OS)..."
+                      : "Buscar por endereço, bairro ou tipo..."
+                  }
                   value={busca}
                   onChange={(e) => {
                     setBusca(e.target.value);
@@ -382,8 +436,7 @@ export default function CronogramaPage() {
                 />
               </div>
               <span className="text-sm text-muted-foreground whitespace-nowrap">
-                {areasFiltradas.length} área
-                {areasFiltradas.length !== 1 ? "s" : ""}
+                {areasFiltradas.length} área{areasFiltradas.length !== 1 ? "s" : ""}
               </span>
             </div>
 
@@ -404,19 +457,11 @@ export default function CronogramaPage() {
                           className="accent-emerald-600"
                         />
                       </th>
-                      <th className="px-3 py-2 text-left font-medium w-14">
-                        ID
-                      </th>
-                      <th className="px-3 py-2 text-left font-medium">
-                        Endereço
-                      </th>
-                      <th className="px-3 py-2 text-left font-medium">
-                        Bairro
-                      </th>
+                      <th className="px-3 py-2 text-left font-medium w-14">ID</th>
+                      <th className="px-3 py-2 text-left font-medium">Endereço</th>
+                      <th className="px-3 py-2 text-left font-medium">Bairro</th>
                       <th className="px-3 py-2 text-left font-medium">Tipo</th>
-                      <th className="px-3 py-2 text-right font-medium">
-                        Metragem (m²)
-                      </th>
+                      <th className="px-3 py-2 text-right font-medium">Metragem (m²)</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -440,16 +485,12 @@ export default function CronogramaPage() {
                             className="accent-emerald-600"
                           />
                         </td>
-                        <td className="px-3 py-2 text-muted-foreground">
-                          {area.id}
-                        </td>
+                        <td className="px-3 py-2 text-muted-foreground">{area.id}</td>
                         <td className="px-3 py-2">{area.endereco}</td>
                         <td className="px-3 py-2 text-muted-foreground">
                           {area.bairro || "—"}
                         </td>
-                        <td className="px-3 py-2 text-muted-foreground">
-                          {area.tipo}
-                        </td>
+                        <td className="px-3 py-2 text-muted-foreground">{area.tipo}</td>
                         <td className="px-3 py-2 text-right">
                           {area.metragem_m2
                             ? area.metragem_m2.toLocaleString("pt-BR", {
@@ -462,11 +503,8 @@ export default function CronogramaPage() {
                     ))}
                     {pageAreas.length === 0 && (
                       <tr>
-                        <td
-                          colSpan={6}
-                          className="px-3 py-8 text-center text-muted-foreground"
-                        >
-                          Nenhuma área encontrada
+                        <td colSpan={6} className="px-3 py-8 text-center text-muted-foreground">
+                          {loadingOs ? "Carregando áreas da OS..." : "Nenhuma área encontrada"}
                         </td>
                       </tr>
                     )}
@@ -488,9 +526,7 @@ export default function CronogramaPage() {
                       Anterior
                     </button>
                     <button
-                      onClick={() =>
-                        setPage((p) => Math.min(totalPages, p + 1))
-                      }
+                      onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                       disabled={page === totalPages}
                       className="px-2 py-1 text-xs border rounded hover:bg-accent disabled:opacity-40"
                     >
@@ -556,14 +592,11 @@ export default function CronogramaPage() {
                         Lote {c.lote}
                       </span>
                       <span className="text-sm font-medium">
-                        {formatDate(c.semana_inicio)} —{" "}
-                        {formatDate(c.semana_fim)}
+                        {formatDate(c.semana_inicio)} — {formatDate(c.semana_fim)}
                       </span>
                     </div>
                     {c.observacao && (
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        {c.observacao}
-                      </p>
+                      <p className="text-xs text-muted-foreground mt-0.5">{c.observacao}</p>
                     )}
                     <p className="text-xs text-muted-foreground mt-0.5">
                       Criado por {c.criado_por || "Sistema"} em{" "}
