@@ -73,7 +73,7 @@ export default function CronogramaPage() {
   const queryClient = useQueryClient();
 
   const { data: todasAreas = [] } = useQuery<ServiceArea[]>({
-    queryKey: ["/api/service-areas"],
+    queryKey: ["/api/areas/light"],
   });
 
   const { data: cronogramas = [] } = useQuery<any[]>({
@@ -122,8 +122,8 @@ export default function CronogramaPage() {
       .finally(() => setLoadingOs(false));
   }, [lote, ordens, editingId]);
 
-  // Mês da OS de referência (para verificar se área já foi executada)
-  const mesRef = osRef?.mes?.slice(0, 7) ?? new Date().toISOString().slice(0, 7);
+  // Mês da OS de referência em formato "2026-06" (para comparar com ultimaRocagem)
+  const mesRef = (osRef?.mes ? parseMesRef(osRef.mes) : null) ?? new Date().toISOString().slice(0, 7);
 
   // Todas as áreas da OS
   const todasAreasOS = useMemo(() => {
