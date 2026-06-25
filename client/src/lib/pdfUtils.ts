@@ -25,90 +25,56 @@ export async function loadImg(
   }
 }
 
+function arrayBufferToBase64(buf: ArrayBuffer): string {
+  const bytes = new Uint8Array(buf);
+  let str = "";
+  for (let i = 0; i < bytes.length; i++) str += String.fromCharCode(bytes[i]);
+  return btoa(str);
+}
+
+export async function registerRoboto(doc: jsPDF): Promise<void> {
+  try {
+    const [regular, bold] = await Promise.all([
+      fetch("/fonts/Roboto-Regular.ttf").then((r) => r.arrayBuffer()),
+      fetch("/fonts/Roboto-Bold.ttf").then((r) => r.arrayBuffer()),
+    ]);
+    doc.addFileToVFS("Roboto-Regular.ttf", arrayBufferToBase64(regular));
+    doc.addFont("Roboto-Regular.ttf", "Roboto", "normal");
+    doc.addFileToVFS("Roboto-Bold.ttf", arrayBufferToBase64(bold));
+    doc.addFont("Roboto-Bold.ttf", "Roboto", "bold");
+  } catch {
+    // falls back to helvetica silently
+  }
+}
+
+export const PDF_FONT = "Roboto";
 export const PDF_NAVY: [number, number, number] = [26, 46, 90];
 export const PDF_GREEN: [number, number, number] = [45, 122, 79];
 
-export function addPdfFooter(
-  doc: jsPDF,
-  pageNum: number,
-  totalPages: number,
-  mx = 14,
-) {
+export function addPdfFooter(doc: jsPDF, pageNum: number, totalPages: number, mx = 14) {
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
   const footerY = pageH - 12;
+  const cx = pageW / 2;
 
   doc.setDrawColor(190, 190, 190);
   doc.setLineWidth(0.25);
   doc.line(mx, footerY - 5, pageW - mx, footerY - 5);
 
   doc.setFontSize(6.5);
-  doc.setFont("helvetica", "normal");
+  doc.setFont(PDF_FONT, "normal");
   doc.setTextColor(110, 110, 110);
+
   doc.text(
-    "Rua Prof. João Cândido, 1.213  CEP 86.010-001  CNPJ 86731320/0001-37  Fone (43) 3379-7900 – Londrina – PR",
-    mx,
+    "Rua Prof. João Cândido, 1.213  —  CEP 86.010-001  —  CNPJ 86.731.320/0001-37  —  Fone (43) 3379-7900  —  Londrina – PR",
+    cx,
     footerY - 1,
+    { align: "center" },
   );
-  doc.text("www.cmtuld.com.br  |  e-mail: cmtu@londrina.pr.gov.br", mx, footerY + 3);
+  doc.text("www.cmtuld.com.br  |  opera@cmtuld.com.br", cx, footerY + 3, {
+    align: "center",
+  });
   doc.text(`página ${pageNum} de ${totalPages}`, pageW - mx, footerY + 3, {
     align: "right",
   });
-}
-
-type ImgData = { b64: string; nw: number; nh: number } | null;
-
-export function addPdfLogosHeader(
-  doc: jsPDF,
-  londrina: ImgData,
-  cmtu: ImgData,
-  operacoes: ImgData,
-  mx = 14,
-): number {
-  const pageW = doc.internal.pageSize.getWidth();
-  const hY = mx;
-
-  // Londrina (left)
-  if (londrina) {
-    const h = 13;
-    const w = (londrina.nw / londrina.nh) * h;
-    doc.addImage(londrina.b64, "PNG", mx, hY, w, h);
-  }
-
-  // CMTU vertical (right)
-  if (cmtu) {
-    const h = 22;
-    const w = (cmtu.nw / cmtu.nh) * h;
-    doc.addImage(cmtu.b64, "PNG", pageW - mx - w, hY, w, h);
-  }
-
-  // Centro: CMTU text
-  const cx = pageW / 2;
-  doc.setFontSize(7.5);
-  doc.setFont("helvetica", "normal");
-  doc.setTextColor(90, 90, 90);
-  doc.text(
-    "COMPANHIA MUNICIPAL DE TRÂNSITO E URBANIZAÇÃO",
-    cx,
-    hY + 4,
-    { align: "center" },
-  );
-
-  // Operações logo (center, below CMTU text)
-  let headerBottom = hY + 4;
-  if (operacoes) {
-    const h = 11;
-    const w = (operacoes.nw / operacoes.nh) * h;
-    doc.addImage(operacoes.b64, "PNG", cx - w / 2, hY + 6, w, h);
-    headerBottom = hY + 6 + h + 2;
-  } else {
-    headerBottom = hY + 20;
-  }
-
-  // Separator line
-  doc.setDrawColor(...PDF_NAVY);
-  doc.setLineWidth(0.7);
-  doc.line(mx, headerBottom, pageW - mx, headerBottom);
-
-  return headerBottom; // Y where header ends
 }

@@ -57,9 +57,10 @@ const PER_PAGE = 50;
 async function gerarPDFCronograma(c: any, areas: any[]): Promise<void> {
   const { default: jsPDF } = await import("jspdf");
   const { default: autoTable } = await import("jspdf-autotable");
-  const { loadImg, addPdfFooter, PDF_NAVY, PDF_GREEN } = await import("@/lib/pdfUtils");
+  const { loadImg, addPdfFooter, registerRoboto, PDF_FONT, PDF_NAVY, PDF_GREEN } = await import("@/lib/pdfUtils");
 
   const doc = new jsPDF({ orientation: "p", unit: "mm", format: "a4" });
+  await registerRoboto(doc);
   const pageW = doc.internal.pageSize.getWidth();
   const mx = 14;
 
@@ -89,17 +90,17 @@ async function gerarPDFCronograma(c: any, areas: any[]): Promise<void> {
 
   const cx = pageW / 2;
   doc.setFontSize(7.5);
-  doc.setFont("helvetica", "normal");
+  doc.setFont(PDF_FONT, "normal");
   doc.setTextColor(90, 90, 90);
   doc.text("COMPANHIA MUNICIPAL DE TRÂNSITO E URBANIZAÇÃO", cx, hY + 4, { align: "center" });
 
   doc.setFontSize(14);
-  doc.setFont("helvetica", "bold");
+  doc.setFont(PDF_FONT, "bold");
   doc.setTextColor(...PDF_NAVY);
   doc.text("CRONOGRAMA SEMANAL DE ROÇAGEM", cx, hY + 11, { align: "center" });
 
   doc.setFontSize(9);
-  doc.setFont("helvetica", "bold");
+  doc.setFont(PDF_FONT, "bold");
   doc.setTextColor(...PDF_GREEN);
   doc.text(loteNome, cx, hY + 17, { align: "center" });
 
@@ -117,10 +118,10 @@ async function gerarPDFCronograma(c: any, areas: any[]): Promise<void> {
   // --- Semana e metadados ---
   let y = headerBottom + 5;
   doc.setFontSize(8);
-  doc.setFont("helvetica", "normal");
+  doc.setFont(PDF_FONT, "normal");
   doc.setTextColor(70, 70, 70);
   doc.text(`Semana: `, mx, y);
-  doc.setFont("helvetica", "bold");
+  doc.setFont(PDF_FONT, "bold");
   doc.setTextColor(20, 20, 20);
   doc.text(semana, mx + 16, y);
   y += 5;
@@ -133,25 +134,25 @@ async function gerarPDFCronograma(c: any, areas: any[]): Promise<void> {
   doc.rect(mx, y, pageW - mx * 2, boxH, "FD");
 
   doc.setFontSize(7.5);
-  doc.setFont("helvetica", "normal");
+  doc.setFont(PDF_FONT, "normal");
   doc.setTextColor(90, 90, 90);
   doc.text("Total de áreas", mx + 3, y + 4);
-  doc.setFont("helvetica", "bold");
+  doc.setFont(PDF_FONT, "bold");
   doc.setTextColor(20, 20, 20);
   doc.text(`${areas.length}`, mx + 3, y + 8.5);
 
-  doc.setFont("helvetica", "normal");
+  doc.setFont(PDF_FONT, "normal");
   doc.setTextColor(90, 90, 90);
   doc.text("Total m²", mx + 42, y + 4);
-  doc.setFont("helvetica", "bold");
+  doc.setFont(PDF_FONT, "bold");
   doc.setTextColor(20, 20, 20);
   doc.text(`${fmtM2(totalM2)} m²`, mx + 42, y + 8.5);
 
   if (c.observacao) {
-    doc.setFont("helvetica", "normal");
+    doc.setFont(PDF_FONT, "normal");
     doc.setTextColor(90, 90, 90);
     doc.text("Observação:", mx + 3, y + 12);
-    doc.setFont("helvetica", "bold");
+    doc.setFont(PDF_FONT, "bold");
     doc.setTextColor(20, 20, 20);
     const obs = c.observacao.length > 90 ? c.observacao.slice(0, 87) + "..." : c.observacao;
     doc.text(obs, mx + 28, y + 12);
@@ -187,7 +188,7 @@ async function gerarPDFCronograma(c: any, areas: any[]): Promise<void> {
   const tableEndY: number = (doc as any).lastAutoTable.finalY;
 
   // --- Total ---
-  doc.setFont("helvetica", "bold");
+  doc.setFont(PDF_FONT, "bold");
   doc.setFontSize(9);
   doc.setTextColor(...PDF_NAVY);
   doc.text(`Total: ${fmtM2(totalM2)} m²`, pageW - mx, tableEndY + 5, { align: "right" });
@@ -204,7 +205,7 @@ async function gerarPDFCronograma(c: any, areas: any[]): Promise<void> {
   doc.setLineWidth(0.3);
   doc.line(s1x, sy, s1x + 68, sy);
   doc.line(s2x, sy, s2x + 68, sy);
-  doc.setFont("helvetica", "normal");
+  doc.setFont(PDF_FONT, "normal");
   doc.setFontSize(8);
   doc.setTextColor(80, 80, 80);
   doc.text("Coordenador responsável", s1x + 34, sy + 4, { align: "center" });
