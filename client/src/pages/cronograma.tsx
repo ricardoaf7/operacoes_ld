@@ -64,7 +64,7 @@ async function gerarPDFCronograma(c: any, areas: any[]): Promise<void> {
   const mx = 14;
   const PDF_FONT = "helvetica";
 
-  const loteNome = c.lote === 1 ? "Lote 1 — Zona Norte" : "Lote 2 — Zona Sul";
+  const loteNome = c.lote === 1 ? "LOTE 1 | ZONA NORTE" : "LOTE 2 | ZONA SUL";
   const semana = `${formatDate(c.semana_inicio)} a ${formatDate(c.semana_fim)}`;
   const totalM2 = areas.reduce((s: number, a: any) => s + (a.metragem_m2 || 0), 0);
   const fmtM2 = (v: number) =>
@@ -160,24 +160,6 @@ async function gerarPDFCronograma(c: any, areas: any[]): Promise<void> {
   doc.setFontSize(9);
   doc.setTextColor(...PDF_NAVY);
   doc.text(`Total: ${fmtM2(totalM2)} m²`, pageW - mx, tableEndY + 5, { align: "right" });
-
-  // --- Assinaturas ---
-  const sigY = tableEndY + 22;
-  const pageH = doc.internal.pageSize.getHeight();
-  if (sigY + 18 > pageH - 24) doc.addPage();
-  const sy = sigY + 18 > pageH - 24 ? mx + 20 : sigY;
-
-  const s1x = mx + 8;
-  const s2x = pageW - mx - 73;
-  doc.setDrawColor(100, 100, 100);
-  doc.setLineWidth(0.3);
-  doc.line(s1x, sy, s1x + 68, sy);
-  doc.line(s2x, sy, s2x + 68, sy);
-  doc.setFont(PDF_FONT, "normal");
-  doc.setFontSize(8);
-  doc.setTextColor(80, 80, 80);
-  doc.text("Coordenador responsável", s1x + 34, sy + 4, { align: "center" });
-  doc.text("Visto fiscal", s2x + 34, sy + 4, { align: "center" });
 
   // --- Rodapé em todas as páginas ---
   const totalPages = doc.internal.pages.length - 1;
