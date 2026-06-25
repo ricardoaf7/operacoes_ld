@@ -488,6 +488,20 @@ export default function CronogramaPage() {
               )}
             </div>
 
+            {/* Observação */}
+            <div>
+              <label className="text-sm font-medium mb-1.5 block">
+                Observação (opcional)
+              </label>
+              <textarea
+                value={observacao}
+                onChange={(e) => setObservacao(e.target.value)}
+                rows={2}
+                placeholder="Ex: Prioridade para áreas com atraso..."
+                className="w-full border rounded-md px-3 py-2 bg-background text-sm resize-none"
+              />
+            </div>
+
             {/* Banner OS de referência */}
             {!editingId && (
               osRef ? (
@@ -680,19 +694,6 @@ export default function CronogramaPage() {
               )}
             </div>
 
-            {/* Observação */}
-            <div>
-              <label className="text-sm font-medium mb-1.5 block">
-                Observação (opcional)
-              </label>
-              <textarea
-                value={observacao}
-                onChange={(e) => setObservacao(e.target.value)}
-                rows={2}
-                placeholder="Ex: Prioridade para áreas com atraso..."
-                className="w-full border rounded-md px-3 py-2 bg-background text-sm resize-none"
-              />
-            </div>
 
           </div>
         )}
