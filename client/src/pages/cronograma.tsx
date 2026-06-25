@@ -21,6 +21,22 @@ function formatDate(d: string) {
   return `${day}/${m}/${y}`;
 }
 
+// Converte "Junho 2026" → "2026-06" para comparação
+function parseMesRef(mesRef: string): string | null {
+  const meses: Record<string, string> = {
+    janeiro: "01", fevereiro: "02", março: "03", marco: "03",
+    abril: "04", maio: "05", junho: "06", julho: "07",
+    agosto: "08", setembro: "09", outubro: "10",
+    novembro: "11", dezembro: "12",
+  };
+  const parts = mesRef.toLowerCase().trim().split(/\s+/);
+  if (parts.length < 2) return null;
+  const numMes = meses[parts[0]];
+  const ano = parts[parts.length - 1];
+  if (!numMes || !/^\d{4}$/.test(ano)) return null;
+  return `${ano}-${numMes}`;
+}
+
 function getWeekDates(offsetWeeks: number) {
   const now = new Date();
   const day = now.getDay();
@@ -77,7 +93,12 @@ export default function CronogramaPage() {
 
     const mesAtual = new Date().toISOString().slice(0, 7); // "2026-06"
     const osDoMes = (ordens as any[])
-      .filter((o) => o.lote === lote && (o.mes_referencia || "").startsWith(mesAtual))
+      .filter((o) => {
+        if (o.lote !== lote) return false;
+        const parsed = parseMesRef(o.mes_referencia || "");
+        if (parsed) return parsed === mesAtual;
+        return (o.mes_referencia || "").startsWith(mesAtual);
+      })
       .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
     if (osDoMes.length === 0) {

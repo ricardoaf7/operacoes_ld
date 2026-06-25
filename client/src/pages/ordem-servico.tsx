@@ -33,6 +33,7 @@ import {
   ChevronRight,
   Search,
   Printer,
+  Pencil,
   X,
 } from "lucide-react";
 import { Link } from "wouter";
@@ -64,6 +65,7 @@ export default function OrdemServicoPage() {
   );
   const [observacao, setObservacao] = useState("");
   const [visualizandoId, setVisualizandoId] = useState<number | null>(null);
+  const [editandoId, setEditandoId] = useState<number | null>(null);
   const [pdfPreviewOpen, setPdfPreviewOpen] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
@@ -162,6 +164,53 @@ export default function OrdemServicoPage() {
     },
   });
 
+  const atualizarOrdemMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("PATCH", `/api/ordens/${editandoId}`, {
+        numero,
+        lote: parseInt(lote),
+        mes_referencia: mesRef,
+        data_emissao: dataEmissao,
+        observacao,
+        area_ids: Array.from(selectedIds),
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/ordens"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/ordens", editandoId] });
+      toast({ title: "OS atualizada com sucesso!" });
+      setDialogOpen(false);
+      setVisualizandoId(editandoId);
+      setEditandoId(null);
+      setSelectedIds(new Set());
+      setTab("historico");
+    },
+    onError: () => {
+      toast({ title: "Erro ao atualizar a OS", variant: "destructive" });
+    },
+  });
+
+  async function handleEditar(os: OrdemServico) {
+    setEditandoId(os.id);
+    setLote(String(os.lote) as "1" | "2");
+    setNumero(os.numero);
+    setMesRef(os.mes_referencia);
+    setDataEmissao(os.data_emissao);
+    setObservacao(os.observacao || "");
+    if (os.areas) {
+      setSelectedIds(new Set(os.areas.map((a) => a.id)));
+    } else {
+      // fetch areas if not loaded yet
+      const res = await apiRequest("GET", `/api/ordens/${os.id}`);
+      const data: any = await res.json();
+      if (data.areas) setSelectedIds(new Set(data.areas.map((a: any) => a.id)));
+    }
+    setPage(0);
+    setBusca("");
+    setTab("nova");
+  }
+
   const handlePDF = () => {
     if (!ordemDetalhada) return;
     setPdfPreviewOpen(true);
@@ -254,10 +303,10 @@ export default function OrdemServicoPage() {
       {/* Tabs */}
       <div className="flex gap-1 px-6 pt-4">
         <button
-          onClick={() => setTab("nova")}
+          onClick={() => { setTab("nova"); }}
           className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${tab === "nova" ? "bg-emerald-600 text-white" : "text-muted-foreground hover:bg-accent"}`}
         >
-          Nova OS
+          {editandoId ? "Editar OS" : "Nova OS"}
         </button>
         <button
           onClick={() => { setTab("historico"); setVisualizandoId(null); }}
@@ -311,10 +360,10 @@ export default function OrdemServicoPage() {
                     </span>
                   )}
                 </span>
-                {selectedIds.size > 0 && (
+                {(selectedIds.size > 0 || editandoId) && (
                   <Button onClick={() => setDialogOpen(true)} className="bg-emerald-600 hover:bg-emerald-700">
-                    <Plus className="h-4 w-4 mr-2" />
-                    Emitir OS
+                    {editandoId ? <Pencil className="h-4 w-4 mr-2" /> : <Plus className="h-4 w-4 mr-2" />}
+                    {editandoId ? "Salvar alterações" : "Emitir OS"}
                   </Button>
                 )}
               </div>
@@ -425,6 +474,13 @@ export default function OrdemServicoPage() {
                   </Button>
                   <Button variant="outline" size="sm" onClick={handlePDF}>
                     <FileText className="h-4 w-4 mr-2" /> PDF / Imprimir
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleEditar(ordemDetalhada)}
+                  >
+                    <Pencil className="h-4 w-4 mr-2" /> Editar
                   </Button>
                   {(user?.role === "admin" || user?.role === "gestor") && (
                     <Button
@@ -540,11 +596,11 @@ export default function OrdemServicoPage() {
         </div>
       )}
 
-      {/* Dialog confirmar OS */}
+      {/* Dialog confirmar/editar OS */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Emitir Ordem de Serviço</DialogTitle>
+            <DialogTitle>{editandoId ? "Atualizar Ordem de Serviço" : "Emitir Ordem de Serviço"}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="grid grid-cols-2 gap-4">
@@ -606,12 +662,12 @@ export default function OrdemServicoPage() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancelar</Button>
             <Button
-              onClick={() => criarOrdemMutation.mutate()}
-              disabled={!numero || !mesRef || criarOrdemMutation.isPending}
+              onClick={() => editandoId ? atualizarOrdemMutation.mutate() : criarOrdemMutation.mutate()}
+              disabled={!numero || !mesRef || criarOrdemMutation.isPending || atualizarOrdemMutation.isPending}
               className="bg-emerald-600 hover:bg-emerald-700"
             >
-              {criarOrdemMutation.isPending && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
-              Salvar OS
+              {(criarOrdemMutation.isPending || atualizarOrdemMutation.isPending) && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+              {editandoId ? "Atualizar OS" : "Salvar OS"}
             </Button>
           </DialogFooter>
         </DialogContent>

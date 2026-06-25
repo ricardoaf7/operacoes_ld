@@ -1573,6 +1573,42 @@ export async function registerRoutes(app: Express): Promise<void> {
     }
   });
 
+  app.patch("/api/ordens/:id", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { numero, lote, mes_referencia, data_emissao, observacao, area_ids } = req.body;
+
+      const sb = getSupabase();
+
+      const updateData: any = {};
+      if (numero !== undefined) updateData.numero = numero;
+      if (lote !== undefined) updateData.lote = lote;
+      if (mes_referencia !== undefined) updateData.mes_referencia = mes_referencia;
+      if (data_emissao !== undefined) updateData.data_emissao = data_emissao;
+      if (observacao !== undefined) updateData.observacao = observacao;
+
+      if (Object.keys(updateData).length > 0) {
+        const { error: e1 } = await sb.from("ordens_servico").update(updateData).eq("id", id);
+        if (e1) throw e1;
+      }
+
+      if (area_ids !== undefined) {
+        const { error: e2 } = await sb.from("ordens_servico_areas").delete().eq("ordem_id", id);
+        if (e2) throw e2;
+        if (area_ids.length > 0) {
+          const links = area_ids.map((area_id: number) => ({ ordem_id: id, area_id }));
+          const { error: e3 } = await sb.from("ordens_servico_areas").insert(links);
+          if (e3) throw e3;
+        }
+      }
+
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Erro ao atualizar ordem:", error);
+      res.status(500).json({ error: "Erro ao atualizar ordem de serviço" });
+    }
+  });
+
   app.delete("/api/ordens/:id", requireRole("admin", "gestor"), async (req, res) => {
     try {
       const id = parseInt(req.params.id);
