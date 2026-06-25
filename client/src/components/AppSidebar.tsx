@@ -14,6 +14,7 @@ import {
   Package,
   BarChart3,
   ClipboardList,
+  CalendarDays,
   ChevronRight,
   Settings,
 } from "lucide-react";
@@ -202,6 +203,13 @@ export function AppSidebar({
                             </motion.div>
                           )}
                         </AnimatePresence>
+
+                        <Link href="/cronograma">
+                          <button className="w-full flex items-center gap-3 pl-8 pr-4 py-2 rounded-md text-sm transition-colors text-foreground/70 hover:text-foreground hover:bg-accent/50">
+                            <CalendarDays className="h-4 w-4 text-emerald-600 dark:text-emerald-400 flex-shrink-0" />
+                            <span>Cronograma Semanal</span>
+                          </button>
+                        </Link>
                       </motion.div>
                     )}
                   </AnimatePresence>

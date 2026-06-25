@@ -12,6 +12,8 @@ import LoginPage from "@/pages/login";
 import PublicDashboard from "@/pages/public-dashboard";
 import UserManagement from "@/pages/user-management";
 import OrdemServicoPage from "@/pages/ordem-servico";
+import CronogramaPage from "@/pages/cronograma";
+import PublicCronogramaPage from "@/pages/public-cronograma";
 import NotFound from "@/pages/not-found";
 import { Loader2 } from "lucide-react";
 
@@ -36,6 +38,7 @@ function AuthenticatedRoutes() {
       <Route path="/relatorios" component={RelatoriosPage} />
       <Route path="/relatorios/rocagens" component={RelatorioRocagensPage} />
       <Route path="/ordem-servico" component={OrdemServicoPage} />
+      <Route path="/cronograma" component={CronogramaPage} />
       {user.role === "admin" && (
         <Route path="/usuarios" component={UserManagement} />
       )}
@@ -48,6 +51,7 @@ function Router() {
   return (
     <Switch>
       <Route path="/publico" component={PublicDashboard} />
+      <Route path="/public/cronograma/:lote" component={PublicCronogramaPage} />
       <Route>
         <AuthenticatedRoutes />
       </Route>

@@ -216,6 +216,37 @@ export const insertOrdemServicoSchema = z.object({
 
 export type InsertOrdemServico = z.infer<typeof insertOrdemServicoSchema>;
 
+// Cronograma Semanal
+export const cronogramaSchema = z.object({
+  id: z.number(),
+  lote: z.number(),
+  semana_inicio: z.string(),
+  semana_fim: z.string(),
+  criado_por: z.string().nullable().optional(),
+  observacao: z.string().nullable().optional(),
+  created_at: z.string().optional(),
+  updated_at: z.string().optional(),
+  areas: z.array(z.object({
+    id: z.number(),
+    tipo: z.string(),
+    endereco: z.string(),
+    bairro: z.string().nullable().optional(),
+    metragem_m2: z.number().nullable().optional(),
+    lat: z.number().optional(),
+    lng: z.number().optional(),
+  })).optional(),
+});
+export type Cronograma = z.infer<typeof cronogramaSchema>;
+
+export const insertCronogramaSchema = z.object({
+  lote: z.number(),
+  semana_inicio: z.string().min(1),
+  semana_fim: z.string().min(1),
+  observacao: z.string().optional(),
+  area_ids: z.array(z.number()).min(1),
+});
+export type InsertCronograma = z.infer<typeof insertCronogramaSchema>;
+
 export const exportHistory = pgTable("export_history", {
   id: serial("id").primaryKey(),
   scope: text("scope").notNull(),

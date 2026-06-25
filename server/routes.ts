@@ -1585,4 +1585,177 @@ export async function registerRoutes(app: Express): Promise<void> {
     }
   });
 
+  // ===================== CRONOGRAMAS SEMANAIS =====================
+
+  app.get("/api/cronogramas", requireAuth, async (req, res) => {
+    try {
+      const sb = getSupabase();
+      const { data, error } = await sb
+        .from("cronogramas_semanais")
+        .select("*")
+        .order("semana_inicio", { ascending: false });
+      if (error) throw error;
+      res.json(data);
+    } catch (error: any) {
+      res.status(500).json({ error: "Erro ao buscar cronogramas" });
+    }
+  });
+
+  app.get("/api/cronogramas/:id", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const sb = getSupabase();
+
+      const { data: cronograma, error: e1 } = await sb
+        .from("cronogramas_semanais")
+        .select("*")
+        .eq("id", id)
+        .single();
+      if (e1) throw e1;
+
+      const { data: areaLinks, error: e2 } = await sb
+        .from("cronograma_areas")
+        .select("area_id")
+        .eq("cronograma_id", id);
+      if (e2) throw e2;
+
+      const areaIds = areaLinks.map((r: any) => r.area_id);
+      let areas: any[] = [];
+      if (areaIds.length > 0) {
+        const { data: areaData, error: e3 } = await sb
+          .from("service_areas")
+          .select("id, tipo, endereco, bairro, metragem_m2, lat, lng")
+          .in("id", areaIds)
+          .order("id");
+        if (e3) throw e3;
+        areas = areaData;
+      }
+
+      res.json({ ...cronograma, areas });
+    } catch (error: any) {
+      res.status(500).json({ error: "Erro ao buscar cronograma" });
+    }
+  });
+
+  app.post("/api/cronogramas", requireAuth, async (req, res) => {
+    try {
+      const { lote, semana_inicio, semana_fim, observacao, area_ids } = req.body;
+      if (!lote || !semana_inicio || !semana_fim || !area_ids?.length) {
+        return res.status(400).json({ error: "Campos obrigatórios faltando" });
+      }
+
+      const sb = getSupabase();
+
+      const { data: cronograma, error: e1 } = await sb
+        .from("cronogramas_semanais")
+        .insert({ lote, semana_inicio, semana_fim, observacao, criado_por: req.session.userName })
+        .select()
+        .single();
+      if (e1) throw e1;
+
+      const links = area_ids.map((area_id: number) => ({ cronograma_id: cronograma.id, area_id }));
+      const { error: e2 } = await sb.from("cronograma_areas").insert(links);
+      if (e2) throw e2;
+
+      res.status(201).json(cronograma);
+    } catch (error: any) {
+      console.error("Erro ao criar cronograma:", error);
+      res.status(500).json({ error: "Erro ao criar cronograma" });
+    }
+  });
+
+  app.patch("/api/cronogramas/:id", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { lote, semana_inicio, semana_fim, observacao, area_ids } = req.body;
+
+      const sb = getSupabase();
+
+      const updateData: any = { updated_at: new Date().toISOString() };
+      if (lote !== undefined) updateData.lote = lote;
+      if (semana_inicio !== undefined) updateData.semana_inicio = semana_inicio;
+      if (semana_fim !== undefined) updateData.semana_fim = semana_fim;
+      if (observacao !== undefined) updateData.observacao = observacao;
+
+      const { error: e1 } = await sb.from("cronogramas_semanais").update(updateData).eq("id", id);
+      if (e1) throw e1;
+
+      if (area_ids !== undefined) {
+        const { error: e2 } = await sb.from("cronograma_areas").delete().eq("cronograma_id", id);
+        if (e2) throw e2;
+        if (area_ids.length > 0) {
+          const links = area_ids.map((area_id: number) => ({ cronograma_id: id, area_id }));
+          const { error: e3 } = await sb.from("cronograma_areas").insert(links);
+          if (e3) throw e3;
+        }
+      }
+
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Erro ao atualizar cronograma:", error);
+      res.status(500).json({ error: "Erro ao atualizar cronograma" });
+    }
+  });
+
+  app.delete("/api/cronogramas/:id", requireRole("admin", "gestor"), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const sb = getSupabase();
+      const { error } = await sb.from("cronogramas_semanais").delete().eq("id", id);
+      if (error) throw error;
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ error: "Erro ao excluir cronograma" });
+    }
+  });
+
+  // Rota pública — sem autenticação
+  app.get("/api/public/cronograma/:lote", async (req, res) => {
+    try {
+      const lote = parseInt(req.params.lote);
+      const today = new Date().toISOString().split('T')[0];
+
+      const sb = getSupabase();
+
+      const { data: cronogramas, error: e1 } = await sb
+        .from("cronogramas_semanais")
+        .select("*")
+        .eq("lote", lote)
+        .lte("semana_inicio", today)
+        .gte("semana_fim", today)
+        .order("created_at", { ascending: false })
+        .limit(1);
+      if (e1) throw e1;
+
+      if (!cronogramas || cronogramas.length === 0) {
+        return res.json({ cronograma: null, areas: [] });
+      }
+
+      const cronograma = cronogramas[0];
+
+      const { data: areaLinks, error: e2 } = await sb
+        .from("cronograma_areas")
+        .select("area_id")
+        .eq("cronograma_id", cronograma.id);
+      if (e2) throw e2;
+
+      const areaIds = areaLinks.map((r: any) => r.area_id);
+      let areas: any[] = [];
+      if (areaIds.length > 0) {
+        const { data: areaData, error: e3 } = await sb
+          .from("service_areas")
+          .select("id, tipo, endereco, bairro, metragem_m2, lat, lng")
+          .in("id", areaIds)
+          .order("id");
+        if (e3) throw e3;
+        areas = areaData;
+      }
+
+      res.json({ cronograma, areas });
+    } catch (error: any) {
+      console.error("Erro na rota pública de cronograma:", error);
+      res.status(500).json({ error: "Erro ao buscar cronograma" });
+    }
+  });
+
 }
