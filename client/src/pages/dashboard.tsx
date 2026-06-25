@@ -813,12 +813,12 @@ export default function Dashboard({ isPublicView = false }: DashboardProps) {
               <img
                 src="/logos/londrina.png"
                 alt="Prefeitura de Londrina"
-                className="h-11 w-auto object-contain opacity-90"
+                className="h-11 w-auto object-contain opacity-90 dark:[filter:brightness(0)_invert(1)]"
               />
               <img
                 src="/logos/cmtu_vertical.png"
                 alt="CMTU Londrina"
-                className="h-11 w-auto object-contain opacity-90"
+                className="h-11 w-auto object-contain opacity-90 dark:[filter:brightness(0)_invert(1)]"
               />
             </div>
             <div className="w-8 flex-shrink-0" />

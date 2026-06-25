@@ -8,6 +8,7 @@ import { formatDateBR } from "@/lib/utils";
 import { MapLayerControl, type MapLayerType } from "./MapLayerControl";
 import type { ServiceArea } from "@shared/schema";
 import type { TimeRangeFilter } from "./MapLegend";
+import { useTheme } from "@/components/theme-provider";
 
 interface DashboardMapProps {
   rocagemAreas: ServiceArea[];
@@ -50,6 +51,7 @@ export function DashboardMap({
   osMode = false,
 }: DashboardMapProps) {
   const { toast } = useToast();
+  const { theme } = useTheme();
   const internalMapRef = useRef<L.Map | null>(null);
   const mapRef = externalMapRef || internalMapRef;
   const mapContainerRef = useRef<HTMLDivElement>(null);
@@ -58,10 +60,12 @@ export function DashboardMap({
   }>({});
   const tileLayersRef = useRef<{
     standard: L.TileLayer | null;
+    dark: L.TileLayer | null;
     satellite: L.TileLayer | null;
     hybrid: L.TileLayer | null;
   }>({
     standard: null,
+    dark: null,
     satellite: null,
     hybrid: null,
   });
@@ -105,6 +109,15 @@ export function DashboardMap({
       {
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
         maxZoom: 19,
+      }
+    );
+
+    tileLayersRef.current.dark = L.tileLayer(
+      "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+      {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>',
+        maxZoom: 19,
+        subdomains: "abcd",
       }
     );
 
@@ -247,7 +260,7 @@ export function DashboardMap({
     });
   }, [layerFilters]);
 
-  // Trocar entre as camadas do mapa
+  // Trocar entre as camadas do mapa (reage ao tema e à layer selecionada)
   useEffect(() => {
     if (!mapRef.current) return;
 
@@ -258,12 +271,13 @@ export function DashboardMap({
       }
     });
 
-    // Adicionar a camada selecionada
-    const selectedLayer = tileLayersRef.current[currentLayer];
+    // No modo escuro, substituir "standard" pelo tile dark
+    const effectiveLayer = (currentLayer === "standard" && theme === "dark") ? "dark" : currentLayer;
+    const selectedLayer = tileLayersRef.current[effectiveLayer as keyof typeof tileLayersRef.current];
     if (selectedLayer && mapRef.current) {
       selectedLayer.addTo(mapRef.current);
     }
-  }, [currentLayer]);
+  }, [currentLayer, theme]);
 
   useEffect(() => {
     if (!mapRef.current) return;
