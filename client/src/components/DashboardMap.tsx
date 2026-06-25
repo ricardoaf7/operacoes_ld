@@ -271,13 +271,11 @@ export function DashboardMap({
       }
     });
 
-    // No modo escuro, substituir "standard" pelo tile dark
-    const effectiveLayer = (currentLayer === "standard" && theme === "dark") ? "dark" : currentLayer;
-    const selectedLayer = tileLayersRef.current[effectiveLayer as keyof typeof tileLayersRef.current];
+    const selectedLayer = tileLayersRef.current[currentLayer];
     if (selectedLayer && mapRef.current) {
       selectedLayer.addTo(mapRef.current);
     }
-  }, [currentLayer, theme]);
+  }, [currentLayer]);
 
   useEffect(() => {
     if (!mapRef.current) return;
