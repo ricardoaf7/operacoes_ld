@@ -67,6 +67,7 @@ export default function CronogramaPage() {
   const [osRef, setOsRef] = useState<{ id: number; numero: string; mes: string } | null>(null);
   const [osAreasIds, setOsAreasIds] = useState<Set<number> | null>(null);
   const [loadingOs, setLoadingOs] = useState(false);
+  const [ocultarExecutadas, setOcultarExecutadas] = useState(true);
 
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -124,14 +125,21 @@ export default function CronogramaPage() {
   // Mês da OS de referência (para verificar se área já foi executada)
   const mesRef = osRef?.mes?.slice(0, 7) ?? new Date().toISOString().slice(0, 7);
 
-  // Áreas pendentes da OS (não executadas no mês de referência)
-  const areasPendentesOS = useMemo(() => {
+  // Todas as áreas da OS
+  const todasAreasOS = useMemo(() => {
     if (!osAreasIds) return null;
     return todasAreas
       .filter((a) => osAreasIds.has(a.id))
-      .filter((a) => !a.ultimaRocagem || !a.ultimaRocagem.startsWith(mesRef))
       .sort((a, b) => a.id - b.id);
-  }, [todasAreas, osAreasIds, mesRef]);
+  }, [todasAreas, osAreasIds]);
+
+  // Áreas pendentes da OS (não executadas no mês de referência)
+  const areasPendentesOS = useMemo(() => {
+    if (!todasAreasOS) return null;
+    return todasAreasOS.filter(
+      (a) => !a.ultimaRocagem || !a.ultimaRocagem.startsWith(mesRef)
+    );
+  }, [todasAreasOS, mesRef]);
 
   const totalOsAreas = osAreasIds?.size ?? 0;
   const pendentesCount = areasPendentesOS?.length ?? 0;
@@ -154,11 +162,13 @@ export default function CronogramaPage() {
         .sort((a, b) => a.id - b.id);
     }
 
-    if (areasPendentesOS !== null) return areasPendentesOS;
+    if (todasAreasOS !== null) {
+      return ocultarExecutadas ? (areasPendentesOS ?? []) : todasAreasOS;
+    }
 
     // Sem OS do mês → mostra todas as áreas do lote
     return todasAreas.filter((a) => a.lote === lote).sort((a, b) => a.id - b.id);
-  }, [todasAreas, lote, busca, areasPendentesOS]);
+  }, [todasAreas, lote, busca, todasAreasOS, areasPendentesOS, ocultarExecutadas]);
 
   const totalPages = Math.ceil(areasFiltradas.length / PER_PAGE);
   const pageAreas = areasFiltradas.slice((page - 1) * PER_PAGE, page * PER_PAGE);
@@ -390,7 +400,7 @@ export default function CronogramaPage() {
                           <span className="text-emerald-600 ml-2">carregando...</span>
                         ) : (
                           <span className="ml-2 text-emerald-600 dark:text-emerald-400">
-                            — <span className="font-semibold text-emerald-700 dark:text-emerald-300">{pendentesCount}</span> de {totalOsAreas} áreas ainda pendentes
+                            — <span className="font-semibold text-emerald-700 dark:text-emerald-300">{pendentesCount}</span> de {totalOsAreas} áreas pendentes
                             {executadasCount > 0 && (
                               <span className="text-emerald-500 ml-1">({executadasCount} já executadas neste mês)</span>
                             )}
@@ -398,6 +408,17 @@ export default function CronogramaPage() {
                         )}
                       </span>
                     </div>
+                    {executadasCount > 0 && !busca && (
+                      <label className="flex items-center gap-1.5 text-xs text-emerald-700 dark:text-emerald-400 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={ocultarExecutadas}
+                          onChange={(e) => { setOcultarExecutadas(e.target.checked); setPage(1); }}
+                          className="accent-emerald-600"
+                        />
+                        Ocultar já executadas
+                      </label>
+                    )}
                     {busca && (
                       <span className="text-xs text-emerald-600 dark:text-emerald-400 italic">
                         Buscando em todas as áreas do lote
