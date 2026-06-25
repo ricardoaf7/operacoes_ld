@@ -660,10 +660,10 @@ function formatDate(d: string) {
 async function gerarPDFOrdemServico(os: OrdemServico): Promise<void> {
   const { default: jsPDF } = await import("jspdf");
   const { default: autoTable } = await import("jspdf-autotable");
-  const { loadImg, addPdfFooter, registerRoboto, PDF_NAVY, PDF_GREEN } = await import("@/lib/pdfUtils");
+  const { loadImg, addPdfFooter, PDF_NAVY, PDF_GREEN } = await import("@/lib/pdfUtils");
 
   const doc = new jsPDF({ orientation: "p", unit: "mm", format: "a4" });
-  const PDF_FONT = await registerRoboto(doc);
+  const PDF_FONT = "helvetica";
   const pageW = doc.internal.pageSize.getWidth();
   const mx = 14;
 
@@ -816,7 +816,7 @@ async function gerarPDFOrdemServico(os: OrdemServico): Promise<void> {
   const totalPages = doc.internal.pages.length - 1;
   for (let i = 1; i <= totalPages; i++) {
     doc.setPage(i);
-    addPdfFooter(doc, i, totalPages, mx, PDF_FONT);
+    addPdfFooter(doc, i, totalPages, mx);
   }
 
   doc.save(`OS_${os.numero}_Lote${os.lote}.pdf`);

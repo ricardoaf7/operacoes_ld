@@ -28,6 +28,7 @@ import { useTheme } from "@/components/theme-provider";
 import {
   Sidebar,
   SidebarContent,
+  SidebarFooter,
   SidebarHeader,
 } from "@/components/ui/sidebar";
 import {
@@ -79,33 +80,29 @@ export function AppSidebar({
   };
 
   const header = (
-    <div className="flex flex-col gap-2">
-      {/* Logos institucionais */}
-      <div className="flex items-center justify-between gap-2 pb-2.5 border-b border-border/50">
-        <img
-          src="/logos/londrina.png"
-          alt="Prefeitura de Londrina"
-          className="h-6 object-contain opacity-90"
-          style={{ maxWidth: 82 }}
-        />
-        <img
-          src="/logos/cmtu_vertical.png"
-          alt="CMTU Londrina"
-          className="h-8 object-contain opacity-90"
-          style={{ maxWidth: 56 }}
-        />
-      </div>
+    <div className="flex items-center justify-between gap-3">
+      <img
+        src="/logos/londrina.png"
+        alt="Prefeitura de Londrina"
+        className="h-12 w-auto object-contain opacity-90 flex-shrink-0"
+        style={{ maxWidth: 130 }}
+      />
+      <img
+        src="/logos/cmtu_vertical.png"
+        alt="CMTU Londrina"
+        className="h-12 w-auto object-contain opacity-90 flex-shrink-0"
+        style={{ maxWidth: 52 }}
+      />
+    </div>
+  );
 
-      {/* Logo principal */}
-      <div className="flex justify-center py-0.5">
-        <img
-          src={theme === "dark" ? operacoesLogoNegativo : operacoesLogoPositivo}
-          alt="Diretoria de Operações"
-          className="h-11 w-auto object-contain"
-        />
-      </div>
-
-      {/* Indicador ao vivo */}
+  const footer = (
+    <div className="flex flex-col items-center gap-2 px-4 py-3 border-t border-border/40">
+      <img
+        src={theme === "dark" ? operacoesLogoNegativo : operacoesLogoPositivo}
+        alt="Diretoria de Operações"
+        className="h-10 w-auto object-contain"
+      />
       <div className="flex items-center justify-center gap-1.5">
         <span className="relative flex h-1.5 w-1.5 flex-shrink-0">
           <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
@@ -355,6 +352,7 @@ export function AppSidebar({
       <div className="flex flex-col h-full" data-testid="sidebar-standalone">
         <div className="p-4 pb-3">{header}</div>
         <div className="flex-1 overflow-auto px-3">{content}</div>
+        {footer}
       </div>
     );
   }
@@ -363,6 +361,7 @@ export function AppSidebar({
     <Sidebar className="border-r-0 sm:!max-w-none" data-testid="sidebar-wrapped">
       <SidebarHeader className="p-4 pb-3">{header}</SidebarHeader>
       <SidebarContent className="px-3">{content}</SidebarContent>
+      <SidebarFooter className="p-0">{footer}</SidebarFooter>
     </Sidebar>
   );
 }
