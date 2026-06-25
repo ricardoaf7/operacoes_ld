@@ -40,6 +40,7 @@ import {
 import { AreaInfoCard } from "./AreaInfoCard";
 import { Separator } from "@/components/ui/separator";
 import type { ServiceArea } from "@shared/schema";
+import { useAuth } from "@/hooks/use-auth";
 
 interface AppSidebarProps {
   selectedService?: string;
@@ -71,6 +72,7 @@ export function AppSidebar({
   onOsSelect,
 }: AppSidebarProps) {
   const { theme } = useTheme();
+  const { user } = useAuth();
   const [osListOpen, setOsListOpen] = useState(false);
 
   const handleServiceClick = (service: string) => {
@@ -344,6 +346,18 @@ export function AppSidebar({
           </AccordionItem>
         </Accordion>
       </div>
+
+      {(user?.role === "admin" || user?.role === "gestor") && (
+        <div className="mt-1 px-1">
+          <div className="h-px bg-border/40 mb-2" />
+          <Link href="/configuracoes">
+            <button className="w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-sm text-left text-muted-foreground/70 hover:text-foreground hover:bg-muted/50 transition-colors">
+              <Settings className="h-3.5 w-3.5 flex-shrink-0" />
+              <span>Configurações de Contrato</span>
+            </button>
+          </Link>
+        </div>
+      )}
     </>
   );
 

@@ -216,6 +216,23 @@ export const insertOrdemServicoSchema = z.object({
 
 export type InsertOrdemServico = z.infer<typeof insertOrdemServicoSchema>;
 
+// Configuração de Contrato por Lote
+export const contratoConfigSchema = z.object({
+  id: z.number().optional(),
+  lote: z.number(),
+  regiao: z.string().nullable().optional(),
+  processo_admin: z.string().nullable().optional(),
+  pregao_eletronico: z.string().nullable().optional(),
+  numero_contrato: z.string().nullable().optional(),
+  contratada_nome: z.string().nullable().optional(),
+  contratada_endereco: z.string().nullable().optional(),
+  diretor_nome: z.string().nullable().optional(),
+  gerente_nome: z.string().nullable().optional(),
+  fiscal_nome: z.string().nullable().optional(),
+});
+
+export type ContratoConfig = z.infer<typeof contratoConfigSchema>;
+
 // Cronograma Semanal
 export const cronogramaSchema = z.object({
   id: z.number(),

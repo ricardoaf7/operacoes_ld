@@ -662,9 +662,15 @@ async function gerarPDFOrdemServico(os: OrdemServico): Promise<void> {
   const { default: autoTable } = await import("jspdf-autotable");
   const { loadImg, addPdfHeader, addCompactPdfHeader, addPdfFooter, PDF_NAVY } = await import("@/lib/pdfUtils");
 
+  // Busca configurações do contrato para este lote
+  let cfg: Record<string, string> = {};
+  try {
+    const res = await fetch(`/api/contrato-config/${os.lote}`);
+    if (res.ok) cfg = await res.json();
+  } catch { /* usa defaults vazios */ }
+
   const doc = new jsPDF({ orientation: "p", unit: "mm", format: "a4" });
   const pageW = doc.internal.pageSize.getWidth();
-  const pageH = doc.internal.pageSize.getHeight();
   const mx = 14;
   const PDF_FONT = "helvetica";
 
@@ -678,21 +684,46 @@ async function gerarPDFOrdemServico(os: OrdemServico): Promise<void> {
   const fmtM2 = (v: number) =>
     v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+  // título da OS com região (se configurada)
+  const regiao = cfg.regiao ? ` — REGIÃO ${cfg.regiao.toUpperCase()}` : "";
+  const tituloOS = `ORDEM DE SERVIÇO Nº ${os.numero}${regiao}`;
+
   // ── PÁGINA 1: CAPA ───────────────────────────────────────────────────
-  addPdfHeader(
+  const headerBottom = addPdfHeader(
     doc, londrina, cmtu, operacoes,
-    `ORDEM DE SERVIÇO Nº ${os.numero}`,
+    tituloOS,
     `Capina e Roçagem — Lote ${os.lote}`,
     mx,
   );
 
-  // Data no canto direito
-  let y = mx + 4;
+  // Data abaixo do cabeçalho, à direita
+  let y = headerBottom + 6;
   doc.setFontSize(9);
   doc.setFont(PDF_FONT, "normal");
   doc.setTextColor(80, 80, 80);
   doc.text(formatDateLong(os.data_emissao), pageW - mx, y, { align: "right" });
-  y = 72; // abaixo do cabeçalho completo
+  y += 10;
+
+  // Dados do processo/contrato (se configurados)
+  if (cfg.processo_admin || cfg.pregao_eletronico || cfg.numero_contrato) {
+    doc.setFontSize(8);
+    doc.setFont(PDF_FONT, "normal");
+    doc.setTextColor(60, 60, 60);
+    const cx = pageW / 2;
+    if (cfg.processo_admin) {
+      doc.text(`PROCESSO ADMINISTRATIVO Nº ${cfg.processo_admin}`, cx, y, { align: "center" });
+      y += 5;
+    }
+    if (cfg.pregao_eletronico) {
+      doc.text(`PREGÃO ELETRÔNICO Nº ${cfg.pregao_eletronico}`, cx, y, { align: "center" });
+      y += 5;
+    }
+    if (cfg.numero_contrato) {
+      doc.text(`CONTRATO Nº ${cfg.numero_contrato}`, cx, y, { align: "center" });
+      y += 5;
+    }
+    y += 4;
+  }
 
   // Corpo da carta formal
   doc.setFontSize(10);
@@ -714,8 +745,7 @@ async function gerarPDFOrdemServico(os: OrdemServico): Promise<void> {
 
   if (os.observacao) {
     doc.setFontSize(9.5);
-    const obsText = `Observação: ${os.observacao}`;
-    const obsLines = doc.splitTextToSize(obsText, pageW - mx * 2);
+    const obsLines = doc.splitTextToSize(`Observação: ${os.observacao}`, pageW - mx * 2);
     doc.text(obsLines, mx, y);
     y += obsLines.length * 5 + 6;
   }
@@ -724,35 +754,81 @@ async function gerarPDFOrdemServico(os: OrdemServico): Promise<void> {
   doc.text("Atenciosamente.", mx, y);
   y += 18;
 
-  // Bloco de assinaturas (2 colunas)
-  const colW = (pageW - mx * 2 - 10) / 2;
-  const sig1x = mx;
-  const sig2x = mx + colW + 10;
-  doc.setDrawColor(80, 80, 80);
-  doc.setLineWidth(0.3);
-  doc.line(sig1x, y, sig1x + colW, y);
-  doc.line(sig2x, y, sig2x + colW, y);
-  y += 4;
-  doc.setFontSize(8);
-  doc.setFont(PDF_FONT, "normal");
-  doc.setTextColor(60, 60, 60);
-  doc.text("Diretor de Operações — CMTU", sig1x + colW / 2, y, { align: "center" });
-  doc.text("Fiscal de Contrato de Campo", sig2x + colW / 2, y, { align: "center" });
-  y += 18;
+  // Bloco de assinaturas — até 3 assinantes
+  const assinantes: { nome: string; cargo: string }[] = [];
+  if (cfg.diretor_nome) assinantes.push({ nome: cfg.diretor_nome, cargo: "Diretor de Operações — CMTU" });
+  if (cfg.gerente_nome) assinantes.push({ nome: cfg.gerente_nome, cargo: "Gerente de Limpeza Urbana" });
+  if (cfg.fiscal_nome) assinantes.push({ nome: cfg.fiscal_nome, cargo: "Fiscal de Contrato de Campo" });
+
+  // fallback sem configuração
+  if (assinantes.length === 0) {
+    assinantes.push({ nome: "", cargo: "Diretor de Operações — CMTU" });
+    assinantes.push({ nome: "", cargo: "Fiscal de Contrato de Campo" });
+  }
+
+  // Linha 1: até 2 assinantes lado a lado
+  const linha1 = assinantes.slice(0, 2);
+  const linha2 = assinantes.slice(2);
+  const colW = linha1.length === 2 ? (pageW - mx * 2 - 10) / 2 : pageW - mx * 2;
+
+  for (let i = 0; i < linha1.length; i++) {
+    const sx = mx + i * (colW + 10);
+    doc.setDrawColor(80, 80, 80);
+    doc.setLineWidth(0.3);
+    doc.line(sx, y, sx + colW, y);
+    doc.setFontSize(8);
+    doc.setFont(PDF_FONT, "bold");
+    doc.setTextColor(30, 30, 30);
+    if (linha1[i].nome) doc.text(linha1[i].nome, sx + colW / 2, y + 4, { align: "center" });
+    doc.setFont(PDF_FONT, "normal");
+    doc.setTextColor(60, 60, 60);
+    doc.text(linha1[i].cargo, sx + colW / 2, y + (linha1[i].nome ? 8 : 4), { align: "center" });
+  }
+  y += linha1[0].nome ? 22 : 16;
+
+  if (linha2.length > 0) {
+    const cx2 = pageW / 2;
+    const sigW2 = colW;
+    doc.setDrawColor(80, 80, 80);
+    doc.setLineWidth(0.3);
+    doc.line(cx2 - sigW2 / 2, y, cx2 + sigW2 / 2, y);
+    doc.setFontSize(8);
+    doc.setFont(PDF_FONT, "bold");
+    doc.setTextColor(30, 30, 30);
+    if (linha2[0].nome) doc.text(linha2[0].nome, cx2, y + 4, { align: "center" });
+    doc.setFont(PDF_FONT, "normal");
+    doc.setTextColor(60, 60, 60);
+    doc.text(linha2[0].cargo, cx2, y + (linha2[0].nome ? 8 : 4), { align: "center" });
+    y += linha2[0].nome ? 22 : 16;
+  }
 
   // Caixa de recebimento pela contratada
   doc.setDrawColor(...PDF_NAVY);
   doc.setLineWidth(0.5);
-  doc.rect(mx, y, pageW - mx * 2, 32, "S");
+  const boxH = cfg.contratada_nome ? 38 : 32;
+  doc.rect(mx, y, pageW - mx * 2, boxH, "S");
   doc.setFont(PDF_FONT, "bold");
   doc.setFontSize(8);
   doc.setTextColor(...PDF_NAVY);
   doc.text("RECEBIMENTO PELA CONTRATADA", mx + 5, y + 7);
+
   doc.setFont(PDF_FONT, "normal");
   doc.setTextColor(50, 50, 50);
   doc.setFontSize(9);
-  doc.text("Empresa: _____________________________________________", mx + 5, y + 16);
-  doc.text("Responsável: ______________________________  Data: ____/____/________", mx + 5, y + 25);
+  let ry = y + 16;
+  if (cfg.contratada_nome) {
+    doc.setFont(PDF_FONT, "bold");
+    doc.text(cfg.contratada_nome, mx + 5, ry);
+    doc.setFont(PDF_FONT, "normal");
+    ry += 6;
+  }
+  if (cfg.contratada_endereco) {
+    doc.setFontSize(8);
+    doc.text(cfg.contratada_endereco, mx + 5, ry);
+    ry += 6;
+  }
+  doc.setFontSize(9);
+  doc.text("Responsável: ______________________________  Data: ____/____/________", mx + 5, ry + (cfg.contratada_nome ? 2 : 0));
 
   // Rodapé provisório página 1 (ajustado ao final)
   addPdfFooter(doc, 1, 1, mx);

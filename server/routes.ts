@@ -8,6 +8,7 @@ import type { ServiceArea } from "@shared/schema";
 import bcrypt from "bcryptjs";
 import multer from "multer";
 import { createClient } from "@supabase/supabase-js";
+import { createDbPool } from "../db/client";
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
@@ -15,6 +16,31 @@ function getSupabase() {
   const url = process.env.SUPABASE_URL ?? "";
   const key = process.env.SUPABASE_SERVICE_KEY ?? "";
   return createClient(url, key, { auth: { persistSession: false } });
+}
+
+async function ensureContratoConfigTable() {
+  try {
+    const pool = createDbPool();
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS contrato_config (
+        id SERIAL PRIMARY KEY,
+        lote INTEGER NOT NULL UNIQUE,
+        regiao VARCHAR(100),
+        processo_admin VARCHAR(100),
+        pregao_eletronico VARCHAR(100),
+        numero_contrato VARCHAR(100),
+        contratada_nome VARCHAR(200),
+        contratada_endereco VARCHAR(300),
+        diretor_nome VARCHAR(150),
+        gerente_nome VARCHAR(150),
+        fiscal_nome VARCHAR(150),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await pool.end();
+  } catch (e) {
+    console.warn("contrato_config table check:", e);
+  }
 }
 
 // Função para converter ServiceArea[] para CSV compatível com Supabase
@@ -137,6 +163,7 @@ async function ensureAdminExists() {
 
 export async function registerRoutes(app: Express): Promise<void> {
   await ensureAdminExists();
+  await ensureContratoConfigTable();
 
   // ===================== AUTH ROUTES =====================
 
@@ -1618,6 +1645,59 @@ export async function registerRoutes(app: Express): Promise<void> {
       res.json({ success: true });
     } catch (error: any) {
       res.status(500).json({ error: "Erro ao excluir ordem" });
+    }
+  });
+
+  // ===================== CONFIGURAÇÃO DE CONTRATO =====================
+
+  app.get("/api/contrato-config/:lote", requireAuth, async (req, res) => {
+    try {
+      const lote = parseInt(req.params.lote);
+      const pool = createDbPool();
+      const result = await pool.query(
+        "SELECT * FROM contrato_config WHERE lote = $1",
+        [lote]
+      );
+      await pool.end();
+      res.json(result.rows[0] ?? { lote });
+    } catch (error: any) {
+      res.status(500).json({ error: "Erro ao buscar configuração do contrato" });
+    }
+  });
+
+  app.put("/api/contrato-config/:lote", requireRole("admin", "gestor"), async (req, res) => {
+    try {
+      const lote = parseInt(req.params.lote);
+      const {
+        regiao, processo_admin, pregao_eletronico, numero_contrato,
+        contratada_nome, contratada_endereco,
+        diretor_nome, gerente_nome, fiscal_nome,
+      } = req.body;
+
+      const pool = createDbPool();
+      await pool.query(`
+        INSERT INTO contrato_config
+          (lote, regiao, processo_admin, pregao_eletronico, numero_contrato,
+           contratada_nome, contratada_endereco, diretor_nome, gerente_nome, fiscal_nome, updated_at)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, NOW())
+        ON CONFLICT (lote) DO UPDATE SET
+          regiao = EXCLUDED.regiao,
+          processo_admin = EXCLUDED.processo_admin,
+          pregao_eletronico = EXCLUDED.pregao_eletronico,
+          numero_contrato = EXCLUDED.numero_contrato,
+          contratada_nome = EXCLUDED.contratada_nome,
+          contratada_endereco = EXCLUDED.contratada_endereco,
+          diretor_nome = EXCLUDED.diretor_nome,
+          gerente_nome = EXCLUDED.gerente_nome,
+          fiscal_nome = EXCLUDED.fiscal_nome,
+          updated_at = NOW()
+      `, [lote, regiao, processo_admin, pregao_eletronico, numero_contrato,
+          contratada_nome, contratada_endereco, diretor_nome, gerente_nome, fiscal_nome]);
+      await pool.end();
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("Erro ao salvar configuração do contrato:", error);
+      res.status(500).json({ error: "Erro ao salvar configuração do contrato" });
     }
   });
 
