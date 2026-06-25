@@ -28,6 +28,81 @@ export async function loadImg(
 export const PDF_NAVY: [number, number, number] = [26, 46, 90];
 export const PDF_GREEN: [number, number, number] = [45, 122, 79];
 
+type ImgData = { b64: string; nw: number; nh: number } | null;
+
+/**
+ * Desenha o cabeçalho padrão CMTU em duas faixas:
+ *  Faixa 1 — logos institucionais (Londrina esquerda, CMTU direita)
+ *  Faixa 2 — título do documento + logo Operações
+ * Retorna a coordenada Y logo após a linha separadora.
+ */
+export function addPdfHeader(
+  doc: jsPDF,
+  londrina: ImgData,
+  cmtu: ImgData,
+  operacoes: ImgData,
+  title: string,
+  subtitle: string,
+  mx = 14,
+): number {
+  const pageW = doc.internal.pageSize.getWidth();
+  const cx = pageW / 2;
+  let y = mx;
+
+  // ── Faixa 1: logos institucionais ────────────────────────────────
+  const logoH = 14; // altura em mm para ambos os logos
+  if (londrina) {
+    const w = (londrina.nw / londrina.nh) * logoH;
+    doc.addImage(londrina.b64, "PNG", mx, y, w, logoH);
+  }
+  if (cmtu) {
+    const w = (cmtu.nw / cmtu.nh) * logoH;
+    doc.addImage(cmtu.b64, "PNG", pageW - mx - w, y, w, logoH);
+  }
+  y += logoH + 2;
+
+  // linha fina separando as duas faixas
+  doc.setDrawColor(210, 210, 210);
+  doc.setLineWidth(0.2);
+  doc.line(mx, y, pageW - mx, y);
+  y += 4;
+
+  // ── Faixa 2: título ──────────────────────────────────────────────
+  doc.setFontSize(7);
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(120, 120, 120);
+  doc.text("COMPANHIA MUNICIPAL DE TRÂNSITO E URBANIZAÇÃO", cx, y, { align: "center" });
+  y += 5;
+
+  doc.setFontSize(13);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(...PDF_NAVY);
+  doc.text(title, cx, y, { align: "center" });
+  y += 5;
+
+  doc.setFontSize(8.5);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(...PDF_GREEN);
+  doc.text(subtitle, cx, y, { align: "center" });
+  y += 3;
+
+  if (operacoes) {
+    const h = 9;
+    const w = (operacoes.nw / operacoes.nh) * h;
+    doc.addImage(operacoes.b64, "PNG", cx - w / 2, y, w, h);
+    y += h + 3;
+  } else {
+    y += 4;
+  }
+
+  // ── Linha separadora principal ────────────────────────────────────
+  doc.setDrawColor(...PDF_NAVY);
+  doc.setLineWidth(0.7);
+  doc.line(mx, y, pageW - mx, y);
+
+  return y;
+}
+
 export function addPdfFooter(doc: jsPDF, pageNum: number, totalPages: number, mx = 14) {
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();

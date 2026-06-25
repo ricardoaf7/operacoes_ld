@@ -660,10 +660,9 @@ function formatDate(d: string) {
 async function gerarPDFOrdemServico(os: OrdemServico): Promise<void> {
   const { default: jsPDF } = await import("jspdf");
   const { default: autoTable } = await import("jspdf-autotable");
-  const { loadImg, addPdfFooter, PDF_NAVY, PDF_GREEN } = await import("@/lib/pdfUtils");
+  const { loadImg, addPdfHeader, addPdfFooter, PDF_NAVY, PDF_GREEN } = await import("@/lib/pdfUtils");
 
   const doc = new jsPDF({ orientation: "p", unit: "mm", format: "a4" });
-  const PDF_FONT = "helvetica";
   const pageW = doc.internal.pageSize.getWidth();
   const mx = 14;
 
@@ -673,47 +672,16 @@ async function gerarPDFOrdemServico(os: OrdemServico): Promise<void> {
     loadImg("/logos/operacoes.png"),
   ]);
 
-  // --- Logos header ---
-  const hY = mx;
-
-  if (londrina) {
-    const h = 13; const w = (londrina.nw / londrina.nh) * h;
-    doc.addImage(londrina.b64, "PNG", mx, hY, w, h);
-  }
-  if (cmtu) {
-    const h = 22; const w = (cmtu.nw / cmtu.nh) * h;
-    doc.addImage(cmtu.b64, "PNG", pageW - mx - w, hY, w, h);
-  }
-
-  const cx = pageW / 2;
-  doc.setFontSize(7.5);
-  doc.setFont(PDF_FONT, "normal");
-  doc.setTextColor(90, 90, 90);
-  doc.text("COMPANHIA MUNICIPAL DE TRÂNSITO E URBANIZAÇÃO", cx, hY + 4, { align: "center" });
-
-  doc.setFontSize(14);
-  doc.setFont(PDF_FONT, "bold");
-  doc.setTextColor(...PDF_NAVY);
-  doc.text(`ORDEM DE SERVIÇO Nº ${os.numero}`, cx, hY + 11, { align: "center" });
-
-  doc.setFontSize(9);
-  doc.setFont(PDF_FONT, "bold");
-  doc.setTextColor(...PDF_GREEN);
-  doc.text(`Capina e Roçagem — Lote ${os.lote}`, cx, hY + 17, { align: "center" });
-
-  let headerBottom = hY + 20;
-  if (operacoes) {
-    const h = 10; const w = (operacoes.nw / operacoes.nh) * h;
-    doc.addImage(operacoes.b64, "PNG", cx - w / 2, hY + 19, w, h);
-    headerBottom = hY + 19 + h + 3;
-  }
-
-  doc.setDrawColor(...PDF_NAVY);
-  doc.setLineWidth(0.7);
-  doc.line(mx, headerBottom, pageW - mx, headerBottom);
+  const headerBottom = addPdfHeader(
+    doc, londrina, cmtu, operacoes,
+    `ORDEM DE SERVIÇO Nº ${os.numero}`,
+    `Capina e Roçagem — Lote ${os.lote}`,
+    mx,
+  );
 
   // --- Metadados ---
   let y = headerBottom + 5;
+  const PDF_FONT = "helvetica";
   doc.setFontSize(8);
   doc.setFont(PDF_FONT, "normal");
   doc.setTextColor(70, 70, 70);
