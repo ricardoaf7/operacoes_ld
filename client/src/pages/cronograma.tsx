@@ -70,32 +70,49 @@ function gerarHtmlCronograma(c: any, areas: any[]) {
         <td style="padding:6px 8px;border:1px solid #c8ddd4;text-align:right">${fmt(a.metragem_m2)}</td>
       </tr>`)
     .join("");
+  const origin = window.location.origin;
   return `<!DOCTYPE html><html><head><meta charset="utf-8">
 <title>Cronograma — ${loteNome}</title>
 <style>
-  *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
-  body{font-family:Arial,sans-serif;font-size:12px;margin:20px;color:#222}
-  h1{font-size:16px;margin:0}
-  .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;border-bottom:2px solid #2d7a4f;padding-bottom:12px}
-  .meta{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px;background:#e8f3ee;padding:10px;border-radius:4px;border:1px solid #c8ddd4}
-  .meta div{font-size:11px}.meta strong{display:block;font-size:12px}
-  table{width:100%;border-collapse:collapse;font-size:11px}
-  th{background:#2d7a4f;color:#fff;padding:8px;border:1px solid #1e5f3a}
-  .total{margin-top:12px;text-align:right;font-size:13px;font-weight:bold;color:#2d7a4f}
-  .assinaturas{display:grid;grid-template-columns:1fr 1fr;gap:60px;margin-top:60px}
-  .assinatura{border-top:1px solid #222;padding-top:8px;text-align:center;font-size:11px}
-  @media print{body{margin:8px}}
+  *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;box-sizing:border-box}
+  body{font-family:Arial,sans-serif;font-size:12px;margin:16px 20px;color:#222}
+  .logos{display:flex;justify-content:space-between;align-items:center;padding-bottom:10px;border-bottom:3px solid #1a2e5a;margin-bottom:10px}
+  .logos img{height:44px;object-fit:contain;max-width:160px}
+  .logos-center{text-align:center;flex:1;padding:0 12px}
+  .logos-center p{margin:0;font-size:9px;color:#555;text-transform:uppercase;letter-spacing:.5px}
+  .logos-center img{height:22px;object-fit:contain;margin-top:4px}
+  h1{font-size:15px;margin:0 0 2px;color:#1a2e5a;font-weight:bold}
+  .sub{margin:0;font-size:10px;color:#2d7a4f;font-weight:bold}
+  .semana{font-size:10px;color:#555;margin-top:6px}
+  .meta{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:12px;background:#e8f3ee;padding:8px 10px;border-radius:4px;border:1px solid #c8ddd4}
+  .meta div{font-size:10px}.meta strong{display:block;font-size:11px;margin-top:1px}
+  table{width:100%;border-collapse:collapse;font-size:10.5px}
+  th{background:#1a2e5a;color:#fff;padding:7px 8px;border:1px solid #14234a;text-align:left}
+  th:first-child{text-align:center}th:last-child{text-align:right}
+  .total{margin-top:10px;text-align:right;font-size:12px;font-weight:bold;color:#1a2e5a}
+  .assinaturas{display:grid;grid-template-columns:1fr 1fr;gap:60px;margin-top:50px}
+  .assinatura{border-top:1px solid #555;padding-top:6px;text-align:center;font-size:10px;color:#333}
+  @media print{
+    body{margin:8px 12px}
+    @page{
+      margin-bottom:28mm;
+      @bottom-left{content:"Rua Prof. João Cândido, 1.213 — CEP 86.010-001 — CNPJ 86.731.320/0001-37 — Fone (43) 3379-7900 — Londrina – PR";font-size:7.5pt;color:#666}
+      @bottom-center{content:"www.cmtuld.com.br  |  opera@cmtuld.com.br";font-size:7.5pt;color:#666}
+      @bottom-right{content:"Pág. " counter(page) " / " counter(pages);font-size:7.5pt;color:#666}
+    }
+  }
 </style></head><body>
-<div class="header">
-  <div>
-    <p style="margin:0;font-size:11px;color:#666">CMTU — Companhia Municipal de Trânsito e Urbanização</p>
+<div class="logos">
+  <img src="${origin}/logos/londrina.png" alt="Londrina">
+  <div class="logos-center">
+    <p>Companhia Municipal de Trânsito e Urbanização</p>
     <h1>CRONOGRAMA SEMANAL DE ROÇAGEM</h1>
-    <p style="margin:4px 0 0;color:#2d7a4f;font-weight:bold">${loteNome}</p>
+    <p class="sub">${loteNome}</p>
+    <img src="${origin}/logos/operacoes.png" alt="Diretoria de Operações">
   </div>
-  <div style="text-align:right;font-size:11px">
-    <div>Semana: <strong>${semana}</strong></div>
-  </div>
+  <img src="${origin}/logos/cmtu.png" alt="CMTU">
 </div>
+<p class="semana">Semana: <strong>${semana}</strong></p>
 <div class="meta">
   <div>Total de áreas<strong>${areas.length}</strong></div>
   <div>Total m²<strong>${fmt(totalM2)} m²</strong></div>
@@ -103,11 +120,11 @@ function gerarHtmlCronograma(c: any, areas: any[]) {
 </div>
 <table>
   <thead><tr>
-    <th style="width:50px;text-align:center">ID</th>
-    <th style="text-align:left">Endereço</th>
-    <th style="width:140px;text-align:center">Bairro</th>
-    <th style="width:120px;text-align:center">Tipo</th>
-    <th style="width:100px;text-align:right">Metragem (m²)</th>
+    <th style="width:48px;text-align:center">ID</th>
+    <th>Endereço</th>
+    <th style="width:135px">Bairro</th>
+    <th style="width:115px">Tipo</th>
+    <th style="width:95px;text-align:right">Metragem (m²)</th>
   </tr></thead>
   <tbody>${rows}</tbody>
 </table>
