@@ -2,16 +2,7 @@ import {
   MapPin,
   Layers,
   Leaf,
-  TreeDeciduous,
-  Waves,
-  Paintbrush,
-  Scissors,
-  Droplets,
-  Trash2,
   Recycle,
-  Sparkles,
-  Wind,
-  Package,
   BarChart3,
   ClipboardList,
   CalendarDays,
@@ -194,9 +185,7 @@ export function AppSidebar({
               data-testid="accordion-limpeza-urbana"
             >
               <div className="flex items-center gap-2.5">
-                <div className="h-7 w-7 rounded-md bg-emerald-500/10 dark:bg-emerald-400/15 flex items-center justify-center flex-shrink-0 transition-colors group-data-[state=open]:bg-emerald-500/20">
-                  <Leaf className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-                </div>
+                <Leaf className="h-4 w-4 text-emerald-500/60 dark:text-emerald-400/60 flex-shrink-0" />
                 <span className="font-semibold text-sm tracking-wide">LIMPEZA URBANA</span>
               </div>
             </AccordionTrigger>
@@ -205,7 +194,6 @@ export function AppSidebar({
                 <ServiceButton
                   active={selectedService === "rocagem"}
                   onClick={() => handleServiceClick("rocagem")}
-                  icon={<Scissors className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />}
                   label="Capina e Roçagem"
                   testId="service-rocagem"
                 />
@@ -300,35 +288,30 @@ export function AppSidebar({
                 <ServiceButton
                   active={selectedService === "boa-praca"}
                   onClick={() => handleServiceClick("boa-praca")}
-                  icon={<MapPin className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />}
                   label="Boa Praça"
                   testId="service-boa-praca"
                 />
                 <ServiceButton
                   active={selectedService === "manutencao-lagos"}
                   onClick={() => handleServiceClick("manutencao-lagos")}
-                  icon={<Waves className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />}
                   label="Manutenção Lagos"
                   testId="service-manutencao-lagos"
                 />
                 <ServiceButton
                   active={selectedService === "varricao"}
                   onClick={() => handleServiceClick("varricao")}
-                  icon={<Paintbrush className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />}
                   label="Varrição"
                   testId="service-varricao"
                 />
                 <ServiceButton
                   active={selectedService === "podas"}
                   onClick={() => handleServiceClick("podas")}
-                  icon={<TreeDeciduous className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />}
                   label="Podas"
                   testId="service-podas"
                 />
                 <ServiceButton
                   active={selectedService === "chafariz"}
                   onClick={() => handleServiceClick("chafariz")}
-                  icon={<Droplets className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />}
                   label="Chafariz"
                   testId="service-chafariz"
                 />
@@ -343,9 +326,7 @@ export function AppSidebar({
               data-testid="accordion-residuos"
             >
               <div className="flex items-center gap-2.5">
-                <div className="h-7 w-7 rounded-md bg-blue-500/10 dark:bg-blue-400/15 flex items-center justify-center flex-shrink-0 transition-colors group-data-[state=open]:bg-blue-500/20">
-                  <Recycle className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                </div>
+                <Recycle className="h-4 w-4 text-blue-500/60 dark:text-blue-400/60 flex-shrink-0" />
                 <span className="font-semibold text-sm tracking-wide">RESÍDUOS</span>
               </div>
             </AccordionTrigger>
@@ -354,35 +335,30 @@ export function AppSidebar({
                 <ServiceButton
                   active={selectedService === "coleta-organicos"}
                   onClick={() => handleServiceClick("coleta-organicos")}
-                  icon={<Trash2 className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />}
                   label="Coleta Orgânicos e Rejeitos"
                   testId="service-coleta-organicos"
                 />
                 <ServiceButton
                   active={selectedService === "coleta-reciclaveis"}
                   onClick={() => handleServiceClick("coleta-reciclaveis")}
-                  icon={<Recycle className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />}
                   label="Coleta Recicláveis"
                   testId="service-coleta-reciclaveis"
                 />
                 <ServiceButton
                   active={selectedService === "coleta-especiais"}
                   onClick={() => handleServiceClick("coleta-especiais")}
-                  icon={<Sparkles className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />}
                   label="Coleta e Limpeza Especiais"
                   testId="service-coleta-especiais"
                 />
                 <ServiceButton
                   active={selectedService === "limpeza-bocas"}
                   onClick={() => handleServiceClick("limpeza-bocas")}
-                  icon={<Wind className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />}
                   label="Limpeza de Bocas de Lobo"
                   testId="service-limpeza-bocas"
                 />
                 <ServiceButton
                   active={selectedService === "pevs"}
                   onClick={() => handleServiceClick("pevs")}
-                  icon={<Package className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />}
                   label="PEV's"
                   testId="service-pevs"
                 />
@@ -401,9 +377,7 @@ export function AppSidebar({
                 className="group rounded-lg px-3 py-2.5 hover:no-underline hover:bg-muted/60 transition-all duration-200 data-[state=open]:bg-muted/70 border border-transparent data-[state=open]:border-border/50"
               >
                 <div className="flex items-center gap-2.5">
-                  <div className="h-7 w-7 rounded-md bg-slate-500/10 dark:bg-slate-400/15 flex items-center justify-center flex-shrink-0 transition-colors group-data-[state=open]:bg-slate-500/20">
-                    <Settings className="h-4 w-4 text-slate-600 dark:text-slate-400" />
-                  </div>
+                  <Settings className="h-4 w-4 text-slate-500/60 dark:text-slate-400/60 flex-shrink-0" />
                   <span className="font-semibold text-sm tracking-wide">CONFIGURAÇÕES</span>
                 </div>
               </AccordionTrigger>
@@ -481,13 +455,11 @@ export function AppSidebar({
 function ServiceButton({
   active,
   onClick,
-  icon,
   label,
   testId,
 }: {
   active: boolean;
   onClick: () => void;
-  icon: React.ReactNode;
   label: string;
   testId?: string;
 }) {
@@ -495,13 +467,12 @@ function ServiceButton({
     <button
       onClick={onClick}
       data-testid={testId}
-      className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-md text-sm text-left transition-all duration-150 ${
+      className={`w-full flex items-center px-3 py-1.5 rounded-md text-sm text-left transition-all duration-150 ${
         active
-          ? "bg-emerald-500/12 dark:bg-emerald-400/12 text-emerald-700 dark:text-emerald-300 font-medium ring-1 ring-emerald-500/20"
-          : "text-foreground/70 hover:text-foreground hover:bg-muted/50"
+          ? "bg-muted/80 text-foreground font-medium"
+          : "text-foreground/60 hover:text-foreground hover:bg-muted/50"
       }`}
     >
-      <span className="flex-shrink-0">{icon}</span>
       <span className="truncate">{label}</span>
     </button>
   );
