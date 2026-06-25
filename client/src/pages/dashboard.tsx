@@ -807,9 +807,9 @@ export default function Dashboard({ isPublicView = false }: DashboardProps) {
         />
         
         <SidebarInset className="flex-1 overflow-hidden flex flex-col">
-          <header className="flex items-center h-16 px-4 border-b border-sidebar-border bg-background">
+          <header className="flex items-center h-20 px-4 border-b border-sidebar-border bg-background">
             <SidebarTrigger data-testid="button-sidebar-toggle" />
-            <div className="flex-1 flex items-center justify-around">
+            <div className="flex-1 flex items-center justify-center gap-48">
               <img
                 src="/logos/londrina.png"
                 alt="Prefeitura de Londrina"
@@ -818,7 +818,7 @@ export default function Dashboard({ isPublicView = false }: DashboardProps) {
               <img
                 src="/logos/cmtu_vertical.png"
                 alt="CMTU Londrina"
-                className="h-11 w-auto object-contain opacity-90 dark:[filter:brightness(0)_invert(1)]"
+                className="h-14 w-auto object-contain opacity-90 dark:[filter:brightness(0)_invert(1)]"
               />
             </div>
             <div className="w-8 flex-shrink-0" />
