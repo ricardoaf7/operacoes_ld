@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
 import {
@@ -45,6 +45,7 @@ export default function CronogramaPage() {
   const [page, setPage] = useState(1);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<number | null>(null);
+  const [osCarregada, setOsCarregada] = useState<string | null>(null);
 
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -57,9 +58,38 @@ export default function CronogramaPage() {
     queryKey: ["/api/cronogramas"],
   });
 
+  const { data: ordens = [] } = useQuery<any[]>({
+    queryKey: ["/api/ordens"],
+  });
+
+  // Ao mudar o lote, pré-seleciona áreas da OS mais recente daquele lote
+  useEffect(() => {
+    if (editingId) return;
+    const osDoLote = (ordens as any[])
+      .filter((o) => o.lote === lote)
+      .sort(
+        (a, b) =>
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      );
+    if (osDoLote.length === 0) {
+      setSelectedIds(new Set());
+      setOsCarregada(null);
+      return;
+    }
+    const ultima = osDoLote[0];
+    apiRequest("GET", `/api/ordens/${ultima.id}`)
+      .then((r) => r.json())
+      .then((data: any) => {
+        if (data.areas) {
+          setSelectedIds(new Set(data.areas.map((a: any) => a.id)));
+          setOsCarregada(ultima.numero);
+        }
+      });
+  }, [lote, ordens, editingId]);
+
   const areasFiltradas = useMemo(() => {
     const base = todasAreas
-      .filter((a) => a.lote === lote && a.servico === "rocagem")
+      .filter((a) => a.lote === lote)
       .sort((a, b) => a.id - b.id);
     if (!busca.trim()) return base;
     const q = busca.toLowerCase();
@@ -130,6 +160,7 @@ export default function CronogramaPage() {
     setSemanaFim("");
     setObservacao("");
     setEditingId(null);
+    setOsCarregada(null);
     setPage(1);
   }
 
@@ -316,6 +347,21 @@ export default function CronogramaPage() {
                   className="text-xs text-emerald-700 dark:text-emerald-400 hover:underline"
                 >
                   Limpar seleção
+                </button>
+              </div>
+            )}
+
+            {/* Banner OS carregada */}
+            {osCarregada && !editingId && (
+              <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg px-4 py-2.5 flex items-center justify-between">
+                <p className="text-sm text-blue-700 dark:text-blue-300">
+                  Áreas da OS <span className="font-semibold">{osCarregada}</span> pré-selecionadas. Adicione ou remova conforme necessário.
+                </p>
+                <button
+                  onClick={() => { setSelectedIds(new Set()); setOsCarregada(null); }}
+                  className="text-xs text-blue-600 hover:underline ml-4 flex-shrink-0"
+                >
+                  Limpar
                 </button>
               </div>
             )}
