@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
 import {
@@ -6,10 +6,12 @@ import {
   CalendarDays,
   Search,
   ExternalLink,
+  FileText,
   Pencil,
   Printer,
   Trash2,
   CheckSquare,
+  X,
 } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -52,6 +54,71 @@ function getWeekDates(offsetWeeks: number) {
 
 const PER_PAGE = 50;
 
+function gerarHtmlCronograma(c: any, areas: any[]) {
+  const fmt = (v: number | null | undefined) =>
+    v != null ? v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—";
+  const totalM2 = areas.reduce((s: number, a: any) => s + (a.metragem_m2 || 0), 0);
+  const loteNome = c.lote === 1 ? "Lote 1 — Zona Norte" : "Lote 2 — Zona Sul";
+  const semana = `${formatDate(c.semana_inicio)} a ${formatDate(c.semana_fim)}`;
+  const rows = areas
+    .map((a: any, i: number) => `
+      <tr style="background:${i % 2 === 0 ? "#fff" : "#f0f7f3"}">
+        <td style="padding:6px 8px;border:1px solid #c8ddd4;text-align:center">${a.id}</td>
+        <td style="padding:6px 8px;border:1px solid #c8ddd4">${a.endereco}</td>
+        <td style="padding:6px 8px;border:1px solid #c8ddd4">${a.bairro || "—"}</td>
+        <td style="padding:6px 8px;border:1px solid #c8ddd4;text-align:center">${a.tipo}</td>
+        <td style="padding:6px 8px;border:1px solid #c8ddd4;text-align:right">${fmt(a.metragem_m2)}</td>
+      </tr>`)
+    .join("");
+  return `<!DOCTYPE html><html><head><meta charset="utf-8">
+<title>Cronograma — ${loteNome}</title>
+<style>
+  *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
+  body{font-family:Arial,sans-serif;font-size:12px;margin:20px;color:#222}
+  h1{font-size:16px;margin:0}
+  .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;border-bottom:2px solid #2d7a4f;padding-bottom:12px}
+  .meta{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px;background:#e8f3ee;padding:10px;border-radius:4px;border:1px solid #c8ddd4}
+  .meta div{font-size:11px}.meta strong{display:block;font-size:12px}
+  table{width:100%;border-collapse:collapse;font-size:11px}
+  th{background:#2d7a4f;color:#fff;padding:8px;border:1px solid #1e5f3a}
+  .total{margin-top:12px;text-align:right;font-size:13px;font-weight:bold;color:#2d7a4f}
+  .assinaturas{display:grid;grid-template-columns:1fr 1fr;gap:60px;margin-top:60px}
+  .assinatura{border-top:1px solid #222;padding-top:8px;text-align:center;font-size:11px}
+  @media print{body{margin:8px}}
+</style></head><body>
+<div class="header">
+  <div>
+    <p style="margin:0;font-size:11px;color:#666">CMTU — Companhia Municipal de Trânsito e Urbanização</p>
+    <h1>CRONOGRAMA SEMANAL DE ROÇAGEM</h1>
+    <p style="margin:4px 0 0;color:#2d7a4f;font-weight:bold">${loteNome}</p>
+  </div>
+  <div style="text-align:right;font-size:11px">
+    <div>Semana: <strong>${semana}</strong></div>
+  </div>
+</div>
+<div class="meta">
+  <div>Total de áreas<strong>${areas.length}</strong></div>
+  <div>Total m²<strong>${fmt(totalM2)} m²</strong></div>
+  ${c.observacao ? `<div>Observação<strong>${c.observacao}</strong></div>` : "<div></div>"}
+</div>
+<table>
+  <thead><tr>
+    <th style="width:50px;text-align:center">ID</th>
+    <th style="text-align:left">Endereço</th>
+    <th style="width:140px;text-align:center">Bairro</th>
+    <th style="width:120px;text-align:center">Tipo</th>
+    <th style="width:100px;text-align:right">Metragem (m²)</th>
+  </tr></thead>
+  <tbody>${rows}</tbody>
+</table>
+<div class="total">Total: ${fmt(totalM2)} m²</div>
+<div class="assinaturas">
+  <div class="assinatura">Coordenador responsável</div>
+  <div class="assinatura">Visto fiscal</div>
+</div>
+</body></html>`;
+}
+
 export default function CronogramaPage() {
   const [activeTab, setActiveTab] = useState<"novo" | "historico">("novo");
   const [lote, setLote] = useState<number>(1);
@@ -63,6 +130,10 @@ export default function CronogramaPage() {
   const [page, setPage] = useState(1);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<number | null>(null);
+  const [pdfOpen, setPdfOpen] = useState(false);
+  const [pdfHtml, setPdfHtml] = useState("");
+  const [pdfTitulo, setPdfTitulo] = useState("");
+  const iframeRef = useRef<HTMLIFrameElement>(null);
 
   // OS de referência do mês atual para o lote selecionado
   const [osRef, setOsRef] = useState<{ id: number; numero: string; mes: string } | null>(null);
@@ -227,6 +298,16 @@ export default function CronogramaPage() {
     setEditingId(null);
     setPage(1);
     setBusca("");
+  }
+
+  async function handleGerarPDF(c: any) {
+    const r = await apiRequest("GET", `/api/cronogramas/${c.id}`);
+    const data = await r.json();
+    const areas = data.areas ?? [];
+    const loteNome = c.lote === 1 ? "Lote 1 — Zona Norte" : "Lote 2 — Zona Sul";
+    setPdfTitulo(`Cronograma ${loteNome} — ${formatDate(c.semana_inicio)} a ${formatDate(c.semana_fim)}`);
+    setPdfHtml(gerarHtmlCronograma(c, areas));
+    setPdfOpen(true);
   }
 
   async function handleEdit(cronograma: any) {
@@ -657,15 +738,13 @@ export default function CronogramaPage() {
                       <ExternalLink className="h-3 w-3" />
                       Ver público
                     </a>
-                    <a
-                      href={`/public/cronograma/${c.lote}?print=1`}
-                      target="_blank"
-                      rel="noreferrer"
+                    <button
+                      onClick={() => handleGerarPDF(c)}
                       className="px-3 py-1.5 text-xs border rounded-md hover:bg-accent transition-colors flex items-center gap-1.5"
                     >
-                      <Printer className="h-3 w-3" />
-                      Imprimir
-                    </a>
+                      <FileText className="h-3 w-3" />
+                      Gerar PDF
+                    </button>
                     <button
                       onClick={() => handleEdit(c)}
                       className="px-3 py-1.5 text-xs border rounded-md hover:bg-accent transition-colors flex items-center gap-1.5"
@@ -687,6 +766,36 @@ export default function CronogramaPage() {
           </div>
         )}
       </div>
+
+      {/* PDF Preview */}
+      {pdfOpen && (
+        <div className="fixed inset-0 z-50 flex flex-col bg-background">
+          <div className="flex items-center gap-3 px-4 py-3 border-b bg-muted/30 flex-shrink-0">
+            <span className="font-semibold text-sm flex-1">{pdfTitulo}</span>
+            <button
+              onClick={() => iframeRef.current?.contentWindow?.print()}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm border rounded-md hover:bg-accent transition-colors"
+            >
+              <Printer className="h-4 w-4" /> Imprimir / Salvar PDF
+            </button>
+            <button
+              onClick={() => setPdfOpen(false)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm border rounded-md hover:bg-accent transition-colors"
+            >
+              <X className="h-4 w-4" /> Fechar
+            </button>
+          </div>
+          <iframe
+            ref={iframeRef}
+            srcDoc={pdfHtml}
+            className="flex-1 w-full border-0"
+            title="preview-pdf"
+          />
+          <div className="px-4 py-2 border-t bg-muted/20 text-xs text-muted-foreground text-center">
+            Clique em "Imprimir / Salvar PDF" → selecione "Salvar como PDF" na impressora
+          </div>
+        </div>
+      )}
 
       {/* Delete confirmation */}
       {confirmDelete !== null && (
