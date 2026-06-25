@@ -686,6 +686,10 @@ export default function Dashboard({ isPublicView = false }: DashboardProps) {
                 ordens={ordens}
                 selectedOsId={selectedOsId}
                 onOsSelect={(id) => { handleOsSelect(id); setBottomSheetState("minimized"); }}
+                onBackupDownload={handleBackupDownload}
+                onShowExportDialog={() => setShowExportDialog(true)}
+                onChangePassword={() => setShowChangePassword(true)}
+                onLogout={handleLogout}
               />
             </BottomSheet>
           )}
@@ -796,63 +800,29 @@ export default function Dashboard({ isPublicView = false }: DashboardProps) {
           ordens={ordens}
           selectedOsId={selectedOsId}
           onOsSelect={handleOsSelect}
+          onBackupDownload={handleBackupDownload}
+          onShowExportDialog={() => setShowExportDialog(true)}
+          onChangePassword={() => setShowChangePassword(true)}
+          onLogout={handleLogout}
         />
         
         <SidebarInset className="flex-1 overflow-hidden flex flex-col">
-          <header className="flex items-center justify-between h-14 px-4 border-b border-sidebar-border">
+          <header className="flex items-center h-16 px-4 border-b border-sidebar-border bg-background">
             <SidebarTrigger data-testid="button-sidebar-toggle" />
-            <div className="flex items-center gap-2">
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={handleBackupDownload}
-                aria-label="Exportar backup JSON"
-                data-testid="button-backup"
-              >
-                <Download className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setShowExportDialog(true)}
-                aria-label="Exportar CSV para Supabase"
-                data-testid="button-export-csv"
-              >
-                <FileText className="h-4 w-4" />
-              </Button>
-              <ThemeToggle />
-              {user && (
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="icon" data-testid="button-user-menu-desktop">
-                      <LogOut className="h-4 w-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="z-[9999]">
-                    <DropdownMenuLabel>
-                      <div className="text-sm font-medium">{user.nome}</div>
-                      <div className="text-xs text-muted-foreground">{roleLabels[user.role] || user.role}</div>
-                    </DropdownMenuLabel>
-                    <DropdownMenuSeparator />
-                    {user.role === "admin" && (
-                      <DropdownMenuItem onClick={() => navigate("/usuarios")} data-testid="menu-item-users-desktop">
-                        <Users className="h-4 w-4" />
-                        Gerenciar Usuários
-                      </DropdownMenuItem>
-                    )}
-                    <DropdownMenuItem onClick={() => setShowChangePassword(true)} data-testid="menu-item-change-password-desktop">
-                      <Lock className="h-4 w-4" />
-                      Alterar Senha
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={handleLogout} data-testid="menu-item-logout-desktop">
-                      <LogOut className="h-4 w-4" />
-                      Sair
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              )}
+            <div className="flex-1 flex items-center justify-center gap-5">
+              <img
+                src="/logos/londrina.png"
+                alt="Prefeitura de Londrina"
+                className="h-11 w-auto object-contain opacity-90"
+              />
+              <div className="w-px h-8 bg-border/50" />
+              <img
+                src="/logos/cmtu_vertical.png"
+                alt="CMTU Londrina"
+                className="h-11 w-auto object-contain opacity-90"
+              />
             </div>
+            <div className="w-8 flex-shrink-0" />
           </header>
 
           {selectedService === 'rocagem' && (
