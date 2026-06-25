@@ -287,11 +287,9 @@ export default function OrdemServicoPage() {
     <div className="flex flex-col h-full">
       {/* Header */}
       <div className="flex items-center gap-3 p-6 pb-4 border-b">
-        <Link href="/">
-          <Button variant="ghost" size="sm" className="mr-1 text-muted-foreground hover:text-foreground">
-            <ChevronLeft className="h-4 w-4 mr-1" /> Voltar
-          </Button>
-        </Link>
+        <Button variant="ghost" size="sm" className="mr-1 text-muted-foreground hover:text-foreground" onClick={() => window.history.back()}>
+          <ChevronLeft className="h-4 w-4 mr-1" /> Voltar
+        </Button>
         <ClipboardList className="h-6 w-6 text-emerald-600" />
         <div>
           <h1 className="text-xl font-bold">Ordem de Serviço</h1>
@@ -658,10 +656,10 @@ function formatDate(d: string) {
 async function gerarPDFOrdemServico(os: OrdemServico): Promise<void> {
   const { default: jsPDF } = await import("jspdf");
   const { default: autoTable } = await import("jspdf-autotable");
-  const { loadImg, addPdfFooter, registerRoboto, PDF_FONT, PDF_NAVY, PDF_GREEN } = await import("@/lib/pdfUtils");
+  const { loadImg, addPdfFooter, registerRoboto, PDF_NAVY, PDF_GREEN } = await import("@/lib/pdfUtils");
 
   const doc = new jsPDF({ orientation: "p", unit: "mm", format: "a4" });
-  await registerRoboto(doc);
+  const PDF_FONT = await registerRoboto(doc);
   const pageW = doc.internal.pageSize.getWidth();
   const mx = 14;
 
@@ -814,7 +812,7 @@ async function gerarPDFOrdemServico(os: OrdemServico): Promise<void> {
   const totalPages = doc.internal.pages.length - 1;
   for (let i = 1; i <= totalPages; i++) {
     doc.setPage(i);
-    addPdfFooter(doc, i, totalPages, mx);
+    addPdfFooter(doc, i, totalPages, mx, PDF_FONT);
   }
 
   doc.save(`OS_${os.numero}_Lote${os.lote}.pdf`);

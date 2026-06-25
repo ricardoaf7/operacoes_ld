@@ -89,10 +89,10 @@ export function AppSidebar({
           style={{ maxWidth: 82 }}
         />
         <img
-          src="/logos/cmtu.png"
+          src="/logos/cmtu_vertical.png"
           alt="CMTU Londrina"
-          className="h-6 object-contain opacity-90"
-          style={{ maxWidth: 82 }}
+          className="h-8 object-contain opacity-90"
+          style={{ maxWidth: 56 }}
         />
       </div>
 

@@ -57,10 +57,10 @@ const PER_PAGE = 50;
 async function gerarPDFCronograma(c: any, areas: any[]): Promise<void> {
   const { default: jsPDF } = await import("jspdf");
   const { default: autoTable } = await import("jspdf-autotable");
-  const { loadImg, addPdfFooter, registerRoboto, PDF_FONT, PDF_NAVY, PDF_GREEN } = await import("@/lib/pdfUtils");
+  const { loadImg, addPdfFooter, registerRoboto, PDF_NAVY, PDF_GREEN } = await import("@/lib/pdfUtils");
 
   const doc = new jsPDF({ orientation: "p", unit: "mm", format: "a4" });
-  await registerRoboto(doc);
+  const PDF_FONT = await registerRoboto(doc);
   const pageW = doc.internal.pageSize.getWidth();
   const mx = 14;
 
@@ -215,7 +215,7 @@ async function gerarPDFCronograma(c: any, areas: any[]): Promise<void> {
   const totalPages = doc.internal.pages.length - 1;
   for (let i = 1; i <= totalPages; i++) {
     doc.setPage(i);
-    addPdfFooter(doc, i, totalPages, mx);
+    addPdfFooter(doc, i, totalPages, mx, PDF_FONT);
   }
 
   const nomeLote = c.lote === 1 ? "L1" : "L2";
@@ -233,7 +233,7 @@ export default function CronogramaPage() {
   const [page, setPage] = useState(1);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<number | null>(null);
-  const [generatingPdf, setGeneratingPdf] = useState(false);
+  const [generatingPdf, setGeneratingPdf] = useState<number | null>(null);
 
   // OS de referência do mês atual para o lote selecionado
   const [osRef, setOsRef] = useState<{ id: number; numero: string; mes: string } | null>(null);
@@ -401,15 +401,15 @@ export default function CronogramaPage() {
   }
 
   async function handleGerarPDF(c: any) {
-    if (generatingPdf) return;
-    setGeneratingPdf(true);
+    if (generatingPdf !== null) return;
+    setGeneratingPdf(c.id);
     try {
       const r = await apiRequest("GET", `/api/cronogramas/${c.id}`);
       const data = await r.json();
       const areas = data.areas ?? [];
       await gerarPDFCronograma(c, areas);
     } finally {
-      setGeneratingPdf(false);
+      setGeneratingPdf(null);
     }
   }
 
@@ -469,11 +469,9 @@ export default function CronogramaPage() {
     <div className="min-h-screen bg-background flex flex-col">
       {/* Header */}
       <div className="bg-emerald-700 text-white px-6 py-4 flex items-center gap-3 flex-shrink-0">
-        <Link href="/">
-          <button className="p-1 rounded hover:bg-emerald-600 transition-colors">
-            <ArrowLeft className="h-5 w-5" />
-          </button>
-        </Link>
+        <button className="p-1 rounded hover:bg-emerald-600 transition-colors" onClick={() => window.history.back()}>
+          <ArrowLeft className="h-5 w-5" />
+        </button>
         <CalendarDays className="h-6 w-6" />
         <div>
           <h1 className="text-lg font-bold">Cronograma Semanal</h1>
@@ -844,11 +842,11 @@ export default function CronogramaPage() {
                     </a>
                     <button
                       onClick={() => handleGerarPDF(c)}
-                      disabled={generatingPdf}
+                      disabled={generatingPdf !== null}
                       className="px-3 py-1.5 text-xs border rounded-md hover:bg-accent transition-colors flex items-center gap-1.5 disabled:opacity-50"
                     >
-                      {generatingPdf ? <Loader2 className="h-3 w-3 animate-spin" /> : <FileText className="h-3 w-3" />}
-                      {generatingPdf ? "Gerando..." : "Gerar PDF"}
+                      {generatingPdf === c.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <FileText className="h-3 w-3" />}
+                      {generatingPdf === c.id ? "Gerando..." : "Gerar PDF"}
                     </button>
                     <button
                       onClick={() => handleEdit(c)}

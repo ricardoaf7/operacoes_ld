@@ -23,6 +23,10 @@
       "dest": "/logos/$1"
     },
     {
+      "src": "/fonts/(.*)",
+      "dest": "/fonts/$1"
+    },
+    {
       "src": "/api/(.*)",
       "dest": "/api/index.js"
     },
