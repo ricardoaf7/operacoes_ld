@@ -46,12 +46,12 @@ export function addPdfFooter(
   doc.setFont("helvetica", "normal");
   doc.setTextColor(110, 110, 110);
   doc.text(
-    "Rua Prof. João Cândido, 1.213 — CEP 86.010-001 — CNPJ 86.731.320/0001-37 — Fone (43) 3379-7900 — Londrina – PR",
+    "Rua Prof. João Cândido, 1.213  CEP 86.010-001  CNPJ 86731320/0001-37  Fone (43) 3379-7900 – Londrina – PR",
     mx,
     footerY - 1,
   );
-  doc.text("www.cmtuld.com.br  |  opera@cmtuld.com.br", mx, footerY + 3);
-  doc.text(`Pág. ${pageNum} / ${totalPages}`, pageW - mx, footerY + 3, {
+  doc.text("www.cmtuld.com.br  |  e-mail: cmtu@londrina.pr.gov.br", mx, footerY + 3);
+  doc.text(`página ${pageNum} de ${totalPages}`, pageW - mx, footerY + 3, {
     align: "right",
   });
 }
