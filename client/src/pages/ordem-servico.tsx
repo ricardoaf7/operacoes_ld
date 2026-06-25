@@ -660,11 +660,13 @@ function formatDate(d: string) {
 async function gerarPDFOrdemServico(os: OrdemServico): Promise<void> {
   const { default: jsPDF } = await import("jspdf");
   const { default: autoTable } = await import("jspdf-autotable");
-  const { loadImg, addPdfHeader, addPdfFooter, PDF_NAVY, PDF_GREEN } = await import("@/lib/pdfUtils");
+  const { loadImg, addPdfHeader, addCompactPdfHeader, addPdfFooter, PDF_NAVY } = await import("@/lib/pdfUtils");
 
   const doc = new jsPDF({ orientation: "p", unit: "mm", format: "a4" });
   const pageW = doc.internal.pageSize.getWidth();
+  const pageH = doc.internal.pageSize.getHeight();
   const mx = 14;
+  const PDF_FONT = "helvetica";
 
   const [londrina, cmtu, operacoes] = await Promise.all([
     loadImg("/logos/londrina.png"),
@@ -672,69 +674,101 @@ async function gerarPDFOrdemServico(os: OrdemServico): Promise<void> {
     loadImg("/logos/operacoes.png"),
   ]);
 
-  const headerBottom = addPdfHeader(
+  const totalM2 = os.areas?.reduce((s, a) => s + (a.metragem_m2 || 0), 0) ?? 0;
+  const fmtM2 = (v: number) =>
+    v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  // ── PÁGINA 1: CAPA ───────────────────────────────────────────────────
+  addPdfHeader(
     doc, londrina, cmtu, operacoes,
     `ORDEM DE SERVIÇO Nº ${os.numero}`,
     `Capina e Roçagem — Lote ${os.lote}`,
     mx,
   );
 
-  // --- Metadados ---
-  let y = headerBottom + 5;
-  const PDF_FONT = "helvetica";
-  doc.setFontSize(8);
+  // Data no canto direito
+  let y = mx + 4;
+  doc.setFontSize(9);
   doc.setFont(PDF_FONT, "normal");
-  doc.setTextColor(70, 70, 70);
-  doc.text(`Emitida em: ${formatDate(os.data_emissao)}`, mx, y);
-  doc.text(`Por: ${os.emitido_por || "—"}`, mx + 52, y);
-  doc.text(`Mês de referência: ${os.mes_referencia}`, mx + 112, y);
-  y += 5;
+  doc.setTextColor(80, 80, 80);
+  doc.text(formatDateLong(os.data_emissao), pageW - mx, y, { align: "right" });
+  y = 72; // abaixo do cabeçalho completo
 
-  // --- Caixa de informações ---
-  const totalM2 = os.areas?.reduce((s, a) => s + (a.metragem_m2 || 0), 0) ?? 0;
-  const fmtM2 = (v: number) =>
-    v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  const boxH = os.observacao ? 16 : 11;
-
-  doc.setFillColor(232, 243, 238);
-  doc.setDrawColor(200, 220, 210);
-  doc.setLineWidth(0.2);
-  doc.rect(mx, y, pageW - mx * 2, boxH, "FD");
-
-  doc.setFontSize(7.5);
+  // Corpo da carta formal
+  doc.setFontSize(10);
   doc.setFont(PDF_FONT, "normal");
-  doc.setTextColor(90, 90, 90);
-  doc.text("Total de áreas", mx + 3, y + 4);
-  doc.setFont(PDF_FONT, "bold");
-  doc.setTextColor(20, 20, 20);
-  doc.text(`${os.areas?.length || 0}`, mx + 3, y + 8.5);
+  doc.setTextColor(30, 30, 30);
+  doc.text("Prezados Senhores,", mx, y);
+  y += 9;
 
-  doc.setFont(PDF_FONT, "normal");
-  doc.setTextColor(90, 90, 90);
-  doc.text("Total m²", mx + 42, y + 4);
-  doc.setFont(PDF_FONT, "bold");
-  doc.setTextColor(20, 20, 20);
-  doc.text(`${fmtM2(totalM2)} m²`, mx + 42, y + 8.5);
+  const prazo = lastDayOfMesRef(os.mes_referencia);
+  const bodyText =
+    `Visando a prestação de serviços de capina e roçagem de áreas verdes urbanizadas, ` +
+    `comunicamos a empresa que tome as providências cabíveis executando a Ordem de Serviço ` +
+    `dos locais citados em anexo, totalizando uma área de ${fmtM2(totalM2)} m², ` +
+    `a ser executada até o dia ${prazo}, cumprindo a programação das áreas e suas respectivas datas.`;
+
+  const bodyLines = doc.splitTextToSize(bodyText, pageW - mx * 2);
+  doc.text(bodyLines, mx, y, { align: "justify" });
+  y += bodyLines.length * 5.5 + 9;
 
   if (os.observacao) {
-    doc.setFont(PDF_FONT, "normal");
-    doc.setTextColor(90, 90, 90);
-    doc.text("Observação:", mx + 3, y + 12);
-    doc.setFont(PDF_FONT, "bold");
-    doc.setTextColor(20, 20, 20);
-    const obs = os.observacao.length > 90 ? os.observacao.slice(0, 87) + "..." : os.observacao;
-    doc.text(obs, mx + 28, y + 12);
+    doc.setFontSize(9.5);
+    const obsText = `Observação: ${os.observacao}`;
+    const obsLines = doc.splitTextToSize(obsText, pageW - mx * 2);
+    doc.text(obsLines, mx, y);
+    y += obsLines.length * 5 + 6;
   }
 
-  y += boxH + 4;
+  doc.setFontSize(10);
+  doc.text("Atenciosamente.", mx, y);
+  y += 18;
 
-  // --- Tabela ---
+  // Bloco de assinaturas (2 colunas)
+  const colW = (pageW - mx * 2 - 10) / 2;
+  const sig1x = mx;
+  const sig2x = mx + colW + 10;
+  doc.setDrawColor(80, 80, 80);
+  doc.setLineWidth(0.3);
+  doc.line(sig1x, y, sig1x + colW, y);
+  doc.line(sig2x, y, sig2x + colW, y);
+  y += 4;
+  doc.setFontSize(8);
+  doc.setFont(PDF_FONT, "normal");
+  doc.setTextColor(60, 60, 60);
+  doc.text("Diretor de Operações — CMTU", sig1x + colW / 2, y, { align: "center" });
+  doc.text("Fiscal de Contrato de Campo", sig2x + colW / 2, y, { align: "center" });
+  y += 18;
+
+  // Caixa de recebimento pela contratada
+  doc.setDrawColor(...PDF_NAVY);
+  doc.setLineWidth(0.5);
+  doc.rect(mx, y, pageW - mx * 2, 32, "S");
+  doc.setFont(PDF_FONT, "bold");
+  doc.setFontSize(8);
+  doc.setTextColor(...PDF_NAVY);
+  doc.text("RECEBIMENTO PELA CONTRATADA", mx + 5, y + 7);
+  doc.setFont(PDF_FONT, "normal");
+  doc.setTextColor(50, 50, 50);
+  doc.setFontSize(9);
+  doc.text("Empresa: _____________________________________________", mx + 5, y + 16);
+  doc.text("Responsável: ______________________________  Data: ____/____/________", mx + 5, y + 25);
+
+  // Rodapé provisório página 1 (ajustado ao final)
+  addPdfFooter(doc, 1, 1, mx);
+
+  // ── PÁGINAS DE ÁREAS ─────────────────────────────────────────────────
+  doc.addPage();
+
+  const COMPACT_H = 26; // altura do cabeçalho compacto em mm
+  const osTitle = `ORDEM DE SERVIÇO Nº ${os.numero} — Lote ${os.lote}`;
+
   autoTable(doc, {
-    startY: y,
-    head: [["ID", "Endereço", "Bairro", "Tipo", "Metragem (m²)"]],
+    startY: COMPACT_H + 4,
+    head: [["Nº", "Endereço", "Bairro", "Tipo", "Metragem (m²)"]],
     body:
-      os.areas?.map((a) => [
-        String(a.id),
+      os.areas?.map((a, i) => [
+        String(i + 1),
         a.endereco,
         a.bairro || "—",
         a.tipo,
@@ -743,50 +777,65 @@ async function gerarPDFOrdemServico(os: OrdemServico): Promise<void> {
     styles: { fontSize: 8, cellPadding: { top: 2, bottom: 2, left: 3, right: 3 } },
     headStyles: { fillColor: PDF_NAVY, textColor: [255, 255, 255], fontStyle: "bold", fontSize: 8 },
     columnStyles: {
-      0: { halign: "center", cellWidth: 14 },
+      0: { halign: "center", cellWidth: 12 },
       1: { cellWidth: "auto" },
       2: { cellWidth: 34 },
       3: { cellWidth: 30 },
       4: { halign: "right", cellWidth: 28 },
     },
     alternateRowStyles: { fillColor: [240, 248, 244] },
-    margin: { left: mx, right: mx, bottom: 22 },
+    margin: { left: mx, right: mx, bottom: 22, top: COMPACT_H + 4 },
     theme: "grid",
+    willDrawPage: () => {
+      addCompactPdfHeader(doc, londrina, cmtu, osTitle, mx);
+    },
   });
 
-  const tableEndY: number = (doc as any).lastAutoTable?.finalY ?? y + 20;
+  const tableEndY: number = (doc as any).lastAutoTable?.finalY ?? COMPACT_H + 20;
 
-  // --- Total ---
+  // Total final
   doc.setFont(PDF_FONT, "bold");
   doc.setFontSize(9);
   doc.setTextColor(...PDF_NAVY);
-  doc.text(`Total: ${fmtM2(totalM2)} m²`, pageW - mx, tableEndY + 5, { align: "right" });
+  doc.text(
+    `Total: ${fmtM2(totalM2)} m²  (${os.areas?.length || 0} área${os.areas?.length !== 1 ? "s" : ""})`,
+    pageW - mx,
+    tableEndY + 5,
+    { align: "right" },
+  );
 
-  // --- Assinaturas ---
-  const sigY = tableEndY + 22;
-  const pageH = doc.internal.pageSize.getHeight();
-  if (sigY + 18 > pageH - 24) doc.addPage();
-  const sy = sigY + 18 > pageH - 24 ? mx + 20 : sigY;
-
-  const s1x = mx + 8;
-  const s2x = pageW - mx - 73;
-  doc.setDrawColor(100, 100, 100);
-  doc.setLineWidth(0.3);
-  doc.line(s1x, sy, s1x + 68, sy);
-  doc.line(s2x, sy, s2x + 68, sy);
-  doc.setFont(PDF_FONT, "normal");
-  doc.setFontSize(8);
-  doc.setTextColor(80, 80, 80);
-  doc.text("Fiscal responsável", s1x + 34, sy + 4, { align: "center" });
-  doc.text("Responsável pela contratada", s2x + 34, sy + 4, { align: "center" });
-
-  // --- Rodapé em todas as páginas ---
+  // Rodapé em todas as páginas
   const totalPages = doc.internal.pages.length - 1;
   for (let i = 1; i <= totalPages; i++) {
     doc.setPage(i);
     addPdfFooter(doc, i, totalPages, mx);
   }
 
-  doc.save(`OS_${os.numero}_Lote${os.lote}.pdf`);
+  doc.save(`OS_${os.numero.replace(/\//g, "-")}_Lote${os.lote}.pdf`);
+}
+
+function formatDateLong(d: string): string {
+  const MESES_LC = [
+    "janeiro", "fevereiro", "março", "abril", "maio", "junho",
+    "julho", "agosto", "setembro", "outubro", "novembro", "dezembro",
+  ];
+  const [y, m, day] = d.slice(0, 10).split("-");
+  const monthName = MESES_LC[parseInt(m) - 1] || m;
+  return `Londrina, ${parseInt(day)} de ${monthName} de ${y}`;
+}
+
+function lastDayOfMesRef(mesRef: string): string {
+  const MESES = [
+    "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+    "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
+  ];
+  const parts = mesRef.trim().split(/\s+/);
+  const monthIdx = MESES.findIndex(
+    (m) => m.toLowerCase() === (parts[0] || "").toLowerCase(),
+  );
+  const year = parseInt(parts[1]);
+  if (monthIdx === -1 || isNaN(year)) return "—";
+  const lastDay = new Date(year, monthIdx + 1, 0).getDate();
+  return `${String(lastDay).padStart(2, "0")}/${String(monthIdx + 1).padStart(2, "0")}/${year}`;
 }
 

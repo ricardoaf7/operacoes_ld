@@ -103,6 +103,47 @@ export function addPdfHeader(
   return y;
 }
 
+/**
+ * Cabeçalho compacto para páginas internas (tabelas).
+ * Logos menores, só o título da OS centralizado.
+ * Retorna Y logo após a linha separadora.
+ */
+export function addCompactPdfHeader(
+  doc: jsPDF,
+  londrina: ImgData,
+  cmtu: ImgData,
+  title: string,
+  mx = 14,
+): number {
+  const pageW = doc.internal.pageSize.getWidth();
+  const cx = pageW / 2;
+  let y = 8;
+
+  const logoH = 8;
+  if (londrina) {
+    const w = (londrina.nw / londrina.nh) * logoH;
+    doc.addImage(londrina.b64, "PNG", mx, y, w, logoH);
+  }
+  if (cmtu) {
+    const w = (cmtu.nw / cmtu.nh) * logoH;
+    doc.addImage(cmtu.b64, "PNG", pageW - mx - w, y, w, logoH);
+  }
+  y += logoH + 2;
+
+  doc.setDrawColor(210, 210, 210);
+  doc.setLineWidth(0.2);
+  doc.line(mx, y, pageW - mx, y);
+  y += 4;
+
+  doc.setFontSize(9);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(...PDF_NAVY);
+  doc.text(title, cx, y, { align: "center" });
+  y += 4;
+
+  return y;
+}
+
 export function addPdfFooter(doc: jsPDF, pageNum: number, totalPages: number, mx = 14) {
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
