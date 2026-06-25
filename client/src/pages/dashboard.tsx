@@ -809,13 +809,12 @@ export default function Dashboard({ isPublicView = false }: DashboardProps) {
         <SidebarInset className="flex-1 overflow-hidden flex flex-col">
           <header className="flex items-center h-16 px-4 border-b border-sidebar-border bg-background">
             <SidebarTrigger data-testid="button-sidebar-toggle" />
-            <div className="flex-1 flex items-center justify-center gap-5">
+            <div className="flex-1 flex items-center justify-around">
               <img
                 src="/logos/londrina.png"
                 alt="Prefeitura de Londrina"
                 className="h-11 w-auto object-contain opacity-90"
               />
-              <div className="w-px h-8 bg-border/50" />
               <img
                 src="/logos/cmtu_vertical.png"
                 alt="CMTU Londrina"
