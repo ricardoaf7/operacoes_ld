@@ -684,15 +684,16 @@ async function gerarPDFOrdemServico(os: OrdemServico): Promise<void> {
   const fmtM2 = (v: number) =>
     v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-  // título da OS com região (se configurada)
-  const regiao = cfg.regiao ? ` — REGIÃO ${cfg.regiao.toUpperCase()}` : "";
-  const tituloOS = `ORDEM DE SERVIÇO Nº ${os.numero}${regiao}`;
+  const tituloOS = `ORDEM DE SERVIÇO Nº ${os.numero}`;
+  const subtituloOS = cfg.regiao
+    ? `CAPINA E ROÇAGEM — LOTE ${os.lote} | REGIÃO ${cfg.regiao.toUpperCase()}`
+    : `CAPINA E ROÇAGEM — LOTE ${os.lote}`;
 
   // ── PÁGINA 1: CAPA ───────────────────────────────────────────────────
   const headerBottom = addPdfHeader(
     doc, londrina, cmtu, operacoes,
     tituloOS,
-    `Capina e Roçagem — Lote ${os.lote}`,
+    subtituloOS,
     mx,
   );
 
@@ -739,14 +740,15 @@ async function gerarPDFOrdemServico(os: OrdemServico): Promise<void> {
     `dos locais citados em anexo, totalizando uma área de ${fmtM2(totalM2)} m², ` +
     `a ser executada até o dia ${prazo}, cumprindo a programação das áreas e suas respectivas datas.`;
 
-  const bodyLines = doc.splitTextToSize(bodyText, pageW - mx * 2);
-  doc.text(bodyLines, mx, y, { align: "justify" });
+  const contentW = pageW - mx * 2;
+  const bodyLines = doc.splitTextToSize(bodyText, contentW);
+  doc.text(bodyLines, mx, y, { align: "justify", maxWidth: contentW });
   y += bodyLines.length * 5.5 + 9;
 
   if (os.observacao) {
     doc.setFontSize(9.5);
-    const obsLines = doc.splitTextToSize(`Observação: ${os.observacao}`, pageW - mx * 2);
-    doc.text(obsLines, mx, y);
+    const obsLines = doc.splitTextToSize(`Observação: ${os.observacao}`, contentW);
+    doc.text(obsLines, mx, y, { maxWidth: contentW });
     y += obsLines.length * 5 + 6;
   }
 
