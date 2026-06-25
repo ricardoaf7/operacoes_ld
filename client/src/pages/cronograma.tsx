@@ -7,6 +7,7 @@ import {
   Search,
   ExternalLink,
   Pencil,
+  Printer,
   Trash2,
   CheckSquare,
 } from "lucide-react";
@@ -363,8 +364,8 @@ export default function CronogramaPage() {
               </div>
             </div>
 
-            {/* Quick selectors */}
-            <div className="flex gap-2">
+            {/* Quick selectors + Salvar */}
+            <div className="flex items-center gap-2 flex-wrap">
               <button
                 onClick={() => {
                   const { inicio, fim } = getWeekDates(0);
@@ -385,6 +386,25 @@ export default function CronogramaPage() {
               >
                 Próxima semana
               </button>
+              <div className="flex-1" />
+              <button
+                onClick={handleSubmit}
+                disabled={isPending}
+                className="px-5 py-1.5 bg-emerald-600 text-white rounded-md text-sm font-medium hover:bg-emerald-700 transition-colors disabled:opacity-60 flex items-center gap-1.5"
+              >
+                {isPending ? (
+                  <span className="h-3.5 w-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                ) : null}
+                {editingId ? "Atualizar Cronograma" : "Salvar Cronograma"}
+              </button>
+              {editingId && (
+                <button
+                  onClick={resetForm}
+                  className="px-4 py-1.5 border rounded-md text-sm font-medium hover:bg-accent transition-colors"
+                >
+                  Cancelar
+                </button>
+              )}
             </div>
 
             {/* Banner OS de referência */}
@@ -484,9 +504,9 @@ export default function CronogramaPage() {
 
             {/* Table */}
             <div className="border rounded-lg overflow-hidden">
-              <div className="overflow-x-auto">
+              <div className="overflow-auto max-h-[calc(100vh-400px)]">
                 <table className="w-full text-sm">
-                  <thead className="bg-muted/50 sticky top-0">
+                  <thead className="bg-muted/50 sticky top-0 z-10">
                     <tr>
                       <th className="w-10 px-3 py-2">
                         <input
@@ -593,24 +613,6 @@ export default function CronogramaPage() {
               />
             </div>
 
-            {/* Actions */}
-            <div className="flex gap-3">
-              <button
-                onClick={handleSubmit}
-                disabled={isPending}
-                className="px-6 py-2.5 bg-emerald-600 text-white rounded-md text-sm font-medium hover:bg-emerald-700 transition-colors disabled:opacity-60"
-              >
-                {editingId ? "Atualizar Cronograma" : "Salvar Cronograma"}
-              </button>
-              {editingId && (
-                <button
-                  onClick={resetForm}
-                  className="px-6 py-2.5 border rounded-md text-sm font-medium hover:bg-accent transition-colors"
-                >
-                  Cancelar
-                </button>
-              )}
-            </div>
           </div>
         )}
 
@@ -654,6 +656,15 @@ export default function CronogramaPage() {
                     >
                       <ExternalLink className="h-3 w-3" />
                       Ver público
+                    </a>
+                    <a
+                      href={`/public/cronograma/${c.lote}?print=1`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="px-3 py-1.5 text-xs border rounded-md hover:bg-accent transition-colors flex items-center gap-1.5"
+                    >
+                      <Printer className="h-3 w-3" />
+                      Imprimir
                     </a>
                     <button
                       onClick={() => handleEdit(c)}

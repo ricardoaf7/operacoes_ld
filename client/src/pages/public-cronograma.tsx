@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useParams } from "wouter";
-import { CalendarOff } from "lucide-react";
+import { CalendarOff, Printer } from "lucide-react";
 import "leaflet/dist/leaflet.css";
 
 function formatDate(d: string) {
@@ -14,6 +14,7 @@ function formatDate(d: string) {
 export default function PublicCronogramaPage() {
   const params = useParams<{ lote: string }>();
   const lote = parseInt(params.lote || "1");
+  const autoPrint = new URLSearchParams(window.location.search).get("print") === "1";
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
 
@@ -32,6 +33,13 @@ export default function PublicCronogramaPage() {
     (s: number, a: any) => s + (a.metragem_m2 || 0),
     0
   );
+
+  // Auto-print quando ?print=1
+  useEffect(() => {
+    if (autoPrint && !isLoading && cronograma) {
+      setTimeout(() => window.print(), 600);
+    }
+  }, [autoPrint, isLoading, cronograma]);
 
   useEffect(() => {
     if (!mapRef.current || areas.length === 0) return;
@@ -101,14 +109,23 @@ export default function PublicCronogramaPage() {
             </p>
           </div>
           {cronograma && (
-            <div className="text-right">
-              <p className="text-xs text-green-300 uppercase tracking-wide">
-                Semana programada
-              </p>
-              <p className="text-lg font-semibold mt-0.5">
-                {formatDate(cronograma.semana_inicio)} a{" "}
-                {formatDate(cronograma.semana_fim)}
-              </p>
+            <div className="flex flex-col items-end gap-3">
+              <div className="text-right">
+                <p className="text-xs text-green-300 uppercase tracking-wide">
+                  Semana programada
+                </p>
+                <p className="text-lg font-semibold mt-0.5">
+                  {formatDate(cronograma.semana_inicio)} a{" "}
+                  {formatDate(cronograma.semana_fim)}
+                </p>
+              </div>
+              <button
+                onClick={() => window.print()}
+                className="print:hidden flex items-center gap-1.5 px-3 py-1.5 text-xs bg-white/10 hover:bg-white/20 text-white rounded-md transition-colors border border-white/20"
+              >
+                <Printer className="h-3.5 w-3.5" />
+                Imprimir / PDF
+              </button>
             </div>
           )}
         </div>
