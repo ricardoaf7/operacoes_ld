@@ -185,7 +185,7 @@ async function gerarPDFCronograma(c: any, areas: any[]): Promise<void> {
     theme: "grid",
   });
 
-  const tableEndY: number = (doc as any).lastAutoTable.finalY;
+  const tableEndY: number = (doc as any).lastAutoTable?.finalY ?? y + 20;
 
   // --- Total ---
   doc.setFont(PDF_FONT, "bold");
@@ -408,6 +408,9 @@ export default function CronogramaPage() {
       const data = await r.json();
       const areas = data.areas ?? [];
       await gerarPDFCronograma(c, areas);
+      toast({ title: "PDF gerado!", description: "Verifique sua pasta de downloads." });
+    } catch (err) {
+      toast({ title: "Erro ao gerar PDF", description: String(err), variant: "destructive" });
     } finally {
       setGeneratingPdf(null);
     }
@@ -469,7 +472,10 @@ export default function CronogramaPage() {
     <div className="min-h-screen bg-background flex flex-col">
       {/* Header */}
       <div className="bg-emerald-700 text-white px-6 py-4 flex items-center gap-3 flex-shrink-0">
-        <button className="p-1 rounded hover:bg-emerald-600 transition-colors" onClick={() => window.history.back()}>
+        <button className="p-1 rounded hover:bg-emerald-600 transition-colors" onClick={() => {
+          if (editingId !== null) { setEditingId(null); return; }
+          window.history.back();
+        }}>
           <ArrowLeft className="h-5 w-5" />
         </button>
         <CalendarDays className="h-6 w-6" />

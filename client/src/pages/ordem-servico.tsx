@@ -214,6 +214,9 @@ export default function OrdemServicoPage() {
     setGeneratingPdf(true);
     try {
       await gerarPDFOrdemServico(ordemDetalhada);
+      toast({ title: "PDF gerado!", description: "Verifique sua pasta de downloads." });
+    } catch (err) {
+      toast({ title: "Erro ao gerar PDF", description: String(err), variant: "destructive" });
     } finally {
       setGeneratingPdf(false);
     }
@@ -287,7 +290,8 @@ export default function OrdemServicoPage() {
     <div className="flex flex-col h-full">
       {/* Header */}
       <div className="flex items-center gap-3 p-6 pb-4 border-b">
-        <Button variant="ghost" size="sm" className="mr-1 text-muted-foreground hover:text-foreground" onClick={() => window.history.back()}>
+        <Button variant="ghost" size="sm" className="mr-1 text-muted-foreground hover:text-foreground"
+          onClick={() => visualizandoId ? setVisualizandoId(null) : window.history.back()}>
           <ChevronLeft className="h-4 w-4 mr-1" /> Voltar
         </Button>
         <ClipboardList className="h-6 w-6 text-emerald-600" />
@@ -782,7 +786,7 @@ async function gerarPDFOrdemServico(os: OrdemServico): Promise<void> {
     theme: "grid",
   });
 
-  const tableEndY: number = (doc as any).lastAutoTable.finalY;
+  const tableEndY: number = (doc as any).lastAutoTable?.finalY ?? y + 20;
 
   // --- Total ---
   doc.setFont(PDF_FONT, "bold");
