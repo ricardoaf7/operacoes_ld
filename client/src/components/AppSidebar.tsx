@@ -153,7 +153,7 @@ export function AppSidebar({
                 <div className="h-7 w-7 rounded-md bg-emerald-500/10 dark:bg-emerald-400/15 flex items-center justify-center flex-shrink-0 transition-colors group-data-[state=open]:bg-emerald-500/20">
                   <Leaf className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
                 </div>
-                <span className="font-semibold text-sm">Limpeza Urbana</span>
+                <span className="font-semibold text-sm tracking-wide">LIMPEZA URBANA</span>
               </div>
             </AccordionTrigger>
             <AccordionContent className="pb-1 pt-1 px-1">
@@ -302,7 +302,7 @@ export function AppSidebar({
                 <div className="h-7 w-7 rounded-md bg-blue-500/10 dark:bg-blue-400/15 flex items-center justify-center flex-shrink-0 transition-colors group-data-[state=open]:bg-blue-500/20">
                   <Recycle className="h-4 w-4 text-blue-600 dark:text-blue-400" />
                 </div>
-                <span className="font-semibold text-sm">Resíduos</span>
+                <span className="font-semibold text-sm tracking-wide">RESÍDUOS</span>
               </div>
             </AccordionTrigger>
             <AccordionContent className="pb-1 pt-1 px-1">

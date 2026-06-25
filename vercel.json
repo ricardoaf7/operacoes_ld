@@ -19,6 +19,10 @@
       "dest": "/assets/$1"
     },
     {
+      "src": "/logos/(.*)",
+      "dest": "/logos/$1"
+    },
+    {
       "src": "/api/(.*)",
       "dest": "/api/index.js"
     },
