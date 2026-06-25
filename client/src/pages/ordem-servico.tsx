@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
@@ -32,7 +32,6 @@ import {
   ChevronLeft,
   ChevronRight,
   Search,
-  Printer,
   Pencil,
   X,
 } from "lucide-react";
@@ -66,8 +65,7 @@ export default function OrdemServicoPage() {
   const [observacao, setObservacao] = useState("");
   const [visualizandoId, setVisualizandoId] = useState<number | null>(null);
   const [editandoId, setEditandoId] = useState<number | null>(null);
-  const [pdfPreviewOpen, setPdfPreviewOpen] = useState(false);
-  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const [generatingPdf, setGeneratingPdf] = useState(false);
 
   const { data: areas = [], isLoading: loadingAreas } = useQuery<any[]>({
     queryKey: ["/api/areas/light"],
@@ -211,13 +209,14 @@ export default function OrdemServicoPage() {
     setTab("nova");
   }
 
-  const handlePDF = () => {
-    if (!ordemDetalhada) return;
-    setPdfPreviewOpen(true);
-  };
-
-  const handleImprimir = () => {
-    iframeRef.current?.contentWindow?.print();
+  const handleGerarPDF = async () => {
+    if (!ordemDetalhada || generatingPdf) return;
+    setGeneratingPdf(true);
+    try {
+      await gerarPDFOrdemServico(ordemDetalhada);
+    } finally {
+      setGeneratingPdf(false);
+    }
   };
 
   const handleExcel = () => {
@@ -472,8 +471,9 @@ export default function OrdemServicoPage() {
                   <Button variant="outline" size="sm" onClick={handleExcel}>
                     <Sheet className="h-4 w-4 mr-2" /> Excel
                   </Button>
-                  <Button variant="outline" size="sm" onClick={handlePDF}>
-                    <FileText className="h-4 w-4 mr-2" /> PDF / Imprimir
+                  <Button variant="outline" size="sm" onClick={handleGerarPDF} disabled={generatingPdf}>
+                    {generatingPdf ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <FileText className="h-4 w-4 mr-2" />}
+                    {generatingPdf ? "Gerando..." : "Gerar PDF"}
                   </Button>
                   <Button
                     variant="outline"
@@ -568,33 +568,6 @@ export default function OrdemServicoPage() {
         )}
       </div>
 
-      {/* Preview PDF */}
-      {pdfPreviewOpen && ordemDetalhada && (
-        <div className="fixed inset-0 z-50 flex flex-col bg-background">
-          <div className="flex items-center gap-3 px-4 py-3 border-b bg-muted/30 flex-shrink-0">
-            <span className="font-semibold text-sm flex-1">
-              Pré-visualização — OS Nº {ordemDetalhada.numero}
-            </span>
-            <Button variant="outline" size="sm" onClick={handleImprimir}>
-              <Printer className="h-4 w-4 mr-2" /> Imprimir / Salvar PDF
-            </Button>
-            <Button variant="ghost" size="sm" onClick={() => setPdfPreviewOpen(false)}>
-              <X className="h-4 w-4 mr-1" /> Fechar
-            </Button>
-          </div>
-          <div className="flex-1 overflow-hidden bg-gray-200 p-4">
-            <iframe
-              ref={iframeRef}
-              srcDoc={gerarHTMLImpressao(ordemDetalhada)}
-              className="w-full h-full rounded shadow-lg bg-white"
-              title="Preview OS"
-            />
-          </div>
-          <div className="px-4 py-2 border-t bg-muted/20 text-xs text-muted-foreground text-center">
-            Para salvar como PDF: clique em "Imprimir / Salvar PDF" → selecione "Salvar como PDF" na impressora
-          </div>
-        </div>
-      )}
 
       {/* Dialog confirmar/editar OS */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
@@ -682,85 +655,167 @@ function formatDate(d: string) {
   return `${day}/${m}/${y}`;
 }
 
-function gerarHTMLImpressao(os: OrdemServico): string {
-  const totalM2 = os.areas?.reduce((s, a) => s + (a.metragem_m2 || 0), 0) ?? 0;
-  const fmt = (v: number | null | undefined) =>
-    v != null ? v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—";
-  const rows = os.areas
-    ?.map(
-      (a, i) => `<tr style="background:${i % 2 === 0 ? "#fff" : "#f2f7f4"}">
-        <td style="padding:6px 8px;border:1px solid #c8ddd4;text-align:center">${a.id}</td>
-        <td style="padding:6px 8px;border:1px solid #c8ddd4">${a.endereco}</td>
-        <td style="padding:6px 8px;border:1px solid #c8ddd4;text-align:center">${a.bairro || "—"}</td>
-        <td style="padding:6px 8px;border:1px solid #c8ddd4;text-align:center">${a.tipo}</td>
-        <td style="padding:6px 8px;border:1px solid #c8ddd4;text-align:right">${fmt(a.metragem_m2)}</td>
-      </tr>`
-    )
-    .join("");
+async function gerarPDFOrdemServico(os: OrdemServico): Promise<void> {
+  const { default: jsPDF } = await import("jspdf");
+  const { default: autoTable } = await import("jspdf-autotable");
+  const { loadImg, addPdfFooter, PDF_NAVY, PDF_GREEN } = await import("@/lib/pdfUtils");
 
-  const origin = window.location.origin;
-  return `<!DOCTYPE html><html><head><meta charset="utf-8">
-<title>OS ${os.numero}</title>
-<style>
-  *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;box-sizing:border-box}
-  body{font-family:Arial,sans-serif;font-size:12px;margin:16px 20px;color:#222}
-  .logos{display:flex;justify-content:space-between;align-items:center;padding-bottom:10px;border-bottom:3px solid #1a2e5a;margin-bottom:10px}
-  .logos img{height:44px;object-fit:contain;max-width:160px}
-  .logos-center{text-align:center;flex:1;padding:0 12px}
-  .logos-center p{margin:0;font-size:9px;color:#555;text-transform:uppercase;letter-spacing:.5px}
-  .logos-center img{height:22px;object-fit:contain;margin-top:4px}
-  h1{font-size:15px;margin:0 0 2px;color:#1a2e5a;font-weight:bold}
-  .sub{margin:0;font-size:10px;color:#2d7a4f;font-weight:bold}
-  .emit{font-size:10px;color:#555;margin-top:6px}
-  .meta{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:12px;background:#e8f3ee;padding:8px 10px;border-radius:4px;border:1px solid #c8ddd4}
-  .meta div{font-size:10px}.meta strong{display:block;font-size:11px;margin-top:1px}
-  table{width:100%;border-collapse:collapse;font-size:10.5px}
-  th{background:#1a2e5a;color:#fff;padding:7px 8px;border:1px solid #14234a;text-align:left}
-  th:first-child{text-align:center}th:last-child{text-align:right}
-  .total{margin-top:10px;text-align:right;font-size:12px;font-weight:bold;color:#1a2e5a}
-  .assinaturas{display:grid;grid-template-columns:1fr 1fr;gap:60px;margin-top:50px}
-  .assinatura{border-top:1px solid #555;padding-top:6px;text-align:center;font-size:10px;color:#333}
-  @media print{
-    body{margin:8px 12px}
-    @page{
-      margin-bottom:28mm;
-      @bottom-left{content:"Rua Prof. João Cândido, 1.213 — CEP 86.010-001 — CNPJ 86.731.320/0001-37 — Fone (43) 3379-7900 — Londrina – PR";font-size:7.5pt;color:#666}
-      @bottom-center{content:"www.cmtuld.com.br  |  opera@cmtuld.com.br";font-size:7.5pt;color:#666}
-      @bottom-right{content:"Pág. " counter(page) " / " counter(pages);font-size:7.5pt;color:#666}
-    }
+  const doc = new jsPDF({ orientation: "p", unit: "mm", format: "a4" });
+  const pageW = doc.internal.pageSize.getWidth();
+  const mx = 14;
+
+  const [londrina, cmtu, operacoes] = await Promise.all([
+    loadImg("/logos/londrina.png"),
+    loadImg("/logos/cmtu_vertical.png"),
+    loadImg("/logos/operacoes.png"),
+  ]);
+
+  // --- Logos header ---
+  const hY = mx;
+
+  if (londrina) {
+    const h = 13; const w = (londrina.nw / londrina.nh) * h;
+    doc.addImage(londrina.b64, "PNG", mx, hY, w, h);
   }
-</style></head><body>
-<div class="logos">
-  <img src="${origin}/logos/londrina.png" alt="Londrina">
-  <div class="logos-center">
-    <p>Companhia Municipal de Trânsito e Urbanização</p>
-    <h1>ORDEM DE SERVIÇO Nº ${os.numero}</h1>
-    <p class="sub">Capina e Roçagem — Lote ${os.lote}</p>
-    <img src="${origin}/logos/operacoes.png" alt="Diretoria de Operações">
-  </div>
-  <img src="${origin}/logos/cmtu.png" alt="CMTU">
-</div>
-<p class="emit">Emitida em: <strong>${formatDate(os.data_emissao)}</strong> &nbsp;|&nbsp; Por: <strong>${os.emitido_por || "—"}</strong></p>
-<div class="meta">
-  <div>Mês de referência<strong>${os.mes_referencia}</strong></div>
-  <div>Total de áreas<strong>${os.areas?.length}</strong></div>
-  <div>Total m²<strong>${fmt(totalM2)} m²</strong></div>
-  ${os.observacao ? `<div style="grid-column:span 3">Observação<strong>${os.observacao}</strong></div>` : ""}
-</div>
-<table>
-  <thead><tr>
-    <th style="width:48px;text-align:center">ID</th>
-    <th>Endereço</th>
-    <th style="width:135px">Bairro</th>
-    <th style="width:115px">Tipo</th>
-    <th style="width:95px;text-align:right">Metragem (m²)</th>
-  </tr></thead>
-  <tbody>${rows}</tbody>
-</table>
-<div class="total">Total: ${fmt(totalM2)} m²</div>
-<div class="assinaturas">
-  <div class="assinatura">Fiscal responsável</div>
-  <div class="assinatura">Responsável pela contratada</div>
-</div>
-</body></html>`;
+  if (cmtu) {
+    const h = 22; const w = (cmtu.nw / cmtu.nh) * h;
+    doc.addImage(cmtu.b64, "PNG", pageW - mx - w, hY, w, h);
+  }
+
+  const cx = pageW / 2;
+  doc.setFontSize(7.5);
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(90, 90, 90);
+  doc.text("COMPANHIA MUNICIPAL DE TRÂNSITO E URBANIZAÇÃO", cx, hY + 4, { align: "center" });
+
+  doc.setFontSize(14);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(...PDF_NAVY);
+  doc.text(`ORDEM DE SERVIÇO Nº ${os.numero}`, cx, hY + 11, { align: "center" });
+
+  doc.setFontSize(9);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(...PDF_GREEN);
+  doc.text(`Capina e Roçagem — Lote ${os.lote}`, cx, hY + 17, { align: "center" });
+
+  let headerBottom = hY + 20;
+  if (operacoes) {
+    const h = 10; const w = (operacoes.nw / operacoes.nh) * h;
+    doc.addImage(operacoes.b64, "PNG", cx - w / 2, hY + 19, w, h);
+    headerBottom = hY + 19 + h + 3;
+  }
+
+  doc.setDrawColor(...PDF_NAVY);
+  doc.setLineWidth(0.7);
+  doc.line(mx, headerBottom, pageW - mx, headerBottom);
+
+  // --- Metadados ---
+  let y = headerBottom + 5;
+  doc.setFontSize(8);
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(70, 70, 70);
+  doc.text(`Emitida em: ${formatDate(os.data_emissao)}`, mx, y);
+  doc.text(`Por: ${os.emitido_por || "—"}`, mx + 52, y);
+  doc.text(`Mês de referência: ${os.mes_referencia}`, mx + 112, y);
+  y += 5;
+
+  // --- Caixa de informações ---
+  const totalM2 = os.areas?.reduce((s, a) => s + (a.metragem_m2 || 0), 0) ?? 0;
+  const fmtM2 = (v: number) =>
+    v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const boxH = os.observacao ? 16 : 11;
+
+  doc.setFillColor(232, 243, 238);
+  doc.setDrawColor(200, 220, 210);
+  doc.setLineWidth(0.2);
+  doc.rect(mx, y, pageW - mx * 2, boxH, "FD");
+
+  doc.setFontSize(7.5);
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(90, 90, 90);
+  doc.text("Total de áreas", mx + 3, y + 4);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(20, 20, 20);
+  doc.text(`${os.areas?.length || 0}`, mx + 3, y + 8.5);
+
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(90, 90, 90);
+  doc.text("Total m²", mx + 42, y + 4);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(20, 20, 20);
+  doc.text(`${fmtM2(totalM2)} m²`, mx + 42, y + 8.5);
+
+  if (os.observacao) {
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(90, 90, 90);
+    doc.text("Observação:", mx + 3, y + 12);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(20, 20, 20);
+    const obs = os.observacao.length > 90 ? os.observacao.slice(0, 87) + "..." : os.observacao;
+    doc.text(obs, mx + 28, y + 12);
+  }
+
+  y += boxH + 4;
+
+  // --- Tabela ---
+  autoTable(doc, {
+    startY: y,
+    head: [["ID", "Endereço", "Bairro", "Tipo", "Metragem (m²)"]],
+    body:
+      os.areas?.map((a) => [
+        String(a.id),
+        a.endereco,
+        a.bairro || "—",
+        a.tipo,
+        fmtM2(a.metragem_m2 || 0),
+      ]) ?? [],
+    styles: { fontSize: 8, cellPadding: { top: 2, bottom: 2, left: 3, right: 3 } },
+    headStyles: { fillColor: PDF_NAVY, textColor: [255, 255, 255], fontStyle: "bold", fontSize: 8 },
+    columnStyles: {
+      0: { halign: "center", cellWidth: 14 },
+      1: { cellWidth: "auto" },
+      2: { cellWidth: 34 },
+      3: { cellWidth: 30 },
+      4: { halign: "right", cellWidth: 28 },
+    },
+    alternateRowStyles: { fillColor: [240, 248, 244] },
+    margin: { left: mx, right: mx, bottom: 22 },
+    theme: "grid",
+  });
+
+  const tableEndY: number = (doc as any).lastAutoTable.finalY;
+
+  // --- Total ---
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(9);
+  doc.setTextColor(...PDF_NAVY);
+  doc.text(`Total: ${fmtM2(totalM2)} m²`, pageW - mx, tableEndY + 5, { align: "right" });
+
+  // --- Assinaturas ---
+  const sigY = tableEndY + 22;
+  const pageH = doc.internal.pageSize.getHeight();
+  if (sigY + 18 > pageH - 24) doc.addPage();
+  const sy = sigY + 18 > pageH - 24 ? mx + 20 : sigY;
+
+  const s1x = mx + 8;
+  const s2x = pageW - mx - 73;
+  doc.setDrawColor(100, 100, 100);
+  doc.setLineWidth(0.3);
+  doc.line(s1x, sy, s1x + 68, sy);
+  doc.line(s2x, sy, s2x + 68, sy);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8);
+  doc.setTextColor(80, 80, 80);
+  doc.text("Fiscal responsável", s1x + 34, sy + 4, { align: "center" });
+  doc.text("Responsável pela contratada", s2x + 34, sy + 4, { align: "center" });
+
+  // --- Rodapé em todas as páginas ---
+  const totalPages = doc.internal.pages.length - 1;
+  for (let i = 1; i <= totalPages; i++) {
+    doc.setPage(i);
+    addPdfFooter(doc, i, totalPages, mx);
+  }
+
+  doc.save(`OS_${os.numero}_Lote${os.lote}.pdf`);
 }
+
