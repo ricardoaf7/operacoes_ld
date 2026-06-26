@@ -368,6 +368,17 @@ export function AppSidebar({
         </Accordion>
       </div>
 
+      {/* DEMANDAS — acesso para todos */}
+      <div className="mt-1 px-1">
+        <div className="h-px bg-border/40 mb-2" />
+        <Link href="/demandas">
+          <button className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-semibold uppercase tracking-wide hover:bg-muted/60 transition-colors text-foreground/70 hover:text-foreground">
+            <ClipboardList className="h-4 w-4 text-slate-500/60 flex-shrink-0" />
+            <span>DEMANDAS</span>
+          </button>
+        </Link>
+      </div>
+
       {(user?.role === "admin" || user?.role === "gestor") && (
         <div className="mt-1 px-1">
           <div className="h-px bg-border/40 mb-2" />

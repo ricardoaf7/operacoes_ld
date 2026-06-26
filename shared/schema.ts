@@ -264,6 +264,62 @@ export const insertCronogramaSchema = z.object({
 });
 export type InsertCronograma = z.infer<typeof insertCronogramaSchema>;
 
+// Demandas
+export const ORIGENS_DEMANDA = ["LondrinaON", "WhatsApp", "SEI", "E-mail", "Telefone", "Indicação", "Ouvidoria", "Interno"] as const;
+export const TIPOS_DEMANDA = [
+  "Capina e Roçagem", "Boa Praça", "Varrição", "Lagos", "Praças", "Podas",
+  "Limpeza de Boca de Lobo", "Coleta de Rejeitos e Orgânicos", "Coleta de Recicláveis",
+  "PEV's", "Impedimento de Calçada", "Terreno Particular Fechado com Mato Alto",
+  "Terreno Particular Aberto com Mato Alto", "Descarte Irregular", "Outdoor",
+  "Publicidade", "Lei Cidade Limpa", "Ambulantes", "Feiras",
+  "Autorização de Uso de Espaço Público",
+] as const;
+export const STATUS_DEMANDA = ["aberta", "em_andamento", "concluida"] as const;
+
+export const demandaSchema = z.object({
+  id: z.number(),
+  origem: z.string(),
+  numeroProcesso: z.string().nullable().optional(),
+  solicitanteNome: z.string(),
+  solicitanteWhatsapp: z.string().nullable().optional(),
+  solicitanteOrgao: z.string().nullable().optional(),
+  dataSolicitacao: z.string(),
+  tipo: z.string(),
+  status: z.enum(STATUS_DEMANDA).default("aberta"),
+  observacoes: z.string().nullable().optional(),
+  setorId: z.number().nullable().optional(),
+  setorNome: z.string().nullable().optional(),
+  responsavelId: z.number().nullable().optional(),
+  responsavelNome: z.string().nullable().optional(),
+  areaId: z.number().nullable().optional(),
+  areaEndereco: z.string().nullable().optional(),
+  dadosEspecificos: z.record(z.any()).nullable().optional(),
+  dataConclusao: z.string().nullable().optional(),
+  createdBy: z.number().nullable().optional(),
+  createdAt: z.string().optional(),
+  updatedAt: z.string().optional(),
+});
+
+export type Demanda = z.infer<typeof demandaSchema>;
+
+export const insertDemandaSchema = z.object({
+  origem: z.string().min(1),
+  numeroProcesso: z.string().optional(),
+  solicitanteNome: z.string().min(1),
+  solicitanteWhatsapp: z.string().optional(),
+  solicitanteOrgao: z.string().optional(),
+  dataSolicitacao: z.string().min(1),
+  tipo: z.string().min(1),
+  status: z.enum(STATUS_DEMANDA).default("aberta"),
+  observacoes: z.string().optional(),
+  setorId: z.number().nullable().optional(),
+  responsavelId: z.number().nullable().optional(),
+  areaId: z.number().nullable().optional(),
+  dadosEspecificos: z.record(z.any()).optional(),
+});
+
+export type InsertDemanda = z.infer<typeof insertDemandaSchema>;
+
 // Notificações
 export const notificacoes = pgTable("notificacoes", {
   id: serial("id").primaryKey(),

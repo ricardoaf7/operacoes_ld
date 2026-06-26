@@ -13,6 +13,7 @@ import PublicDashboard from "@/pages/public-dashboard";
 import UserManagement from "@/pages/user-management";
 import ConfiguracoesPage from "@/pages/configuracoes";
 import SetoresPage from "@/pages/setores";
+import DemandasPage from "@/pages/demandas";
 import OrdemServicoPage from "@/pages/ordem-servico";
 import CronogramaPage from "@/pages/cronograma";
 import PublicCronogramaPage from "@/pages/public-cronograma";
@@ -41,6 +42,7 @@ function AuthenticatedRoutes() {
       <Route path="/relatorios/rocagens" component={RelatorioRocagensPage} />
       <Route path="/ordem-servico" component={OrdemServicoPage} />
       <Route path="/cronograma" component={CronogramaPage} />
+      <Route path="/demandas" component={DemandasPage} />
       {(user.role === "admin" || user.role === "gestor") && (
         <Route path="/configuracoes" component={ConfiguracoesPage} />
       )}

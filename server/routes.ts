@@ -18,6 +18,37 @@ function getSupabase() {
   return createClient(url, key, { auth: { persistSession: false } });
 }
 
+async function ensureDemandasTable() {
+  try {
+    const pool = createDbPool();
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS demandas (
+        id SERIAL PRIMARY KEY,
+        origem TEXT NOT NULL,
+        numero_processo TEXT,
+        solicitante_nome TEXT NOT NULL,
+        solicitante_whatsapp TEXT,
+        solicitante_orgao TEXT,
+        data_solicitacao DATE NOT NULL,
+        tipo TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'aberta',
+        observacoes TEXT,
+        setor_id INTEGER,
+        responsavel_id INTEGER,
+        area_id INTEGER,
+        dados_especificos JSONB,
+        data_conclusao TIMESTAMPTZ,
+        created_by INTEGER,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await pool.end();
+  } catch (e) {
+    console.warn("demandas table check:", e);
+  }
+}
+
 async function ensureNotificacoesTable() {
   try {
     const pool = createDbPool();
@@ -265,6 +296,7 @@ async function ensureAdminExists() {
 
 export async function registerRoutes(app: Express): Promise<void> {
   await ensureAdminExists();
+  await ensureDemandasTable();
   await ensureNotificacoesTable();
   await ensureSetoresTable();
   await ensureUsersSetorColumn();
@@ -1947,6 +1979,186 @@ export async function registerRoutes(app: Express): Promise<void> {
       res.json({ success: true });
     } catch (error: any) {
       res.status(500).json({ error: "Erro ao excluir cronograma" });
+    }
+  });
+
+  // ===================== DEMANDAS =====================
+
+  function rowToDemanda(r: any) {
+    return {
+      id: r.id,
+      origem: r.origem,
+      numeroProcesso: r.numero_processo,
+      solicitanteNome: r.solicitante_nome,
+      solicitanteWhatsapp: r.solicitante_whatsapp,
+      solicitanteOrgao: r.solicitante_orgao,
+      dataSolicitacao: r.data_solicitacao,
+      tipo: r.tipo,
+      status: r.status,
+      observacoes: r.observacoes,
+      setorId: r.setor_id,
+      setorNome: r.setor_nome ?? null,
+      responsavelId: r.responsavel_id,
+      responsavelNome: r.responsavel_nome ?? null,
+      areaId: r.area_id,
+      areaEndereco: r.area_endereco ?? null,
+      dadosEspecificos: r.dados_especificos,
+      dataConclusao: r.data_conclusao,
+      createdBy: r.created_by,
+      createdAt: r.created_at,
+      updatedAt: r.updated_at,
+    };
+  }
+
+  app.get("/api/demandas", requireAuth, async (req, res) => {
+    try {
+      const { status, tipo, origem, setor_id } = req.query;
+      const pool = createDbPool();
+      const conditions: string[] = [];
+      const vals: any[] = [];
+      let i = 1;
+      if (status)   { conditions.push(`d.status=$${i++}`);   vals.push(status); }
+      if (tipo)     { conditions.push(`d.tipo=$${i++}`);     vals.push(tipo); }
+      if (origem)   { conditions.push(`d.origem=$${i++}`);   vals.push(origem); }
+      if (setor_id) { conditions.push(`d.setor_id=$${i++}`); vals.push(setor_id); }
+      const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+      const { rows } = await pool.query(`
+        SELECT d.*,
+               s.nome AS setor_nome,
+               u.nome AS responsavel_nome,
+               sa.endereco AS area_endereco
+        FROM demandas d
+        LEFT JOIN setores s ON s.id = d.setor_id
+        LEFT JOIN users u ON u.id = d.responsavel_id
+        LEFT JOIN service_areas sa ON sa.id = d.area_id
+        ${where}
+        ORDER BY d.created_at DESC
+        LIMIT 200
+      `, vals);
+      await pool.end();
+      res.json(rows.map(rowToDemanda));
+    } catch (error) {
+      res.status(500).json({ error: "Erro ao buscar demandas" });
+    }
+  });
+
+  app.get("/api/demandas/:id", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const pool = createDbPool();
+      const { rows } = await pool.query(`
+        SELECT d.*,
+               s.nome AS setor_nome,
+               u.nome AS responsavel_nome,
+               sa.endereco AS area_endereco
+        FROM demandas d
+        LEFT JOIN setores s ON s.id = d.setor_id
+        LEFT JOIN users u ON u.id = d.responsavel_id
+        LEFT JOIN service_areas sa ON sa.id = d.area_id
+        WHERE d.id=$1
+      `, [id]);
+      await pool.end();
+      if (!rows.length) return res.status(404).json({ error: "Demanda não encontrada" });
+      res.json(rowToDemanda(rows[0]));
+    } catch (error) {
+      res.status(500).json({ error: "Erro ao buscar demanda" });
+    }
+  });
+
+  app.post("/api/demandas", requireAuth, async (req, res) => {
+    try {
+      const {
+        origem, numeroProcesso, solicitanteNome, solicitanteWhatsapp, solicitanteOrgao,
+        dataSolicitacao, tipo, status = "aberta", observacoes,
+        setorId, responsavelId, areaId, dadosEspecificos,
+      } = req.body;
+      if (!origem || !solicitanteNome || !dataSolicitacao || !tipo) {
+        return res.status(400).json({ error: "Campos obrigatórios ausentes" });
+      }
+      const pool = createDbPool();
+      const { rows } = await pool.query(`
+        INSERT INTO demandas
+          (origem, numero_processo, solicitante_nome, solicitante_whatsapp, solicitante_orgao,
+           data_solicitacao, tipo, status, observacoes, setor_id, responsavel_id, area_id,
+           dados_especificos, created_by)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+        RETURNING *
+      `, [
+        origem, numeroProcesso ?? null, solicitanteNome, solicitanteWhatsapp ?? null,
+        solicitanteOrgao ?? null, dataSolicitacao, tipo, status, observacoes ?? null,
+        setorId ?? null, responsavelId ?? null, areaId ?? null,
+        dadosEspecificos ? JSON.stringify(dadosEspecificos) : null,
+        req.session.userId ?? null,
+      ]);
+      const demanda = rows[0];
+      await pool.end();
+      // Notificar responsável
+      if (responsavelId) {
+        await createNotificacao(
+          responsavelId,
+          `Nova demanda: ${tipo}`,
+          `${solicitanteNome}${solicitanteOrgao ? ` (${solicitanteOrgao})` : ""} — ${origem}`,
+          demanda.id
+        );
+      }
+      res.json(rowToDemanda(demanda));
+    } catch (error) {
+      console.error("Erro ao criar demanda:", error);
+      res.status(500).json({ error: "Erro ao criar demanda" });
+    }
+  });
+
+  app.patch("/api/demandas/:id", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const {
+        origem, numeroProcesso, solicitanteNome, solicitanteWhatsapp, solicitanteOrgao,
+        dataSolicitacao, tipo, status, observacoes, setorId, responsavelId, areaId, dadosEspecificos,
+      } = req.body;
+      const sets: string[] = [];
+      const vals: any[] = [];
+      let i = 1;
+      const addField = (col: string, val: any) => { sets.push(`${col}=$${i++}`); vals.push(val); };
+      if (origem !== undefined)              addField("origem", origem);
+      if (numeroProcesso !== undefined)      addField("numero_processo", numeroProcesso ?? null);
+      if (solicitanteNome !== undefined)     addField("solicitante_nome", solicitanteNome);
+      if (solicitanteWhatsapp !== undefined) addField("solicitante_whatsapp", solicitanteWhatsapp ?? null);
+      if (solicitanteOrgao !== undefined)    addField("solicitante_orgao", solicitanteOrgao ?? null);
+      if (dataSolicitacao !== undefined)     addField("data_solicitacao", dataSolicitacao);
+      if (tipo !== undefined)                addField("tipo", tipo);
+      if (status !== undefined) {
+        addField("status", status);
+        if (status === "concluida") addField("data_conclusao", new Date().toISOString());
+      }
+      if (observacoes !== undefined)         addField("observacoes", observacoes ?? null);
+      if (setorId !== undefined)             addField("setor_id", setorId ?? null);
+      if (responsavelId !== undefined)       addField("responsavel_id", responsavelId ?? null);
+      if (areaId !== undefined)              addField("area_id", areaId ?? null);
+      if (dadosEspecificos !== undefined)    addField("dados_especificos", dadosEspecificos ? JSON.stringify(dadosEspecificos) : null);
+      if (!sets.length) return res.status(400).json({ error: "Nenhum campo para atualizar" });
+      sets.push(`updated_at=NOW()`);
+      vals.push(id);
+      const pool = createDbPool();
+      const { rows } = await pool.query(
+        `UPDATE demandas SET ${sets.join(", ")} WHERE id=$${i} RETURNING *`, vals
+      );
+      await pool.end();
+      if (!rows.length) return res.status(404).json({ error: "Demanda não encontrada" });
+      res.json(rowToDemanda(rows[0]));
+    } catch (error) {
+      res.status(500).json({ error: "Erro ao atualizar demanda" });
+    }
+  });
+
+  app.delete("/api/demandas/:id", requireRole("admin", "gestor"), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const pool = createDbPool();
+      await pool.query("DELETE FROM demandas WHERE id=$1", [id]);
+      await pool.end();
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Erro ao excluir demanda" });
     }
   });
 
