@@ -209,8 +209,8 @@ export function FilterPanel({ areas, filters, onFilterChange, filteredCount }: F
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todos</SelectItem>
-                  <SelectItem value="1">Lote 1</SelectItem>
-                  <SelectItem value="2">Lote 2</SelectItem>
+                  <SelectItem value="1">1</SelectItem>
+                  <SelectItem value="2">2</SelectItem>
                 </SelectContent>
               </Select>
             </div>
