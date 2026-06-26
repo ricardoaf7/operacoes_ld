@@ -788,7 +788,7 @@ export default function CronogramaPage() {
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">
                     <a
-                      href={`/public/cronograma/${c.lote}`}
+                      href={`/public/cronograma/${c.lote}?id=${c.id}`}
                       target="_blank"
                       rel="noreferrer"
                       className="px-3 py-1.5 text-xs border rounded-md hover:bg-accent transition-colors flex items-center gap-1.5"

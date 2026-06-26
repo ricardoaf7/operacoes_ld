@@ -14,13 +14,18 @@ function formatDate(d: string) {
 export default function PublicCronogramaPage() {
   const params = useParams<{ lote: string }>();
   const lote = parseInt(params.lote || "1");
+  const cronogramaId = new URLSearchParams(window.location.search).get("id");
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
 
+  const apiUrl = cronogramaId
+    ? `/api/public/cronograma/${lote}?id=${cronogramaId}`
+    : `/api/public/cronograma/${lote}`;
+
   const { data, isLoading } = useQuery<{ cronograma: any; areas: any[] }>({
-    queryKey: [`/api/public/cronograma/${lote}`],
+    queryKey: [`/api/public/cronograma/${lote}`, cronogramaId],
     queryFn: async () => {
-      const r = await fetch(`/api/public/cronograma/${lote}`);
+      const r = await fetch(apiUrl);
       return r.json();
     },
     refetchInterval: 5 * 60 * 1000,

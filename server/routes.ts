@@ -2370,25 +2370,37 @@ export async function registerRoutes(app: Express): Promise<void> {
   app.get("/api/public/cronograma/:lote", async (req, res) => {
     try {
       const lote = parseInt(req.params.lote);
-      const today = new Date().toISOString().split('T')[0];
-
       const sb = getSupabase();
+      let cronograma: any = null;
 
-      const { data: cronogramas, error: e1 } = await sb
-        .from("cronogramas_semanais")
-        .select("*")
-        .eq("lote", lote)
-        .lte("semana_inicio", today)
-        .gte("semana_fim", today)
-        .order("created_at", { ascending: false })
-        .limit(1);
-      if (e1) throw e1;
-
-      if (!cronogramas || cronogramas.length === 0) {
-        return res.json({ cronograma: null, areas: [] });
+      if (req.query.id) {
+        // Busca pelo ID específico do cronograma
+        const { data, error } = await sb
+          .from("cronogramas_semanais")
+          .select("*")
+          .eq("id", req.query.id)
+          .eq("lote", lote)
+          .single();
+        if (error) throw error;
+        cronograma = data;
+      } else {
+        // Fallback: cronograma ativo na semana atual
+        const today = new Date().toISOString().split('T')[0];
+        const { data: cronogramas, error: e1 } = await sb
+          .from("cronogramas_semanais")
+          .select("*")
+          .eq("lote", lote)
+          .lte("semana_inicio", today)
+          .gte("semana_fim", today)
+          .order("created_at", { ascending: false })
+          .limit(1);
+        if (e1) throw e1;
+        cronograma = cronogramas?.[0] ?? null;
       }
 
-      const cronograma = cronogramas[0];
+      if (!cronograma) {
+        return res.json({ cronograma: null, areas: [] });
+      }
 
       const { data: areaLinks, error: e2 } = await sb
         .from("cronograma_areas")
