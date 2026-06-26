@@ -18,6 +18,60 @@ function getSupabase() {
   return createClient(url, key, { auth: { persistSession: false } });
 }
 
+async function ensureSetoresTable() {
+  try {
+    const pool = createDbPool();
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS setores (
+        id SERIAL PRIMARY KEY,
+        nome VARCHAR(150) NOT NULL,
+        parent_id INTEGER REFERENCES setores(id),
+        ativo BOOLEAN NOT NULL DEFAULT true,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    // Seed setores padrão se a tabela estiver vazia
+    const { rows } = await pool.query("SELECT COUNT(*) FROM setores");
+    if (parseInt(rows[0].count) === 0) {
+      await pool.query(`
+        INSERT INTO setores (nome, parent_id) VALUES
+          ('Capina e Roçagem 1', NULL),
+          ('Capina e Roçagem 2', NULL),
+          ('Varrição', NULL),
+          ('Lavação', NULL),
+          ('Jardins', NULL),
+          ('Lagos', NULL),
+          ('Limpeza de Boca de Lobo', NULL),
+          ('Coleta de Rejeitos e Orgânicos', NULL),
+          ('Coleta de Recicláveis', NULL),
+          ('Cidade Limpa', NULL),
+          ('Fiscalização de Posturas', NULL),
+          ('Utilização Vias Públicas', NULL),
+          ('Feiras', NULL),
+          ('Ambulantes', NULL)
+      `);
+      // Sub-setores de Coleta de Recicláveis
+      const { rows: cr } = await pool.query("SELECT id FROM setores WHERE nome = 'Coleta de Recicláveis'");
+      if (cr.length > 0) {
+        await pool.query(`
+          INSERT INTO setores (nome, parent_id) VALUES
+            ('Cooper Região', $1),
+            ('Cooperoeste', $1),
+            ('Coocepeve', $1),
+            ('Ecorecin', $1),
+            ('Coopernorth', $1),
+            ('Refum', $1),
+            ('Coopermudança', $1)
+        `, [cr[0].id]);
+      }
+    }
+    await pool.end();
+  } catch (e) {
+    console.warn("setores table check:", e);
+  }
+}
+
 async function ensureContratoConfigTable() {
   try {
     const pool = createDbPool();
@@ -163,6 +217,7 @@ async function ensureAdminExists() {
 
 export async function registerRoutes(app: Express): Promise<void> {
   await ensureAdminExists();
+  await ensureSetoresTable();
   await ensureContratoConfigTable();
 
   // ===================== AUTH ROUTES =====================
@@ -1822,6 +1877,75 @@ export async function registerRoutes(app: Express): Promise<void> {
       res.json({ success: true });
     } catch (error: any) {
       res.status(500).json({ error: "Erro ao excluir cronograma" });
+    }
+  });
+
+  // ===================== SETORES =====================
+
+  app.get("/api/setores", requireAuth, async (req, res) => {
+    try {
+      const pool = createDbPool();
+      const { rows } = await pool.query(
+        "SELECT * FROM setores ORDER BY parent_id NULLS FIRST, nome"
+      );
+      await pool.end();
+      res.json(rows);
+    } catch (error) {
+      res.status(500).json({ error: "Erro ao buscar setores" });
+    }
+  });
+
+  app.post("/api/setores", requireRole("admin", "gestor"), async (req, res) => {
+    try {
+      const { nome, parentId, ativo = true } = req.body;
+      if (!nome?.trim()) return res.status(400).json({ error: "Nome é obrigatório" });
+      const pool = createDbPool();
+      const { rows } = await pool.query(
+        "INSERT INTO setores (nome, parent_id, ativo) VALUES ($1, $2, $3) RETURNING *",
+        [nome.trim(), parentId ?? null, ativo]
+      );
+      await pool.end();
+      res.json(rows[0]);
+    } catch (error) {
+      res.status(500).json({ error: "Erro ao criar setor" });
+    }
+  });
+
+  app.put("/api/setores/:id", requireRole("admin", "gestor"), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { nome, parentId, ativo } = req.body;
+      const pool = createDbPool();
+      const { rows } = await pool.query(
+        `UPDATE setores SET nome=$1, parent_id=$2, ativo=$3, updated_at=NOW()
+         WHERE id=$4 RETURNING *`,
+        [nome, parentId ?? null, ativo, id]
+      );
+      await pool.end();
+      if (!rows.length) return res.status(404).json({ error: "Setor não encontrado" });
+      res.json(rows[0]);
+    } catch (error) {
+      res.status(500).json({ error: "Erro ao atualizar setor" });
+    }
+  });
+
+  app.delete("/api/setores/:id", requireRole("admin"), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const pool = createDbPool();
+      // Verificar se tem filhos
+      const { rows: filhos } = await pool.query(
+        "SELECT id FROM setores WHERE parent_id=$1 LIMIT 1", [id]
+      );
+      if (filhos.length > 0) {
+        await pool.end();
+        return res.status(400).json({ error: "Não é possível excluir um setor com sub-setores" });
+      }
+      await pool.query("DELETE FROM setores WHERE id=$1", [id]);
+      await pool.end();
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Erro ao excluir setor" });
     }
   });
 

@@ -264,6 +264,35 @@ export const insertCronogramaSchema = z.object({
 });
 export type InsertCronograma = z.infer<typeof insertCronogramaSchema>;
 
+// Setores
+export const setores = pgTable("setores", {
+  id: serial("id").primaryKey(),
+  nome: text("nome").notNull(),
+  parentId: integer("parent_id"),
+  ativo: boolean("ativo").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const setorSchema = z.object({
+  id: z.number(),
+  nome: z.string(),
+  parentId: z.number().nullable().optional(),
+  ativo: z.boolean().default(true),
+  createdAt: z.string().optional(),
+  updatedAt: z.string().optional(),
+});
+
+export type Setor = z.infer<typeof setorSchema>;
+
+export const insertSetorSchema = z.object({
+  nome: z.string().min(1, "Nome é obrigatório"),
+  parentId: z.number().nullable().optional(),
+  ativo: z.boolean().default(true),
+});
+
+export type InsertSetor = z.infer<typeof insertSetorSchema>;
+
 export const exportHistory = pgTable("export_history", {
   id: serial("id").primaryKey(),
   scope: text("scope").notNull(),
