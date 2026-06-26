@@ -63,6 +63,10 @@ export function DetalheDemandaModal({ demanda, open, onOpenChange }: Props) {
   const [eTipo, setETipo] = useState("");
   const [eSetorId, setESetorId] = useState("");
   const [eResponsavelId, setEResponsavelId] = useState("");
+  // Campos Capina e Roçagem
+  const [eCrLocal, setECrLocal] = useState("");
+  const [eCrDescricao, setECrDescricao] = useState("");
+  const [eCrObservacao, setECrObservacao] = useState("");
 
   const { data: setores = [] } = useQuery<Setor[]>({
     queryKey: ["/api/setores"],
@@ -98,6 +102,10 @@ export function DetalheDemandaModal({ demanda, open, onOpenChange }: Props) {
     setETipo(demanda.tipo);
     setESetorId(demanda.setorId ? String(demanda.setorId) : "");
     setEResponsavelId(demanda.responsavelId ? String(demanda.responsavelId) : "");
+    const d = demanda.dadosEspecificos as any;
+    setECrLocal(d?.local ?? "");
+    setECrDescricao(d?.descricao ?? "");
+    setECrObservacao(d?.observacao ?? "");
     setEditMode(true);
   }
 
@@ -137,7 +145,7 @@ export function DetalheDemandaModal({ demanda, open, onOpenChange }: Props) {
   });
 
   function salvarEdicao() {
-    updateMutation.mutate({
+    const body: any = {
       origem: eOrigem,
       numeroProcesso: eProtocolo || undefined,
       solicitanteNome: eSolicitanteNome,
@@ -149,7 +157,15 @@ export function DetalheDemandaModal({ demanda, open, onOpenChange }: Props) {
       responsavelId: eResponsavelId ? parseInt(eResponsavelId) : undefined,
       status,
       observacoes: observacoes || undefined,
-    });
+    };
+    if (eTipo === "Capina e Roçagem") {
+      body.dadosEspecificos = {
+        local: eCrLocal || undefined,
+        descricao: eCrDescricao || undefined,
+        observacao: eCrObservacao || undefined,
+      };
+    }
+    updateMutation.mutate(body);
   }
 
   function gerarMensagemWhatsapp(): string {
@@ -383,6 +399,30 @@ export function DetalheDemandaModal({ demanda, open, onOpenChange }: Props) {
                   </SelectContent>
                 </Select>
               </div>
+
+              {/* Capina e Roçagem — campos específicos */}
+              {eTipo === "Capina e Roçagem" && (
+                <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-3 space-y-3">
+                  <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-400 uppercase tracking-wide">
+                    Detalhes — Capina e Roçagem
+                  </p>
+                  <div>
+                    <Label>Local / Endereço</Label>
+                    <Input className="mt-1" placeholder="Endereço ou referência do local"
+                      value={eCrLocal} onChange={e => setECrLocal(e.target.value)} />
+                  </div>
+                  <div>
+                    <Label>Descrição</Label>
+                    <Textarea className="mt-1 h-16 resize-none" placeholder="Descreva o problema..."
+                      value={eCrDescricao} onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setECrDescricao(e.target.value)} />
+                  </div>
+                  <div>
+                    <Label>Observação</Label>
+                    <Input className="mt-1" placeholder="Observações adicionais"
+                      value={eCrObservacao} onChange={e => setECrObservacao(e.target.value)} />
+                  </div>
+                </div>
+              )}
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
