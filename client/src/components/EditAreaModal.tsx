@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useEffect } from "react";
 import {
   Dialog,
   DialogContent,
@@ -7,8 +7,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
@@ -17,10 +17,12 @@ import { z } from "zod";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { AREA_TIPOS_PADRAO } from "./NewAreaModal";
 
 const editAreaSchema = z.object({
   endereco: z.string().min(1, "Endereço é obrigatório"),
   bairro: z.string().optional(),
+  tipo: z.string().optional(),
   metragem_m2: z.coerce.number().positive("Metragem deve ser positiva").optional().or(z.literal("")),
 });
 
@@ -40,6 +42,7 @@ export function EditAreaModal({ area, open, onOpenChange }: EditAreaModalProps) 
     defaultValues: {
       endereco: "",
       bairro: "",
+      tipo: "",
       metragem_m2: undefined,
     },
   });
@@ -49,6 +52,7 @@ export function EditAreaModal({ area, open, onOpenChange }: EditAreaModalProps) 
       form.reset({
         endereco: area.endereco || "",
         bairro: area.bairro || "",
+        tipo: area.tipo || "",
         metragem_m2: area.metragem_m2 || undefined,
       });
     }
@@ -63,6 +67,7 @@ export function EditAreaModal({ area, open, onOpenChange }: EditAreaModalProps) 
       const res = await apiRequest("PATCH", `/api/areas/${area.id}`, {
         endereco: data.endereco,
         bairro: data.bairro,
+        tipo: data.tipo || null,
         metragem_m2: metragem,
       });
       return await res.json() as ServiceArea;
@@ -134,6 +139,29 @@ export function EditAreaModal({ area, open, onOpenChange }: EditAreaModalProps) 
                       data-testid="input-edit-bairro"
                     />
                   </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="tipo"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Tipo</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <FormControl>
+                      <SelectTrigger data-testid="select-edit-tipo">
+                        <SelectValue placeholder="Selecione o tipo" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {AREA_TIPOS_PADRAO.map((tipo) => (
+                        <SelectItem key={tipo} value={tipo}>{tipo}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                   <FormMessage />
                 </FormItem>
               )}
