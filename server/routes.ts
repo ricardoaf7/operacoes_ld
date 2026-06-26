@@ -512,7 +512,7 @@ export async function registerRoutes(app: Express): Promise<void> {
   // ===================== EXISTING ROUTES =====================
 
   // Endpoint para deletar área
-  app.delete("/api/areas/:id", requireRole("admin", "gestor"), async (req, res) => {
+  app.delete("/api/areas/:id", requireAuth, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) {
@@ -1052,7 +1052,7 @@ export async function registerRoutes(app: Express): Promise<void> {
     }
   });
 
-  app.patch("/api/areas/:id/polygon", requireRole("admin", "gestor"), async (req, res) => {
+  app.patch("/api/areas/:id/polygon", requireAuth, async (req, res) => {
     try {
       const areaId = parseInt(req.params.id);
       const polygonSchema = z.object({
@@ -1080,7 +1080,7 @@ export async function registerRoutes(app: Express): Promise<void> {
     }
   });
 
-  app.patch("/api/areas/:id/position", requireRole("admin", "gestor"), async (req, res) => {
+  app.patch("/api/areas/:id/position", requireAuth, async (req, res) => {
     try {
       const areaId = parseInt(req.params.id);
       const positionSchema = z.object({
@@ -1170,7 +1170,7 @@ export async function registerRoutes(app: Express): Promise<void> {
     }
   });
 
-  app.patch("/api/areas/:id", requireRole("admin", "gestor"), async (req, res) => {
+  app.patch("/api/areas/:id", requireAuth, async (req, res) => {
     try {
       const areaId = parseInt(req.params.id);
       const updateSchema = z.object({
@@ -1280,8 +1280,8 @@ export async function registerRoutes(app: Express): Promise<void> {
     }
   });
 
-  // Excluir entrada do histórico (admin e gestor)
-  app.delete("/api/areas/:id/history/:index", requireRole("admin", "gestor"), async (req, res) => {
+  // Excluir entrada do histórico
+  app.delete("/api/areas/:id/history/:index", requireAuth, async (req, res) => {
     try {
       const areaId = parseInt(req.params.id);
       const idx = parseInt(req.params.index);
@@ -1360,7 +1360,7 @@ export async function registerRoutes(app: Express): Promise<void> {
   });
 
   // Excluir foto do Supabase Storage
-  app.delete("/api/areas/:id/photos", requireRole("admin", "gestor"), async (req, res) => {
+  app.delete("/api/areas/:id/photos", requireAuth, async (req, res) => {
     try {
       const areaId = parseInt(req.params.id);
       const { photoUrl } = req.body;
@@ -1416,7 +1416,7 @@ export async function registerRoutes(app: Express): Promise<void> {
   // - POST /api/admin/import-production (não necessário - banco é compartilhado entre dev e produção)
 
   // Desfazer último registro de roçagem de uma área
-  app.delete("/api/areas/:id/rocagem", requireRole("admin", "gestor"), async (req, res) => {
+  app.delete("/api/areas/:id/rocagem", requireAuth, async (req, res) => {
     try {
       const areaId = parseInt(req.params.id);
       
