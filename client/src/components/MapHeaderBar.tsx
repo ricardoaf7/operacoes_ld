@@ -406,7 +406,7 @@ export function MapHeaderBar({
                           </span>
                         )}
                         {area.metragem_m2 && (
-                          <span className="ml-2">{area.metragem_m2}m²</span>
+                          <span className="ml-2">{Number(area.metragem_m2).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}m²</span>
                         )}
                       </div>
                     </button>

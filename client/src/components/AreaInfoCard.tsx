@@ -323,7 +323,7 @@ export function AreaInfoCard({ area, onClose, onUpdate }: AreaInfoCardProps) {
                   <div>
                     <p className="text-xs text-muted-foreground">Area</p>
                     <p className="text-sm font-medium font-mono" data-testid="text-metragem">
-                      {area.metragem_m2?.toLocaleString('pt-BR')} m2
+                      {area.metragem_m2?.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} m²
                     </p>
                   </div>
                 )}

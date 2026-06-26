@@ -277,7 +277,7 @@ export default function RelatorioRocagensPage() {
               <CardTitle className="text-sm font-medium text-muted-foreground">Metragem Total</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{rocagensFiltered.reduce((sum, a) => sum + (a.metragem_m2 || 0), 0).toLocaleString()} m²</div>
+              <div className="text-2xl font-bold">{rocagensFiltered.reduce((sum, a) => sum + (a.metragem_m2 || 0), 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} m²</div>
             </CardContent>
           </Card>
         </div>
@@ -332,7 +332,7 @@ export default function RelatorioRocagensPage() {
                         <td className="border border-gray-300 p-3">{area.id}</td>
                         <td className="border border-gray-300 p-3">{area.endereco}</td>
                         <td className="border border-gray-300 p-3">{area.bairro || "-"}</td>
-                        <td className="border border-gray-300 p-3 text-right">{area.metragem_m2?.toLocaleString() || "-"}</td>
+                        <td className="border border-gray-300 p-3 text-right">{area.metragem_m2?.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || "-"}</td>
                         <td className="border border-gray-300 p-3 text-center">{area.lote || "-"}</td>
                         <td className="border border-gray-300 p-3">{area.ultimaRocagem ? formatDateBR(area.ultimaRocagem) : "-"}</td>
                         <td className="border border-gray-300 p-3">{area.registradoPor || "-"}</td>
@@ -347,7 +347,7 @@ export default function RelatorioRocagensPage() {
           {rocagensFiltered.length > 0 && (
             <div className="mt-8 pt-4 border-t-2 border-gray-300 text-sm text-gray-600">
               <p>Total de áreas roçadas: <strong>{rocagensFiltered.length}</strong></p>
-              <p>Metragem total: <strong>{rocagensFiltered.reduce((sum, a) => sum + (a.metragem_m2 || 0), 0).toLocaleString()} m²</strong></p>
+              <p>Metragem total: <strong>{rocagensFiltered.reduce((sum, a) => sum + (a.metragem_m2 || 0), 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} m²</strong></p>
             </div>
           )}
         </div>
@@ -379,7 +379,7 @@ export default function RelatorioRocagensPage() {
                       </div>
                       <div>
                         <p className="text-sm text-muted-foreground">Metragem</p>
-                        <p className="font-medium">{area.metragem_m2?.toLocaleString() || "-"} m²</p>
+                        <p className="font-medium">{area.metragem_m2?.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || "-"} m²</p>
                       </div>
                       <div>
                         <p className="text-sm text-muted-foreground">Lote</p>
