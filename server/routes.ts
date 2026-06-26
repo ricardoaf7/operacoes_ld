@@ -2384,18 +2384,50 @@ export async function registerRoutes(app: Express): Promise<void> {
         if (error) throw error;
         cronograma = data;
       } else {
-        // Fallback: cronograma ativo na semana atual
-        const today = new Date().toISOString().split('T')[0];
-        const { data: cronogramas, error: e1 } = await sb
-          .from("cronogramas_semanais")
-          .select("*")
-          .eq("lote", lote)
-          .lte("semana_inicio", today)
-          .gte("semana_fim", today)
-          .order("created_at", { ascending: false })
-          .limit(1);
-        if (e1) throw e1;
-        cronograma = cronogramas?.[0] ?? null;
+        // Lógica inteligente: Sex/Sáb/Dom → próxima semana; Seg–Qui → semana atual
+        const now = new Date();
+        const todayStr = now.toISOString().split('T')[0];
+        const diaSemana = now.getDay(); // 0=Dom, 5=Sex, 6=Sáb
+        const mostrarProximaSemana = diaSemana === 0 || diaSemana >= 5;
+
+        if (mostrarProximaSemana) {
+          // Próxima semana (semana_inicio > hoje)
+          const { data: proxima, error: ep } = await sb
+            .from("cronogramas_semanais")
+            .select("*")
+            .eq("lote", lote)
+            .gt("semana_inicio", todayStr)
+            .order("semana_inicio", { ascending: true })
+            .limit(1);
+          if (ep) throw ep;
+          cronograma = proxima?.[0] ?? null;
+        }
+
+        // Semana atual (fallback ou lógica principal Seg–Qui)
+        if (!cronograma) {
+          const { data: atual, error: ea } = await sb
+            .from("cronogramas_semanais")
+            .select("*")
+            .eq("lote", lote)
+            .lte("semana_inicio", todayStr)
+            .gte("semana_fim", todayStr)
+            .order("created_at", { ascending: false })
+            .limit(1);
+          if (ea) throw ea;
+          cronograma = atual?.[0] ?? null;
+        }
+
+        // Último recurso: próxima semana ainda não cadastrada → semana mais recente
+        if (!cronograma) {
+          const { data: recente, error: er } = await sb
+            .from("cronogramas_semanais")
+            .select("*")
+            .eq("lote", lote)
+            .order("semana_inicio", { ascending: false })
+            .limit(1);
+          if (er) throw er;
+          cronograma = recente?.[0] ?? null;
+        }
       }
 
       if (!cronograma) {
