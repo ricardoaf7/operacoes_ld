@@ -30,6 +30,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Menu, X, Download, FileText, LogOut, Users, Lock, ClipboardList } from "lucide-react";
 import { ChangePasswordDialog } from "@/components/ChangePasswordDialog";
+import { NotificationBell } from "@/components/NotificationBell";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { useLocation } from "wouter";
@@ -821,7 +822,9 @@ export default function Dashboard({ isPublicView = false }: DashboardProps) {
                 className="h-14 w-auto object-contain opacity-90 dark:[filter:brightness(0)_invert(1)]"
               />
             </div>
-            <div className="w-8 flex-shrink-0" />
+            <div className="flex-shrink-0">
+              <NotificationBell />
+            </div>
           </header>
 
           {selectedService === 'rocagem' && (

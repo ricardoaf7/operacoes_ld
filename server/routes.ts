@@ -18,6 +18,42 @@ function getSupabase() {
   return createClient(url, key, { auth: { persistSession: false } });
 }
 
+async function ensureNotificacoesTable() {
+  try {
+    const pool = createDbPool();
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS notificacoes (
+        id SERIAL PRIMARY KEY,
+        usuario_id INTEGER NOT NULL,
+        titulo TEXT NOT NULL,
+        mensagem TEXT,
+        tipo TEXT NOT NULL DEFAULT 'demanda',
+        referencia_id INTEGER,
+        lida BOOLEAN NOT NULL DEFAULT false,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await pool.end();
+  } catch (e) {
+    console.warn("notificacoes table check:", e);
+  }
+}
+
+// Helper exportável para criar notificação (usado pelas rotas de demandas)
+export async function createNotificacao(usuarioId: number, titulo: string, mensagem?: string, referenciaId?: number) {
+  try {
+    const pool = createDbPool();
+    await pool.query(
+      `INSERT INTO notificacoes (usuario_id, titulo, mensagem, tipo, referencia_id)
+       VALUES ($1, $2, $3, 'demanda', $4)`,
+      [usuarioId, titulo, mensagem ?? null, referenciaId ?? null]
+    );
+    await pool.end();
+  } catch (e) {
+    console.warn("createNotificacao error:", e);
+  }
+}
+
 async function ensureUsersSetorColumn() {
   try {
     const pool = createDbPool();
@@ -229,6 +265,7 @@ async function ensureAdminExists() {
 
 export async function registerRoutes(app: Express): Promise<void> {
   await ensureAdminExists();
+  await ensureNotificacoesTable();
   await ensureSetoresTable();
   await ensureUsersSetorColumn();
   await ensureContratoConfigTable();
@@ -1910,6 +1947,78 @@ export async function registerRoutes(app: Express): Promise<void> {
       res.json({ success: true });
     } catch (error: any) {
       res.status(500).json({ error: "Erro ao excluir cronograma" });
+    }
+  });
+
+  // ===================== NOTIFICAÇÕES =====================
+
+  app.get("/api/notificacoes", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const pool = createDbPool();
+      const { rows } = await pool.query(
+        `SELECT * FROM notificacoes WHERE usuario_id=$1 ORDER BY created_at DESC LIMIT 50`,
+        [userId]
+      );
+      await pool.end();
+      res.json(rows.map(r => ({
+        id: r.id,
+        usuarioId: r.usuario_id,
+        titulo: r.titulo,
+        mensagem: r.mensagem,
+        tipo: r.tipo,
+        referenciaId: r.referencia_id,
+        lida: r.lida,
+        createdAt: r.created_at,
+      })));
+    } catch (error) {
+      res.status(500).json({ error: "Erro ao buscar notificações" });
+    }
+  });
+
+  app.get("/api/notificacoes/nao-lidas", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const pool = createDbPool();
+      const { rows } = await pool.query(
+        `SELECT COUNT(*) FROM notificacoes WHERE usuario_id=$1 AND lida=false`,
+        [userId]
+      );
+      await pool.end();
+      res.json({ count: parseInt(rows[0].count) });
+    } catch (error) {
+      res.status(500).json({ error: "Erro ao contar notificações" });
+    }
+  });
+
+  app.patch("/api/notificacoes/:id/lida", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const userId = req.session.userId!;
+      const pool = createDbPool();
+      await pool.query(
+        `UPDATE notificacoes SET lida=true WHERE id=$1 AND usuario_id=$2`,
+        [id, userId]
+      );
+      await pool.end();
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Erro ao marcar notificação" });
+    }
+  });
+
+  app.patch("/api/notificacoes/lida-todas", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const pool = createDbPool();
+      await pool.query(
+        `UPDATE notificacoes SET lida=true WHERE usuario_id=$1 AND lida=false`,
+        [userId]
+      );
+      await pool.end();
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Erro ao marcar notificações" });
     }
   });
 

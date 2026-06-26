@@ -264,6 +264,31 @@ export const insertCronogramaSchema = z.object({
 });
 export type InsertCronograma = z.infer<typeof insertCronogramaSchema>;
 
+// Notificações
+export const notificacoes = pgTable("notificacoes", {
+  id: serial("id").primaryKey(),
+  usuarioId: integer("usuario_id").notNull(),
+  titulo: text("titulo").notNull(),
+  mensagem: text("mensagem"),
+  tipo: text("tipo").notNull().default("demanda"),
+  referenciaId: integer("referencia_id"),
+  lida: boolean("lida").notNull().default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const notificacaoSchema = z.object({
+  id: z.number(),
+  usuarioId: z.number(),
+  titulo: z.string(),
+  mensagem: z.string().nullable().optional(),
+  tipo: z.string().default("demanda"),
+  referenciaId: z.number().nullable().optional(),
+  lida: z.boolean().default(false),
+  createdAt: z.string().optional(),
+});
+
+export type Notificacao = z.infer<typeof notificacaoSchema>;
+
 // Setores
 export const setores = pgTable("setores", {
   id: serial("id").primaryKey(),
