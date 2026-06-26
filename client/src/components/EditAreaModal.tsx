@@ -23,6 +23,7 @@ const editAreaSchema = z.object({
   endereco: z.string().min(1, "Endereço é obrigatório"),
   bairro: z.string().optional(),
   tipo: z.string().optional(),
+  lote: z.string().optional(),
   metragem_m2: z.coerce.number().positive("Metragem deve ser positiva").optional().or(z.literal("")),
 });
 
@@ -36,13 +37,14 @@ interface EditAreaModalProps {
 
 export function EditAreaModal({ area, open, onOpenChange }: EditAreaModalProps) {
   const { toast } = useToast();
-  
+
   const form = useForm<EditAreaFormData>({
     resolver: zodResolver(editAreaSchema),
     defaultValues: {
       endereco: "",
       bairro: "",
       tipo: "",
+      lote: "",
       metragem_m2: undefined,
     },
   });
@@ -53,6 +55,7 @@ export function EditAreaModal({ area, open, onOpenChange }: EditAreaModalProps) 
         endereco: area.endereco || "",
         bairro: area.bairro || "",
         tipo: area.tipo || "",
+        lote: area.lote ? String(area.lote) : "",
         metragem_m2: area.metragem_m2 || undefined,
       });
     }
@@ -61,13 +64,14 @@ export function EditAreaModal({ area, open, onOpenChange }: EditAreaModalProps) 
   const updateAreaMutation = useMutation({
     mutationFn: async (data: EditAreaFormData) => {
       if (!area) throw new Error("Área não selecionada");
-      
+
       const metragem = data.metragem_m2 ? Number(data.metragem_m2) : null;
-      
+
       const res = await apiRequest("PATCH", `/api/areas/${area.id}`, {
         endereco: data.endereco,
         bairro: data.bairro,
         tipo: data.tipo || null,
+        lote: data.lote ? Number(data.lote) : null,
         metragem_m2: metragem,
       });
       return await res.json() as ServiceArea;
@@ -115,7 +119,7 @@ export function EditAreaModal({ area, open, onOpenChange }: EditAreaModalProps) 
                 <FormItem>
                   <FormLabel>Endereço *</FormLabel>
                   <FormControl>
-                    <Input 
+                    <Input
                       placeholder="Endereço da área"
                       {...field}
                       data-testid="input-edit-endereco"
@@ -133,7 +137,7 @@ export function EditAreaModal({ area, open, onOpenChange }: EditAreaModalProps) 
                 <FormItem>
                   <FormLabel>Bairro</FormLabel>
                   <FormControl>
-                    <Input 
+                    <Input
                       placeholder="Bairro"
                       {...field}
                       data-testid="input-edit-bairro"
@@ -144,28 +148,52 @@ export function EditAreaModal({ area, open, onOpenChange }: EditAreaModalProps) 
               )}
             />
 
-            <FormField
-              control={form.control}
-              name="tipo"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Tipo</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value}>
-                    <FormControl>
-                      <SelectTrigger data-testid="select-edit-tipo">
-                        <SelectValue placeholder="Selecione o tipo" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {AREA_TIPOS_PADRAO.map((tipo) => (
-                        <SelectItem key={tipo} value={tipo}>{tipo}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            <div className="grid grid-cols-2 gap-3">
+              <FormField
+                control={form.control}
+                name="tipo"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Tipo</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger data-testid="select-edit-tipo">
+                          <SelectValue placeholder="Selecione..." />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent className="z-[9999]">
+                        {AREA_TIPOS_PADRAO.map((tipo) => (
+                          <SelectItem key={tipo} value={tipo}>{tipo}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="lote"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Lote</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger data-testid="select-edit-lote">
+                          <SelectValue placeholder="Selecione..." />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent className="z-[9999]">
+                        <SelectItem value="1">Lote 1</SelectItem>
+                        <SelectItem value="2">Lote 2</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
 
             <FormField
               control={form.control}
@@ -174,7 +202,7 @@ export function EditAreaModal({ area, open, onOpenChange }: EditAreaModalProps) 
                 <FormItem>
                   <FormLabel>Metragem (m²)</FormLabel>
                   <FormControl>
-                    <Input 
+                    <Input
                       type="number"
                       placeholder="0.00"
                       step="0.01"
