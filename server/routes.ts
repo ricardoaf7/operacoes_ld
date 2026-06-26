@@ -396,6 +396,27 @@ export async function registerRoutes(app: Express): Promise<void> {
 
   // ===================== USER MANAGEMENT ROUTES =====================
 
+  // Lista simplificada para todos autenticados (dropdowns de responsável etc.)
+  app.get("/api/users/list", requireAuth, async (req, res) => {
+    try {
+      const pool = createDbPool();
+      const { rows } = await pool.query(`
+        SELECT u.id, u.nome, u.setor_id, s.nome AS setor_nome
+        FROM users u
+        LEFT JOIN setores s ON s.id = u.setor_id
+        WHERE u.ativo = true
+        ORDER BY u.nome
+      `);
+      await pool.end();
+      res.json(rows.map(u => ({
+        id: u.id, nome: u.nome,
+        setorId: u.setor_id, setorNome: u.setor_nome,
+      })));
+    } catch (error) {
+      res.status(500).json({ error: "Erro ao buscar usuários" });
+    }
+  });
+
   app.get("/api/users", requireRole("admin"), async (req, res) => {
     try {
       const pool = createDbPool();
@@ -491,7 +512,7 @@ export async function registerRoutes(app: Express): Promise<void> {
   // ===================== EXISTING ROUTES =====================
 
   // Endpoint para deletar área
-  app.delete("/api/areas/:id", requireAuth, async (req, res) => {
+  app.delete("/api/areas/:id", requireRole("admin", "gestor"), async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) {
@@ -782,7 +803,7 @@ export async function registerRoutes(app: Express): Promise<void> {
   });
 
   // Criar nova área de serviço
-  app.post("/api/areas", requireAuth, async (req, res) => {
+  app.post("/api/areas", requireRole("admin", "gestor"), async (req, res) => {
     try {
       const createSchema = z.object({
         tipo: z.string().min(1, "Tipo é obrigatório"),
@@ -957,7 +978,7 @@ export async function registerRoutes(app: Express): Promise<void> {
     }
   });
 
-  app.patch("/api/config", requireAuth, async (req, res) => {
+  app.patch("/api/config", requireRole("admin", "gestor"), async (req, res) => {
     try {
       const configSchema = z.object({
         mowingProductionRate: z.object({
@@ -1031,7 +1052,7 @@ export async function registerRoutes(app: Express): Promise<void> {
     }
   });
 
-  app.patch("/api/areas/:id/polygon", requireAuth, async (req, res) => {
+  app.patch("/api/areas/:id/polygon", requireRole("admin", "gestor"), async (req, res) => {
     try {
       const areaId = parseInt(req.params.id);
       const polygonSchema = z.object({
@@ -1059,7 +1080,7 @@ export async function registerRoutes(app: Express): Promise<void> {
     }
   });
 
-  app.patch("/api/areas/:id/position", requireAuth, async (req, res) => {
+  app.patch("/api/areas/:id/position", requireRole("admin", "gestor"), async (req, res) => {
     try {
       const areaId = parseInt(req.params.id);
       const positionSchema = z.object({
@@ -1149,7 +1170,7 @@ export async function registerRoutes(app: Express): Promise<void> {
     }
   });
 
-  app.patch("/api/areas/:id", requireAuth, async (req, res) => {
+  app.patch("/api/areas/:id", requireRole("admin", "gestor"), async (req, res) => {
     try {
       const areaId = parseInt(req.params.id);
       const updateSchema = z.object({
@@ -1259,13 +1280,9 @@ export async function registerRoutes(app: Express): Promise<void> {
     }
   });
 
-  // Excluir entrada do histórico (somente admin)
-  app.delete("/api/areas/:id/history/:index", requireAuth, async (req, res) => {
+  // Excluir entrada do histórico (admin e gestor)
+  app.delete("/api/areas/:id/history/:index", requireRole("admin", "gestor"), async (req, res) => {
     try {
-      if (req.session.userRole !== "admin") {
-        res.status(403).json({ error: "Apenas administradores podem excluir histórico" });
-        return;
-      }
       const areaId = parseInt(req.params.id);
       const idx = parseInt(req.params.index);
       const area = await storage.getAreaById(areaId);
@@ -1343,7 +1360,7 @@ export async function registerRoutes(app: Express): Promise<void> {
   });
 
   // Excluir foto do Supabase Storage
-  app.delete("/api/areas/:id/photos", requireAuth, async (req, res) => {
+  app.delete("/api/areas/:id/photos", requireRole("admin", "gestor"), async (req, res) => {
     try {
       const areaId = parseInt(req.params.id);
       const { photoUrl } = req.body;
@@ -1399,7 +1416,7 @@ export async function registerRoutes(app: Express): Promise<void> {
   // - POST /api/admin/import-production (não necessário - banco é compartilhado entre dev e produção)
 
   // Desfazer último registro de roçagem de uma área
-  app.delete("/api/areas/:id/rocagem", requireAuth, async (req, res) => {
+  app.delete("/api/areas/:id/rocagem", requireRole("admin", "gestor"), async (req, res) => {
     try {
       const areaId = parseInt(req.params.id);
       

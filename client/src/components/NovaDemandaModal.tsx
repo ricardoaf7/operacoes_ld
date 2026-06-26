@@ -46,8 +46,8 @@ export function NovaDemandaModal({ open, onOpenChange }: Props) {
   });
 
   const { data: users = [] } = useQuery<UserData[]>({
-    queryKey: ["/api/users"],
-    queryFn: async () => (await apiRequest("GET", "/api/users")).json(),
+    queryKey: ["/api/users/list"],
+    queryFn: async () => (await apiRequest("GET", "/api/users/list")).json(),
     enabled: open,
   });
 
