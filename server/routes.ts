@@ -151,6 +151,25 @@ async function ensureSetoresTable() {
   }
 }
 
+async function ensureSolicitantesTable() {
+  try {
+    const pool = createDbPool();
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS solicitantes (
+        id SERIAL PRIMARY KEY,
+        nome TEXT NOT NULL,
+        whatsapp TEXT,
+        orgao TEXT,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_solicitantes_nome ON solicitantes (lower(nome));
+    `);
+    await pool.end();
+  } catch (e) {
+    console.warn("solicitantes table check:", e);
+  }
+}
+
 async function ensureContratoConfigTable() {
   try {
     const pool = createDbPool();
@@ -300,6 +319,7 @@ export async function registerRoutes(app: Express): Promise<void> {
   await ensureNotificacoesTable();
   await ensureSetoresTable();
   await ensureUsersSetorColumn();
+  await ensureSolicitantesTable();
   await ensureContratoConfigTable();
 
   // ===================== AUTH ROUTES =====================
@@ -2108,6 +2128,13 @@ export async function registerRoutes(app: Express): Promise<void> {
         req.session.userId ?? null,
       ]);
       const demanda = rows[0];
+      // Auto-salvar solicitante no banco de dados
+      await pool.query(
+        `INSERT INTO solicitantes (nome, whatsapp, orgao)
+         SELECT $1, $2, $3
+         WHERE NOT EXISTS (SELECT 1 FROM solicitantes WHERE lower(nome) = lower($1))`,
+        [solicitanteNome, solicitanteWhatsapp ?? null, solicitanteOrgao ?? null]
+      );
       await pool.end();
       // Notificar responsável
       if (responsavelId) {
@@ -2248,6 +2275,25 @@ export async function registerRoutes(app: Express): Promise<void> {
       res.json({ success: true });
     } catch (error) {
       res.status(500).json({ error: "Erro ao marcar notificações" });
+    }
+  });
+
+  // ===================== SOLICITANTES =====================
+
+  app.get("/api/solicitantes", requireAuth, async (req, res) => {
+    try {
+      const q = String(req.query.q ?? "");
+      const pool = createDbPool();
+      const { rows } = await pool.query(
+        `SELECT id, nome, whatsapp, orgao FROM solicitantes
+         WHERE lower(nome) LIKE lower($1)
+         ORDER BY nome LIMIT 8`,
+        [`%${q}%`]
+      );
+      await pool.end();
+      res.json(rows);
+    } catch (error) {
+      res.status(500).json({ error: "Erro ao buscar solicitantes" });
     }
   });
 

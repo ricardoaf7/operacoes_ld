@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -12,6 +12,7 @@ import { ORIGENS_DEMANDA, TIPOS_DEMANDA, type Setor } from "@shared/schema";
 import type { ServiceArea } from "@shared/schema";
 
 interface UserData { id: number; nome: string; setorId: number | null; setorNome: string | null; }
+interface SolicitanteData { id: number; nome: string; whatsapp: string | null; orgao: string | null; }
 
 interface Props {
   open: boolean;
@@ -22,17 +23,25 @@ const today = new Date().toISOString().split("T")[0];
 
 export function NovaDemandaModal({ open, onOpenChange }: Props) {
   const { toast } = useToast();
+  const solicitanteRef = useRef<HTMLDivElement>(null);
+
+  // Campos gerais
   const [origem, setOrigem] = useState("");
-  const [numeroProcesso, setNumeroProcesso] = useState("");
-  const [solicitanteNome, setSolicitanteNome] = useState("");
-  const [solicitanteWhatsapp, setSolicitanteWhatsapp] = useState("");
-  const [solicitanteOrgao, setSolicitanteOrgao] = useState("");
+  const [protocolo, setProtocolo] = useState("");
   const [dataSolicitacao, setDataSolicitacao] = useState(today);
   const [tipo, setTipo] = useState("");
   const [setorId, setSetorId] = useState("");
   const [responsavelId, setResponsavelId] = useState("");
   const [observacoes, setObservacoes] = useState("");
-  // Campos específicos Capina e Roçagem
+
+  // Solicitante
+  const [solicitanteNome, setSolicitanteNome] = useState("");
+  const [solicitanteWhatsapp, setSolicitanteWhatsapp] = useState("");
+  const [solicitanteOrgao, setSolicitanteOrgao] = useState("");
+  const [sugestoes, setSugestoes] = useState<SolicitanteData[]>([]);
+  const [showSugestoes, setShowSugestoes] = useState(false);
+
+  // Capina e Roçagem
   const [crLocal, setCrLocal] = useState("");
   const [crAreaId, setCrAreaId] = useState("");
   const [crDescricao, setCrDescricao] = useState("");
@@ -57,22 +66,56 @@ export function NovaDemandaModal({ open, onOpenChange }: Props) {
     enabled: open && tipo === "Capina e Roçagem",
   });
 
-  const setoresAtivos = setores.filter(s => s.ativo && !s.parentId);
+  const setoresPai = setores.filter(s => s.ativo && !s.parentId);
   const setoresFilhos = setores.filter(s => s.ativo && s.parentId);
-
-  const usuariosFiltrados = setorId
-    ? users.filter(u => String(u.setorId) === setorId)
-    : users;
-
+  const isCapinaRocagem = tipo === "Capina e Roçagem";
   const areasFiltradas = areas.filter(a =>
     !areaSearch || a.endereco.toLowerCase().includes(areaSearch.toLowerCase())
   ).slice(0, 30);
 
-  const isCapinaRocagem = tipo === "Capina e Roçagem";
+  // Auto-popular responsável ao mudar serviço
+  useEffect(() => {
+    if (!setorId) { setResponsavelId(""); return; }
+    const match = users.find(u => String(u.setorId) === setorId);
+    setResponsavelId(match ? String(match.id) : "");
+  }, [setorId, users]);
+
+  // Busca de solicitantes com debounce
+  useEffect(() => {
+    if (solicitanteNome.length < 2) { setSugestoes([]); setShowSugestoes(false); return; }
+    const t = setTimeout(async () => {
+      try {
+        const res = await apiRequest("GET", `/api/solicitantes?q=${encodeURIComponent(solicitanteNome)}`);
+        const data = await res.json();
+        setSugestoes(data);
+        setShowSugestoes(data.length > 0);
+      } catch {}
+    }, 280);
+    return () => clearTimeout(t);
+  }, [solicitanteNome]);
+
+  // Fechar sugestões ao clicar fora
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (solicitanteRef.current && !solicitanteRef.current.contains(e.target as Node)) {
+        setShowSugestoes(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  function selecionarSolicitante(s: SolicitanteData) {
+    setSolicitanteNome(s.nome);
+    setSolicitanteWhatsapp(s.whatsapp ?? "");
+    setSolicitanteOrgao(s.orgao ?? "");
+    setShowSugestoes(false);
+  }
 
   function reset() {
-    setOrigem(""); setNumeroProcesso(""); setSolicitanteNome("");
-    setSolicitanteWhatsapp(""); setSolicitanteOrgao(""); setDataSolicitacao(today);
+    setOrigem(""); setProtocolo(""); setDataSolicitacao(today);
+    setSolicitanteNome(""); setSolicitanteWhatsapp(""); setSolicitanteOrgao("");
+    setSugestoes([]); setShowSugestoes(false);
     setTipo(""); setSetorId(""); setResponsavelId(""); setObservacoes("");
     setCrLocal(""); setCrAreaId(""); setCrDescricao(""); setCrObservacao(""); setAreaSearch("");
   }
@@ -82,8 +125,10 @@ export function NovaDemandaModal({ open, onOpenChange }: Props) {
   const mutation = useMutation({
     mutationFn: async () => {
       const body: any = {
-        origem, numeroProcesso: numeroProcesso || undefined,
-        solicitanteNome, solicitanteWhatsapp: solicitanteWhatsapp || undefined,
+        origem,
+        numeroProcesso: protocolo || undefined,
+        solicitanteNome,
+        solicitanteWhatsapp: solicitanteWhatsapp || undefined,
         solicitanteOrgao: solicitanteOrgao || undefined,
         dataSolicitacao, tipo,
         setorId: setorId ? parseInt(setorId) : undefined,
@@ -112,6 +157,7 @@ export function NovaDemandaModal({ open, onOpenChange }: Props) {
   });
 
   const canSubmit = origem && solicitanteNome && dataSolicitacao && tipo;
+  const usuariosDoSetor = setorId ? users.filter(u => String(u.setorId) === setorId) : users;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -121,7 +167,7 @@ export function NovaDemandaModal({ open, onOpenChange }: Props) {
         </DialogHeader>
 
         <div className="space-y-4 pt-1">
-          {/* Linha 1: Origem + Data */}
+          {/* Origem + Data */}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <Label>Origem *</Label>
@@ -141,33 +187,57 @@ export function NovaDemandaModal({ open, onOpenChange }: Props) {
             </div>
           </div>
 
-          {/* Nº Processo */}
+          {/* Protocolo */}
           <div>
-            <Label>Nº Processo (SEI ou outro)</Label>
-            <Input className="mt-1" placeholder="Ex: 17.020.001/2026" value={numeroProcesso}
-              onChange={e => setNumeroProcesso(e.target.value)} />
+            <Label>Protocolo</Label>
+            <Input className="mt-1" placeholder="Nº SEI, processo ou protocolo" value={protocolo}
+              onChange={e => setProtocolo(e.target.value)} />
           </div>
 
-          {/* Solicitante */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
+          {/* Solicitante com autocomplete */}
+          <div ref={solicitanteRef} className="space-y-3">
+            <div className="relative">
               <Label>Solicitante *</Label>
-              <Input className="mt-1" placeholder="Nome completo" value={solicitanteNome}
-                onChange={e => setSolicitanteNome(e.target.value)} />
+              <Input
+                className="mt-1"
+                placeholder="Digite o nome..."
+                value={solicitanteNome}
+                onChange={e => { setSolicitanteNome(e.target.value); setShowSugestoes(true); }}
+                onFocus={() => { if (sugestoes.length > 0) setShowSugestoes(true); }}
+                autoComplete="off"
+              />
+              {showSugestoes && sugestoes.length > 0 && (
+                <div className="absolute top-full left-0 right-0 z-[9999] mt-0.5 border border-border rounded-md bg-popover shadow-md max-h-36 overflow-y-auto">
+                  {sugestoes.map(s => (
+                    <button
+                      key={s.id}
+                      type="button"
+                      className="w-full text-left px-3 py-2 text-xs hover:bg-muted/60 transition-colors border-b border-border/40 last:border-0"
+                      onMouseDown={e => { e.preventDefault(); selecionarSolicitante(s); }}
+                    >
+                      <span className="font-medium">{s.nome}</span>
+                      {s.orgao && <span className="text-muted-foreground ml-1.5">· {s.orgao}</span>}
+                      {s.whatsapp && <span className="text-muted-foreground ml-1.5">· {s.whatsapp}</span>}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
-            <div>
-              <Label>WhatsApp</Label>
-              <Input className="mt-1" placeholder="(43) 9 9999-9999" value={solicitanteWhatsapp}
-                onChange={e => setSolicitanteWhatsapp(e.target.value)} />
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>WhatsApp</Label>
+                <Input className="mt-1" placeholder="(43) 9 9999-9999" value={solicitanteWhatsapp}
+                  onChange={e => setSolicitanteWhatsapp(e.target.value)} />
+              </div>
+              <div>
+                <Label>Órgão / Vereador</Label>
+                <Input className="mt-1" placeholder="Gabinete, secretaria..." value={solicitanteOrgao}
+                  onChange={e => setSolicitanteOrgao(e.target.value)} />
+              </div>
             </div>
-          </div>
-          <div>
-            <Label>Órgão / Vereador</Label>
-            <Input className="mt-1" placeholder="Ex: Gabinete do Ver. João Silva" value={solicitanteOrgao}
-              onChange={e => setSolicitanteOrgao(e.target.value)} />
           </div>
 
-          {/* Tipo */}
+          {/* Tipo de Demanda */}
           <div>
             <Label>Tipo de Demanda *</Label>
             <Select value={tipo} onValueChange={v => { setTipo(v); setCrAreaId(""); }}>
@@ -193,10 +263,8 @@ export function NovaDemandaModal({ open, onOpenChange }: Props) {
               </div>
               <div>
                 <Label>Vincular a área cadastrada (opcional)</Label>
-                <div className="flex gap-2 mt-1">
-                  <Input placeholder="Buscar por endereço..." value={areaSearch}
-                    onChange={e => { setAreaSearch(e.target.value); setCrAreaId(""); }} />
-                </div>
+                <Input className="mt-1" placeholder="Buscar por endereço..." value={areaSearch}
+                  onChange={e => { setAreaSearch(e.target.value); setCrAreaId(""); }} />
                 {areaSearch && areasFiltradas.length > 0 && !crAreaId && (
                   <div className="mt-1 border border-border rounded-md max-h-32 overflow-y-auto">
                     {areasFiltradas.map(a => (
@@ -226,17 +294,17 @@ export function NovaDemandaModal({ open, onOpenChange }: Props) {
             </div>
           )}
 
-          {/* Setor e Responsável */}
+          {/* Serviço e Responsável */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <Label>Setor</Label>
-              <Select value={setorId} onValueChange={v => { setSetorId(v === "none" ? "" : v); setResponsavelId(""); }}>
+              <Label>Serviço</Label>
+              <Select value={setorId} onValueChange={v => setSetorId(v === "none" ? "" : v)}>
                 <SelectTrigger className="mt-1">
-                  <SelectValue placeholder="Sem setor" />
+                  <SelectValue placeholder="Sem serviço" />
                 </SelectTrigger>
                 <SelectContent className="z-[9999]">
-                  <SelectItem value="none">Sem setor</SelectItem>
-                  {setoresAtivos.map(s => {
+                  <SelectItem value="none">Sem serviço</SelectItem>
+                  {setoresPai.map(s => {
                     const filhos = setoresFilhos.filter(f => f.parentId === s.id);
                     return filhos.length > 0 ? (
                       <div key={s.id}>
@@ -252,14 +320,13 @@ export function NovaDemandaModal({ open, onOpenChange }: Props) {
             </div>
             <div>
               <Label>Responsável</Label>
-              <Select value={responsavelId} onValueChange={v => setResponsavelId(v === "none" ? "" : v)}
-                disabled={usuariosFiltrados.length === 0}>
+              <Select value={responsavelId} onValueChange={v => setResponsavelId(v === "none" ? "" : v)}>
                 <SelectTrigger className="mt-1">
                   <SelectValue placeholder="Selecionar..." />
                 </SelectTrigger>
                 <SelectContent className="z-[9999]">
                   <SelectItem value="none">Sem responsável</SelectItem>
-                  {usuariosFiltrados.map(u => (
+                  {usuariosDoSetor.map(u => (
                     <SelectItem key={u.id} value={String(u.id)}>{u.nome}</SelectItem>
                   ))}
                 </SelectContent>
