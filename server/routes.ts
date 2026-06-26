@@ -18,6 +18,18 @@ function getSupabase() {
   return createClient(url, key, { auth: { persistSession: false } });
 }
 
+async function ensureUsersSetorColumn() {
+  try {
+    const pool = createDbPool();
+    await pool.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS setor_id INTEGER REFERENCES setores(id)
+    `);
+    await pool.end();
+  } catch (e) {
+    console.warn("users.setor_id column check:", e);
+  }
+}
+
 async function ensureSetoresTable() {
   try {
     const pool = createDbPool();
@@ -218,6 +230,7 @@ async function ensureAdminExists() {
 export async function registerRoutes(app: Express): Promise<void> {
   await ensureAdminExists();
   await ensureSetoresTable();
+  await ensureUsersSetorColumn();
   await ensureContratoConfigTable();
 
   // ===================== AUTH ROUTES =====================
@@ -316,8 +329,19 @@ export async function registerRoutes(app: Express): Promise<void> {
 
   app.get("/api/users", requireRole("admin"), async (req, res) => {
     try {
-      const allUsers = await storage.getAllUsers();
-      res.json(allUsers.map(u => ({ id: u.id, nome: u.nome, email: u.email, role: u.role, ativo: u.ativo })));
+      const pool = createDbPool();
+      const { rows } = await pool.query(`
+        SELECT u.id, u.nome, u.email, u.role, u.ativo, u.setor_id,
+               s.nome AS setor_nome
+        FROM users u
+        LEFT JOIN setores s ON s.id = u.setor_id
+        ORDER BY u.nome
+      `);
+      await pool.end();
+      res.json(rows.map(u => ({
+        id: u.id, nome: u.nome, email: u.email, role: u.role, ativo: u.ativo,
+        setorId: u.setor_id, setorNome: u.setor_nome,
+      })));
     } catch (error) {
       res.status(500).json({ error: "Erro ao buscar usuários" });
     }
@@ -325,7 +349,7 @@ export async function registerRoutes(app: Express): Promise<void> {
 
   app.post("/api/users", requireRole("admin"), async (req, res) => {
     try {
-      const { nome, email, senha, role } = req.body;
+      const { nome, email, senha, role, setorId } = req.body;
       if (!nome || !email || !senha || !role) {
         return res.status(400).json({ error: "Todos os campos são obrigatórios" });
       }
@@ -336,15 +360,15 @@ export async function registerRoutes(app: Express): Promise<void> {
       }
 
       const hashedPassword = await bcrypt.hash(senha, 10);
-      const user = await storage.createUser({
-        nome,
-        email,
-        senha: hashedPassword,
-        role,
-        ativo: true,
-      });
-
-      res.json({ id: user.id, nome: user.nome, email: user.email, role: user.role, ativo: user.ativo });
+      const pool = createDbPool();
+      const { rows } = await pool.query(
+        `INSERT INTO users (nome, email, senha, role, ativo, setor_id)
+         VALUES ($1,$2,$3,$4,true,$5) RETURNING id, nome, email, role, ativo, setor_id`,
+        [nome, email, hashedPassword, role, setorId ?? null]
+      );
+      await pool.end();
+      const u = rows[0];
+      res.json({ id: u.id, nome: u.nome, email: u.email, role: u.role, ativo: u.ativo, setorId: u.setor_id });
     } catch (error) {
       res.status(500).json({ error: "Erro ao criar usuário" });
     }
@@ -353,21 +377,30 @@ export async function registerRoutes(app: Express): Promise<void> {
   app.patch("/api/users/:id", requireRole("admin"), async (req, res) => {
     try {
       const id = parseInt(req.params.id);
-      const { nome, email, senha, role, ativo } = req.body;
+      const { nome, email, senha, role, ativo, setorId } = req.body;
 
-      const updateData: any = {};
-      if (nome !== undefined) updateData.nome = nome;
-      if (email !== undefined) updateData.email = email;
-      if (role !== undefined) updateData.role = role;
-      if (ativo !== undefined) updateData.ativo = ativo;
-      if (senha) updateData.senha = await bcrypt.hash(senha, 10);
+      const sets: string[] = [];
+      const vals: any[] = [];
+      let i = 1;
+      if (nome !== undefined)    { sets.push(`nome=$${i++}`);     vals.push(nome); }
+      if (email !== undefined)   { sets.push(`email=$${i++}`);    vals.push(email); }
+      if (role !== undefined)    { sets.push(`role=$${i++}`);     vals.push(role); }
+      if (ativo !== undefined)   { sets.push(`ativo=$${i++}`);    vals.push(ativo); }
+      if (setorId !== undefined) { sets.push(`setor_id=$${i++}`); vals.push(setorId ?? null); }
+      if (senha)                 { sets.push(`senha=$${i++}`);    vals.push(await bcrypt.hash(senha, 10)); }
 
-      const user = await storage.updateUser(id, updateData);
-      if (!user) {
-        return res.status(404).json({ error: "Usuário não encontrado" });
-      }
+      if (!sets.length) return res.status(400).json({ error: "Nenhum campo para atualizar" });
 
-      res.json({ id: user.id, nome: user.nome, email: user.email, role: user.role, ativo: user.ativo });
+      vals.push(id);
+      const pool = createDbPool();
+      const { rows } = await pool.query(
+        `UPDATE users SET ${sets.join(", ")}, updated_at=NOW() WHERE id=$${i} RETURNING id, nome, email, role, ativo, setor_id`,
+        vals
+      );
+      await pool.end();
+      if (!rows.length) return res.status(404).json({ error: "Usuário não encontrado" });
+      const u = rows[0];
+      res.json({ id: u.id, nome: u.nome, email: u.email, role: u.role, ativo: u.ativo, setorId: u.setor_id });
     } catch (error) {
       res.status(500).json({ error: "Erro ao atualizar usuário" });
     }

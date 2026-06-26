@@ -4,7 +4,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
@@ -23,6 +23,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft, Plus, Pencil, Trash2, Users, Shield, Eye, Wrench, Loader2 } from "lucide-react";
 import { useLocation } from "wouter";
+import type { Setor } from "@shared/schema";
 
 interface UserData {
   id: number;
@@ -30,6 +31,8 @@ interface UserData {
   email: string;
   role: string;
   ativo: boolean;
+  setorId: number | null;
+  setorNome: string | null;
 }
 
 const ROLE_LABELS: Record<string, string> = {
@@ -54,14 +57,31 @@ export default function UserManagement() {
   const [email, setEmail] = useState("");
   const [senha, setSenha] = useState("");
   const [role, setRole] = useState("fiscal");
+  const [setorId, setSetorId] = useState<string>("");
 
   const { data: users = [], isLoading } = useQuery<UserData[]>({
     queryKey: ["/api/users"],
   });
 
+  const { data: setores = [] } = useQuery<Setor[]>({
+    queryKey: ["/api/setores"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", "/api/setores");
+      return res.json();
+    },
+  });
+
+  // Setores ativos, com hierarquia para o dropdown
+  const setoresAtivos = setores.filter(s => s.ativo);
+  const pais = setoresAtivos.filter(s => !s.parentId);
+  const filhosDe = (parentId: number) => setoresAtivos.filter(s => s.parentId === parentId);
+
   const createMutation = useMutation({
-    mutationFn: async (data: { nome: string; email: string; senha: string; role: string }) => {
-      const res = await apiRequest("POST", "/api/users", data);
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/users", {
+        nome, email, senha, role,
+        setorId: setorId ? parseInt(setorId) : null,
+      });
       if (!res.ok) {
         const err = await res.json();
         throw new Error(err.error);
@@ -79,8 +99,11 @@ export default function UserManagement() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: async ({ id, ...data }: { id: number; nome?: string; email?: string; senha?: string; role?: string; ativo?: boolean }) => {
-      const res = await apiRequest("PATCH", `/api/users/${id}`, data);
+    mutationFn: async () => {
+      if (!editingUser) return;
+      const body: any = { id: editingUser.id, nome, email, role, setorId: setorId ? parseInt(setorId) : null };
+      if (senha) body.senha = senha;
+      const res = await apiRequest("PATCH", `/api/users/${editingUser.id}`, body);
       if (!res.ok) {
         const err = await res.json();
         throw new Error(err.error);
@@ -114,19 +137,14 @@ export default function UserManagement() {
 
   function openCreate() {
     setEditingUser(null);
-    setNome("");
-    setEmail("");
-    setSenha("");
-    setRole("fiscal");
+    setNome(""); setEmail(""); setSenha(""); setRole("fiscal"); setSetorId("");
     setShowDialog(true);
   }
 
-  function openEdit(user: UserData) {
-    setEditingUser(user);
-    setNome(user.nome);
-    setEmail(user.email);
-    setSenha("");
-    setRole(user.role);
+  function openEdit(u: UserData) {
+    setEditingUser(u);
+    setNome(u.nome); setEmail(u.email); setSenha(""); setRole(u.role);
+    setSetorId(u.setorId ? String(u.setorId) : "");
     setShowDialog(true);
   }
 
@@ -138,20 +156,20 @@ export default function UserManagement() {
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (editingUser) {
-      const data: any = { id: editingUser.id, nome, email, role };
-      if (senha) data.senha = senha;
-      updateMutation.mutate(data);
+      updateMutation.mutate();
     } else {
       if (!senha) {
         toast({ variant: "destructive", title: "Senha é obrigatória para novo usuário" });
         return;
       }
-      createMutation.mutate({ nome, email, senha, role });
+      createMutation.mutate();
     }
   }
 
-  function toggleActive(user: UserData) {
-    updateMutation.mutate({ id: user.id, ativo: !user.ativo });
+  function toggleActive(u: UserData) {
+    apiRequest("PATCH", `/api/users/${u.id}`, { ativo: !u.ativo }).then(() =>
+      queryClient.invalidateQueries({ queryKey: ["/api/users"] })
+    );
   }
 
   const isPending = createMutation.isPending || updateMutation.isPending;
@@ -189,7 +207,12 @@ export default function UserManagement() {
                   <RoleIcon className="h-5 w-5 text-muted-foreground shrink-0" />
                   <div className="flex-1 min-w-0">
                     <div className="font-medium truncate" data-testid={`text-user-name-${u.id}`}>{u.nome}</div>
-                    <div className="text-sm text-muted-foreground truncate">{u.email}</div>
+                    <div className="text-sm text-muted-foreground truncate">
+                      {u.email}
+                      {u.setorNome && (
+                        <span className="ml-2 text-xs text-foreground/50">· {u.setorNome}</span>
+                      )}
+                    </div>
                   </div>
                   <Badge variant={u.ativo ? "default" : "secondary"} data-testid={`badge-user-role-${u.id}`}>
                     {ROLE_LABELS[u.role] || u.role}
@@ -245,9 +268,37 @@ export default function UserManagement() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="z-[9999]">
-                  <SelectItem value="admin">Administrador - Acesso total</SelectItem>
-                  <SelectItem value="gestor">Gestor - Visualização completa + relatórios</SelectItem>
-                  <SelectItem value="fiscal">Fiscal - Registrar serviços + upload de fotos</SelectItem>
+                  <SelectItem value="admin">Administrador — Acesso total</SelectItem>
+                  <SelectItem value="gestor">Gestor — Visualização completa + relatórios</SelectItem>
+                  <SelectItem value="fiscal">Fiscal — Registrar serviços + upload de fotos</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Setor</label>
+              <Select value={setorId} onValueChange={v => setSetorId(v === "none" ? "" : v)}>
+                <SelectTrigger data-testid="select-user-setor">
+                  <SelectValue placeholder="Sem setor definido" />
+                </SelectTrigger>
+                <SelectContent className="z-[9999]">
+                  <SelectItem value="none">Sem setor definido</SelectItem>
+                  {pais.map(pai => {
+                    const filhos = filhosDe(pai.id);
+                    return filhos.length > 0 ? (
+                      <div key={pai.id}>
+                        <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                          {pai.nome}
+                        </div>
+                        {filhos.map(f => (
+                          <SelectItem key={f.id} value={String(f.id)}>
+                            &nbsp;&nbsp;{f.nome}
+                          </SelectItem>
+                        ))}
+                      </div>
+                    ) : (
+                      <SelectItem key={pai.id} value={String(pai.id)}>{pai.nome}</SelectItem>
+                    );
+                  })}
                 </SelectContent>
               </Select>
             </div>
