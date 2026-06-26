@@ -337,30 +337,35 @@ export function AppSidebar({
                   onClick={() => handleServiceClick("coleta-organicos")}
                   label="Coleta Orgânicos e Rejeitos"
                   testId="service-coleta-organicos"
+                  color="blue"
                 />
                 <ServiceButton
                   active={selectedService === "coleta-reciclaveis"}
                   onClick={() => handleServiceClick("coleta-reciclaveis")}
                   label="Coleta Recicláveis"
                   testId="service-coleta-reciclaveis"
+                  color="blue"
                 />
                 <ServiceButton
                   active={selectedService === "coleta-especiais"}
                   onClick={() => handleServiceClick("coleta-especiais")}
                   label="Coleta e Limpeza Especiais"
                   testId="service-coleta-especiais"
+                  color="blue"
                 />
                 <ServiceButton
                   active={selectedService === "limpeza-bocas"}
                   onClick={() => handleServiceClick("limpeza-bocas")}
                   label="Limpeza de Bocas de Lobo"
                   testId="service-limpeza-bocas"
+                  color="blue"
                 />
                 <ServiceButton
                   active={selectedService === "pevs"}
                   onClick={() => handleServiceClick("pevs")}
                   label="PEV's"
                   testId="service-pevs"
+                  color="blue"
                 />
               </div>
             </AccordionContent>
@@ -479,20 +484,26 @@ function ServiceButton({
   onClick,
   label,
   testId,
+  color = "emerald",
 }: {
   active: boolean;
   onClick: () => void;
   label: string;
   testId?: string;
+  color?: "emerald" | "blue";
 }) {
+  const ring = color === "blue"
+    ? active ? "ring-blue-500/50" : "hover:ring-blue-500/25"
+    : active ? "ring-emerald-500/50" : "hover:ring-emerald-500/25";
+
   return (
     <button
       onClick={onClick}
       data-testid={testId}
       className={`w-full flex items-center px-3 py-1.5 rounded-md text-xs uppercase tracking-wide text-left transition-all duration-150 ${
         active
-          ? "text-foreground font-semibold ring-1 ring-emerald-500/50"
-          : "text-foreground/55 hover:text-foreground hover:ring-1 hover:ring-emerald-500/25"
+          ? `text-foreground font-semibold ring-1 ${ring}`
+          : `text-foreground/55 hover:text-foreground hover:ring-1 ${ring}`
       }`}
     >
       <span className="truncate">{label}</span>
