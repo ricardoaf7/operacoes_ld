@@ -803,7 +803,7 @@ export async function registerRoutes(app: Express): Promise<void> {
   });
 
   // Criar nova área de serviço
-  app.post("/api/areas", requireRole("admin", "gestor"), async (req, res) => {
+  app.post("/api/areas", requireAuth, async (req, res) => {
     try {
       const createSchema = z.object({
         tipo: z.string().min(1, "Tipo é obrigatório"),
