@@ -426,15 +426,20 @@ export function AppSidebar({
                     </div>
                   )}
 
-                  {/* Contratos */}
+                  {/* Organização */}
                   <div className="pb-1 border-t border-border/30 pt-1.5">
-                    <span className="text-[9px] uppercase tracking-widest text-muted-foreground/40 font-bold block mb-1 pl-3">Contratos</span>
+                    <span className="text-[9px] uppercase tracking-widest text-muted-foreground/40 font-bold block mb-1 pl-3">Organização</span>
                     <Link href="/setores">
                       <button className="w-full flex items-center gap-2.5 pl-6 pr-3 py-1.5 rounded-md text-xs text-foreground/60 hover:text-foreground hover:bg-muted/50 transition-colors">
                         <Layers className="h-3.5 w-3.5 text-slate-500 flex-shrink-0" />
                         <span>Setores</span>
                       </button>
                     </Link>
+                  </div>
+
+                  {/* Contratos */}
+                  <div className="pb-1 border-t border-border/30 pt-1.5">
+                    <span className="text-[9px] uppercase tracking-widest text-muted-foreground/40 font-bold block mb-1 pl-3">Contratos</span>
                     <Link href="/configuracoes">
                       <button className="w-full flex items-center gap-2.5 pl-6 pr-3 py-1.5 rounded-md text-xs text-foreground/60 hover:text-foreground hover:bg-muted/50 transition-colors">
                         <FileText className="h-3.5 w-3.5 text-slate-500 flex-shrink-0" />
