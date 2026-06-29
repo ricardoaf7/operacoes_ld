@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
+import { useDebounce } from "@/hooks/use-debounce";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
@@ -43,12 +44,14 @@ export default function DemandasPage() {
     refetchInterval: 60000,
   });
 
-  const filtradas = demandas.filter(d => {
+  const debouncedSearch = useDebounce(search, 300);
+
+  const filtradas = useMemo(() => demandas.filter(d => {
     if (filtroStatus !== "todos" && d.status !== filtroStatus) return false;
     if (filtroTipo !== "todos" && d.tipo !== filtroTipo) return false;
     if (filtroOrigem !== "todos" && d.origem !== filtroOrigem) return false;
-    if (search) {
-      const q = search.toLowerCase();
+    if (debouncedSearch) {
+      const q = debouncedSearch.toLowerCase();
       return (
         d.solicitanteNome.toLowerCase().includes(q) ||
         d.tipo.toLowerCase().includes(q) ||
@@ -58,14 +61,14 @@ export default function DemandasPage() {
       );
     }
     return true;
-  });
+  }), [demandas, filtroStatus, filtroTipo, filtroOrigem, debouncedSearch]);
 
-  const totais = {
+  const totais = useMemo(() => ({
     total: demandas.length,
     aberta: demandas.filter(d => d.status === "aberta").length,
     em_andamento: demandas.filter(d => d.status === "em_andamento").length,
     concluida: demandas.filter(d => d.status === "concluida").length,
-  };
+  }), [demandas]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -96,9 +99,9 @@ export default function DemandasPage() {
             { label: "Em Andamento", value: totais.em_andamento, color: "text-blue-600" },
             { label: "Concluídas", value: totais.concluida, color: "text-emerald-600" },
           ].map(c => (
-            <div key={c.label} className="rounded-lg border border-border bg-card px-4 py-3">
-              <p className="text-xs text-muted-foreground uppercase tracking-wide">{c.label}</p>
-              <p className={`text-2xl font-bold mt-0.5 ${c.color}`}>{c.value}</p>
+            <div key={c.label} className="rounded-lg border border-border bg-card px-4 py-3 shadow-sm">
+              <p className="text-xs text-muted-foreground uppercase tracking-wide" style={{ textWrap: "pretty" } as any}>{c.label}</p>
+              <p className={`text-2xl font-bold mt-0.5 tabular ${c.color}`}>{c.value}</p>
             </div>
           ))}
         </div>
@@ -166,7 +169,7 @@ export default function DemandasPage() {
                 {filtradas.map((d, i) => (
                   <tr
                     key={d.id}
-                    className={`border-b border-border/50 last:border-0 cursor-pointer transition-colors hover:bg-muted/40 ${i % 2 === 0 ? "" : "bg-muted/10"}`}
+                    className={`border-b border-border/50 last:border-0 cursor-pointer transition-colors hover:bg-muted/40 active:bg-muted/70 ${i % 2 === 0 ? "" : "bg-muted/10"}`}
                     onClick={() => setDetalhe(d)}
                   >
                     <td className="px-3 py-2.5 text-muted-foreground text-xs">{d.id}</td>
