@@ -39,12 +39,14 @@ const ROLE_LABELS: Record<string, string> = {
   admin: "Administrador",
   gestor: "Gestor",
   fiscal: "Fiscal",
+  demo: "Demonstração",
 };
 
 const ROLE_ICONS: Record<string, typeof Shield> = {
   admin: Shield,
   gestor: Eye,
   fiscal: Wrench,
+  demo: Eye,
 };
 
 export default function UserManagement() {
@@ -271,6 +273,7 @@ export default function UserManagement() {
                   <SelectItem value="admin">Administrador — Acesso total</SelectItem>
                   <SelectItem value="gestor">Gestor — Visualização completa + relatórios</SelectItem>
                   <SelectItem value="fiscal">Fiscal — Registrar serviços + upload de fotos</SelectItem>
+                  <SelectItem value="demo">Demonstração — Visualiza e simula, sem salvar</SelectItem>
                 </SelectContent>
               </Select>
             </div>

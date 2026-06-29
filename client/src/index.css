@@ -228,8 +228,34 @@
     @apply border-border;
   }
 
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
   body {
     @apply bg-background text-foreground font-sans antialiased;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    text-wrap: balance;
+  }
+
+  /* Tabular numbers for counters, stats and metragem displays */
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Smoother image edges */
+  img {
+    outline: 1px solid rgba(0, 0, 0, 0.08);
+    outline-offset: -1px;
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  img {
+    outline-color: rgba(255, 255, 255, 0.08);
   }
 }
 
@@ -254,6 +280,12 @@
  * need to be distinguished from eachother visually.
  */
 @layer utilities {
+  /* Focused inputs get a subtle ring transition */
+  input, textarea, select {
+    transition-property: border-color, box-shadow;
+    transition-duration: 150ms;
+    transition-timing-function: ease-out;
+  }
 
   /* Leaflet map container */
   .leaflet-container {

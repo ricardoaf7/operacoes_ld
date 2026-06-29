@@ -71,8 +71,8 @@ function StatItem({ label, value, subtext, icon: Icon }: { label: string; value:
         {Icon && <Icon className="h-3 w-3" />}
         {label}
       </div>
-      <div className="text-sm font-bold text-foreground">{value}</div>
-      {subtext && <div className="text-[10px] text-muted-foreground">{subtext}</div>}
+      <div className="text-sm font-bold text-foreground tabular">{value}</div>
+      {subtext && <div className="text-[10px] text-muted-foreground tabular">{subtext}</div>}
     </div>
   );
 }
@@ -145,7 +145,7 @@ function EditableMeta({ label, value, configKey, color }: EditableMetaProps) {
           </Button>
         </div>
       ) : (
-        <div className="text-sm font-bold text-foreground">{formatM2(value)} m²</div>
+        <div className="text-sm font-bold text-foreground tabular">{formatM2(value)} m²</div>
       )}
     </div>
   );
@@ -763,7 +763,7 @@ export function MowingStatsBar({ visible = true, expanded, onPeriodChange, onPer
               <div className="flex items-center gap-2">
                 <span className="text-xs font-bold text-blue-500">Lote 1</span>
                 <ProgressBar percent={stats.lote1.percentualMeta} className="flex-1" color="bg-blue-500" />
-                <span className="text-[10px] text-muted-foreground font-semibold">{stats.lote1.percentualMeta.toFixed(1)}%</span>
+                <span className="text-[10px] text-muted-foreground font-semibold tabular">{stats.lote1.percentualMeta.toFixed(1)}%</span>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <EditableMeta label="Meta L1" value={stats.lote1.meta} configKey="metaLote1" color="text-blue-500" />
@@ -783,7 +783,7 @@ export function MowingStatsBar({ visible = true, expanded, onPeriodChange, onPer
               <div className="flex items-center gap-2">
                 <span className="text-xs font-bold text-violet-500">Lote 2</span>
                 <ProgressBar percent={stats.lote2.percentualMeta} className="flex-1" color="bg-violet-500" />
-                <span className="text-[10px] text-muted-foreground font-semibold">{stats.lote2.percentualMeta.toFixed(1)}%</span>
+                <span className="text-[10px] text-muted-foreground font-semibold tabular">{stats.lote2.percentualMeta.toFixed(1)}%</span>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <EditableMeta label="Meta L2" value={stats.lote2.meta} configKey="metaLote2" color="text-violet-500" />

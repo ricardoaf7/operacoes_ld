@@ -13,6 +13,7 @@ import {
   Users,
   Lock,
   LogOut,
+  Shield,
 } from "lucide-react";
 import { Link } from "wouter";
 import { useState } from "react";
@@ -449,6 +450,17 @@ export function AppSidebar({
                       <button className="w-full flex items-center gap-2.5 pl-6 pr-3 py-1.5 rounded-md text-xs text-foreground/60 hover:text-foreground hover:bg-muted/50 transition-colors">
                         <FileText className="h-3.5 w-3.5 text-slate-500 flex-shrink-0" />
                         <span>Configurações de Contrato</span>
+                      </button>
+                    </Link>
+                  </div>
+
+                  {/* Auditoria */}
+                  <div className="pb-1 border-t border-border/30 pt-1.5">
+                    <span className="text-[9px] uppercase tracking-widest text-muted-foreground/40 font-bold block mb-1 pl-3">Segurança</span>
+                    <Link href="/auditoria">
+                      <button className="w-full flex items-center gap-2.5 pl-6 pr-3 py-1.5 rounded-md text-xs text-foreground/60 hover:text-foreground hover:bg-muted/50 transition-colors">
+                        <Shield className="h-3.5 w-3.5 text-slate-500 flex-shrink-0" />
+                        <span>Histórico de Alterações</span>
                       </button>
                     </Link>
                   </div>

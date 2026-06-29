@@ -5,7 +5,7 @@ interface AuthUser {
   id: number;
   nome: string;
   email: string;
-  role: "admin" | "gestor" | "fiscal";
+  role: "admin" | "gestor" | "fiscal" | "demo";
 }
 
 interface AuthContextType {

@@ -528,7 +528,7 @@ export default function CronogramaPage() {
               <button
                 onClick={handleSubmit}
                 disabled={isPending}
-                className="px-5 py-1.5 bg-emerald-600 text-white rounded-md text-sm font-medium hover:bg-emerald-700 transition-colors disabled:opacity-60 flex items-center gap-1.5"
+                className="px-5 py-1.5 bg-emerald-600 text-white rounded-md text-sm font-medium hover:bg-emerald-700 active:scale-[0.97] transition-[background-color,transform] duration-150 disabled:opacity-60 flex items-center gap-1.5"
               >
                 {isPending ? (
                   <span className="h-3.5 w-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />
@@ -614,10 +614,12 @@ export default function CronogramaPage() {
                   </span>
                   <span className="text-sm text-blue-600 dark:text-blue-400 ml-3">
                     Total:{" "}
-                    {totalMetragem.toLocaleString("pt-BR", {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 2,
-                    })}{" "}
+                    <span className="tabular">
+                      {totalMetragem.toLocaleString("pt-BR", {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}
+                    </span>{" "}
                     m²
                   </span>
                 </div>

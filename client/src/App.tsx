@@ -17,7 +17,9 @@ import DemandasPage from "@/pages/demandas";
 import OrdemServicoPage from "@/pages/ordem-servico";
 import CronogramaPage from "@/pages/cronograma";
 import PublicCronogramaPage from "@/pages/public-cronograma";
+import AuditoriaPage from "@/pages/auditoria";
 import NotFound from "@/pages/not-found";
+import { DemoBanner } from "@/components/DemoBanner";
 import { Loader2 } from "lucide-react";
 
 function AuthenticatedRoutes() {
@@ -36,24 +38,32 @@ function AuthenticatedRoutes() {
   }
 
   return (
-    <Switch>
-      <Route path="/" component={Dashboard} />
-      <Route path="/relatorios" component={RelatoriosPage} />
-      <Route path="/relatorios/rocagens" component={RelatorioRocagensPage} />
-      <Route path="/ordem-servico" component={OrdemServicoPage} />
-      <Route path="/cronograma" component={CronogramaPage} />
-      <Route path="/demandas" component={DemandasPage} />
-      {(user.role === "admin" || user.role === "gestor") && (
-        <Route path="/configuracoes" component={ConfiguracoesPage} />
-      )}
-      {(user.role === "admin" || user.role === "gestor") && (
-        <Route path="/setores" component={SetoresPage} />
-      )}
-      {user.role === "admin" && (
-        <Route path="/usuarios" component={UserManagement} />
-      )}
-      <Route component={NotFound} />
-    </Switch>
+    <>
+      {user.role === "demo" && <DemoBanner />}
+      <div style={user.role === "demo" ? { paddingTop: "2rem" } : undefined}>
+        <Switch>
+          <Route path="/" component={Dashboard} />
+          <Route path="/relatorios" component={RelatoriosPage} />
+          <Route path="/relatorios/rocagens" component={RelatorioRocagensPage} />
+          <Route path="/ordem-servico" component={OrdemServicoPage} />
+          <Route path="/cronograma" component={CronogramaPage} />
+          <Route path="/demandas" component={DemandasPage} />
+          {(user.role === "admin" || user.role === "gestor") && (
+            <Route path="/configuracoes" component={ConfiguracoesPage} />
+          )}
+          {(user.role === "admin" || user.role === "gestor") && (
+            <Route path="/setores" component={SetoresPage} />
+          )}
+          {user.role === "admin" && (
+            <Route path="/usuarios" component={UserManagement} />
+          )}
+          {(user.role === "admin" || user.role === "gestor") && (
+            <Route path="/auditoria" component={AuditoriaPage} />
+          )}
+          <Route component={NotFound} />
+        </Switch>
+      </div>
+    </>
   );
 }
 

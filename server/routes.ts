@@ -8,7 +8,7 @@ import type { ServiceArea } from "@shared/schema";
 import bcrypt from "bcryptjs";
 import multer from "multer";
 import { createClient } from "@supabase/supabase-js";
-import { createDbPool } from "../db/client";
+import { getPool } from "../db/client";
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
@@ -18,9 +18,65 @@ function getSupabase() {
   return createClient(url, key, { auth: { persistSession: false } });
 }
 
+async function ensureAuditLogTable() {
+  try {
+    const pool = getPool();
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS audit_log (
+        id SERIAL PRIMARY KEY,
+        usuario_id INTEGER,
+        usuario_nome TEXT NOT NULL,
+        acao TEXT NOT NULL,
+        tipo TEXT NOT NULL,
+        referencia_id INTEGER,
+        descricao TEXT,
+        dados_anteriores JSONB,
+        dados_novos JSONB,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_audit_log_created_at ON audit_log (created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_audit_log_tipo      ON audit_log (tipo);
+      CREATE INDEX IF NOT EXISTS idx_audit_log_usuario   ON audit_log (usuario_id);
+    `);
+  } catch (e) {
+    console.warn("audit_log table check:", e);
+  }
+}
+
+async function logAudit(
+  usuarioId: number | undefined,
+  usuarioNome: string,
+  acao: "criou" | "editou" | "excluiu",
+  tipo: string,
+  referenciaId?: number,
+  descricao?: string,
+  dadosAnteriores?: any,
+  dadosNovos?: any
+) {
+  try {
+    const pool = getPool();
+    await pool.query(
+      `INSERT INTO audit_log (usuario_id, usuario_nome, acao, tipo, referencia_id, descricao, dados_anteriores, dados_novos)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [
+        usuarioId ?? null,
+        usuarioNome,
+        acao,
+        tipo,
+        referenciaId ?? null,
+        descricao ?? null,
+        dadosAnteriores ? JSON.stringify(dadosAnteriores) : null,
+        dadosNovos ? JSON.stringify(dadosNovos) : null,
+      ]
+    );
+  } catch (e) {
+    console.warn("audit_log insert error:", e);
+  }
+}
+
 async function ensureDemandasTable() {
   try {
-    const pool = createDbPool();
+    const pool = getPool();
     await pool.query(`
       CREATE TABLE IF NOT EXISTS demandas (
         id SERIAL PRIMARY KEY,
@@ -41,9 +97,13 @@ async function ensureDemandasTable() {
         created_by INTEGER,
         created_at TIMESTAMPTZ DEFAULT NOW(),
         updated_at TIMESTAMPTZ DEFAULT NOW()
-      )
+      );
+      CREATE INDEX IF NOT EXISTS idx_demandas_status     ON demandas (status);
+      CREATE INDEX IF NOT EXISTS idx_demandas_tipo       ON demandas (tipo);
+      CREATE INDEX IF NOT EXISTS idx_demandas_created_at ON demandas (created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_demandas_setor      ON demandas (setor_id) WHERE setor_id IS NOT NULL;
+      CREATE INDEX IF NOT EXISTS idx_demandas_responsavel ON demandas (responsavel_id) WHERE responsavel_id IS NOT NULL;
     `);
-    await pool.end();
   } catch (e) {
     console.warn("demandas table check:", e);
   }
@@ -51,7 +111,7 @@ async function ensureDemandasTable() {
 
 async function ensureNotificacoesTable() {
   try {
-    const pool = createDbPool();
+    const pool = getPool();
     await pool.query(`
       CREATE TABLE IF NOT EXISTS notificacoes (
         id SERIAL PRIMARY KEY,
@@ -62,9 +122,10 @@ async function ensureNotificacoesTable() {
         referencia_id INTEGER,
         lida BOOLEAN NOT NULL DEFAULT false,
         created_at TIMESTAMPTZ DEFAULT NOW()
-      )
+      );
+      CREATE INDEX IF NOT EXISTS idx_notificacoes_usuario    ON notificacoes (usuario_id);
+      CREATE INDEX IF NOT EXISTS idx_notificacoes_nao_lidas  ON notificacoes (usuario_id) WHERE lida = false;
     `);
-    await pool.end();
   } catch (e) {
     console.warn("notificacoes table check:", e);
   }
@@ -73,13 +134,12 @@ async function ensureNotificacoesTable() {
 // Helper exportável para criar notificação (usado pelas rotas de demandas)
 export async function createNotificacao(usuarioId: number, titulo: string, mensagem?: string, referenciaId?: number) {
   try {
-    const pool = createDbPool();
+    const pool = getPool();
     await pool.query(
       `INSERT INTO notificacoes (usuario_id, titulo, mensagem, tipo, referencia_id)
        VALUES ($1, $2, $3, 'demanda', $4)`,
       [usuarioId, titulo, mensagem ?? null, referenciaId ?? null]
     );
-    await pool.end();
   } catch (e) {
     console.warn("createNotificacao error:", e);
   }
@@ -87,11 +147,10 @@ export async function createNotificacao(usuarioId: number, titulo: string, mensa
 
 async function ensureUsersSetorColumn() {
   try {
-    const pool = createDbPool();
+    const pool = getPool();
     await pool.query(`
       ALTER TABLE users ADD COLUMN IF NOT EXISTS setor_id INTEGER REFERENCES setores(id)
     `);
-    await pool.end();
   } catch (e) {
     console.warn("users.setor_id column check:", e);
   }
@@ -99,7 +158,7 @@ async function ensureUsersSetorColumn() {
 
 async function ensureSetoresTable() {
   try {
-    const pool = createDbPool();
+    const pool = getPool();
     await pool.query(`
       CREATE TABLE IF NOT EXISTS setores (
         id SERIAL PRIMARY KEY,
@@ -145,7 +204,6 @@ async function ensureSetoresTable() {
         `, [cr[0].id]);
       }
     }
-    await pool.end();
   } catch (e) {
     console.warn("setores table check:", e);
   }
@@ -153,7 +211,7 @@ async function ensureSetoresTable() {
 
 async function ensureSolicitantesTable() {
   try {
-    const pool = createDbPool();
+    const pool = getPool();
     await pool.query(`
       CREATE TABLE IF NOT EXISTS solicitantes (
         id SERIAL PRIMARY KEY,
@@ -164,7 +222,6 @@ async function ensureSolicitantesTable() {
       );
       CREATE INDEX IF NOT EXISTS idx_solicitantes_nome ON solicitantes (lower(nome));
     `);
-    await pool.end();
   } catch (e) {
     console.warn("solicitantes table check:", e);
   }
@@ -172,7 +229,7 @@ async function ensureSolicitantesTable() {
 
 async function ensureContratoConfigTable() {
   try {
-    const pool = createDbPool();
+    const pool = getPool();
     await pool.query(`
       CREATE TABLE IF NOT EXISTS contrato_config (
         id SERIAL PRIMARY KEY,
@@ -189,7 +246,6 @@ async function ensureContratoConfigTable() {
         updated_at TIMESTAMPTZ DEFAULT NOW()
       )
     `);
-    await pool.end();
   } catch (e) {
     console.warn("contrato_config table check:", e);
   }
@@ -315,12 +371,34 @@ async function ensureAdminExists() {
 
 export async function registerRoutes(app: Express): Promise<void> {
   await ensureAdminExists();
+  await ensureAuditLogTable();
   await ensureDemandasTable();
   await ensureNotificacoesTable();
   await ensureSetoresTable();
   await ensureUsersSetorColumn();
   await ensureSolicitantesTable();
   await ensureContratoConfigTable();
+
+  // Middleware: bloqueia gravações para usuário demo (retorna sucesso sem salvar)
+  app.use((req, res, next) => {
+    if (
+      req.session?.userRole === "demo" &&
+      ["POST", "PATCH", "PUT", "DELETE"].includes(req.method) &&
+      req.path.startsWith("/api/") &&
+      !req.path.startsWith("/api/auth/")
+    ) {
+      if (req.method === "DELETE") {
+        return res.json({ success: true, demo: true });
+      }
+      return res.status(req.method === "POST" ? 201 : 200).json({
+        id: 99999,
+        demo: true,
+        success: true,
+        created_at: new Date().toISOString(),
+      });
+    }
+    next();
+  });
 
   // ===================== AUTH ROUTES =====================
 
@@ -419,7 +497,7 @@ export async function registerRoutes(app: Express): Promise<void> {
   // Lista simplificada para todos autenticados (dropdowns de responsável etc.)
   app.get("/api/users/list", requireAuth, async (req, res) => {
     try {
-      const pool = createDbPool();
+      const pool = getPool();
       const { rows } = await pool.query(`
         SELECT u.id, u.nome, u.setor_id, s.nome AS setor_nome
         FROM users u
@@ -427,7 +505,6 @@ export async function registerRoutes(app: Express): Promise<void> {
         WHERE u.ativo = true
         ORDER BY u.nome
       `);
-      await pool.end();
       res.json(rows.map(u => ({
         id: u.id, nome: u.nome,
         setorId: u.setor_id, setorNome: u.setor_nome,
@@ -439,7 +516,7 @@ export async function registerRoutes(app: Express): Promise<void> {
 
   app.get("/api/users", requireRole("admin"), async (req, res) => {
     try {
-      const pool = createDbPool();
+      const pool = getPool();
       const { rows } = await pool.query(`
         SELECT u.id, u.nome, u.email, u.role, u.ativo, u.setor_id,
                s.nome AS setor_nome
@@ -447,7 +524,6 @@ export async function registerRoutes(app: Express): Promise<void> {
         LEFT JOIN setores s ON s.id = u.setor_id
         ORDER BY u.nome
       `);
-      await pool.end();
       res.json(rows.map(u => ({
         id: u.id, nome: u.nome, email: u.email, role: u.role, ativo: u.ativo,
         setorId: u.setor_id, setorNome: u.setor_nome,
@@ -470,13 +546,12 @@ export async function registerRoutes(app: Express): Promise<void> {
       }
 
       const hashedPassword = await bcrypt.hash(senha, 10);
-      const pool = createDbPool();
+      const pool = getPool();
       const { rows } = await pool.query(
         `INSERT INTO users (nome, email, senha, role, ativo, setor_id)
          VALUES ($1,$2,$3,$4,true,$5) RETURNING id, nome, email, role, ativo, setor_id`,
         [nome, email, hashedPassword, role, setorId ?? null]
       );
-      await pool.end();
       const u = rows[0];
       res.json({ id: u.id, nome: u.nome, email: u.email, role: u.role, ativo: u.ativo, setorId: u.setor_id });
     } catch (error) {
@@ -502,12 +577,11 @@ export async function registerRoutes(app: Express): Promise<void> {
       if (!sets.length) return res.status(400).json({ error: "Nenhum campo para atualizar" });
 
       vals.push(id);
-      const pool = createDbPool();
+      const pool = getPool();
       const { rows } = await pool.query(
         `UPDATE users SET ${sets.join(", ")}, updated_at=NOW() WHERE id=$${i} RETURNING id, nome, email, role, ativo, setor_id`,
         vals
       );
-      await pool.end();
       if (!rows.length) return res.status(404).json({ error: "Usuário não encontrado" });
       const u = rows[0];
       res.json({ id: u.id, nome: u.nome, email: u.email, role: u.role, ativo: u.ativo, setorId: u.setor_id });
@@ -656,7 +730,7 @@ export async function registerRoutes(app: Express): Promise<void> {
     }
   });
 
-  app.get("/api/areas/rocagem", async (req, res) => {
+  app.get("/api/areas/rocagem", requireAuth, async (req, res) => {
     try {
       const areas = await storage.getAllAreas("rocagem");
       res.json(areas);
@@ -721,7 +795,7 @@ export async function registerRoutes(app: Express): Promise<void> {
   });
 
   // Novo endpoint: busca server-side otimizada
-  app.get("/api/areas/search", async (req, res) => {
+  app.get("/api/areas/search", requireAuth, async (req, res) => {
     try {
       const query = (req.query.q as string || "").trim();
       
@@ -805,7 +879,7 @@ export async function registerRoutes(app: Express): Promise<void> {
   });
 
   // Novo endpoint: detalhes completos de uma área específica
-  app.get("/api/areas/:id", async (req, res) => {
+  app.get("/api/areas/:id", requireAuth, async (req, res) => {
     try {
       const areaId = parseInt(req.params.id);
       const area = await storage.getAreaById(areaId);
@@ -1767,7 +1841,7 @@ export async function registerRoutes(app: Express): Promise<void> {
     }
   });
 
-  app.post("/api/ordens", requireAuth, async (req, res) => {
+  app.post("/api/ordens", requireRole("admin", "fiscal"), async (req, res) => {
     try {
       const { numero, lote, mes_referencia, data_emissao, emitido_por, observacao, area_ids } = req.body;
       if (!numero || !lote || !mes_referencia || !data_emissao || !area_ids?.length) {
@@ -1787,6 +1861,17 @@ export async function registerRoutes(app: Express): Promise<void> {
       const { error: e2 } = await sb.from("ordens_servico_areas").insert(links);
       if (e2) throw e2;
 
+      await logAudit(
+        req.session.userId,
+        req.session.userName || "desconhecido",
+        "criou",
+        "ordem_servico",
+        ordem.id,
+        `OS ${numero} — Lote ${lote}`,
+        null,
+        { numero, lote, mes_referencia, data_emissao, observacao, area_ids }
+      );
+
       res.status(201).json(ordem);
     } catch (error: any) {
       console.error("Erro ao criar ordem:", error);
@@ -1794,12 +1879,14 @@ export async function registerRoutes(app: Express): Promise<void> {
     }
   });
 
-  app.patch("/api/ordens/:id", requireAuth, async (req, res) => {
+  app.patch("/api/ordens/:id", requireRole("admin", "fiscal"), async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       const { numero, lote, mes_referencia, data_emissao, observacao, area_ids } = req.body;
 
       const sb = getSupabase();
+
+      const { data: anterior } = await sb.from("ordens_servico").select("*").eq("id", id).single();
 
       const updateData: any = {};
       if (numero !== undefined) updateData.numero = numero;
@@ -1823,6 +1910,17 @@ export async function registerRoutes(app: Express): Promise<void> {
         }
       }
 
+      await logAudit(
+        req.session.userId,
+        req.session.userName || "desconhecido",
+        "editou",
+        "ordem_servico",
+        id,
+        `OS ${anterior?.numero || id} — Lote ${anterior?.lote || "?"}`,
+        anterior,
+        { ...updateData, area_ids }
+      );
+
       res.json({ success: true });
     } catch (error: any) {
       console.error("Erro ao atualizar ordem:", error);
@@ -1830,12 +1928,23 @@ export async function registerRoutes(app: Express): Promise<void> {
     }
   });
 
-  app.delete("/api/ordens/:id", requireRole("admin", "gestor"), async (req, res) => {
+  app.delete("/api/ordens/:id", requireRole("admin", "gestor", "fiscal"), async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       const sb = getSupabase();
+      const { data: anterior } = await sb.from("ordens_servico").select("*").eq("id", id).single();
       const { error } = await sb.from("ordens_servico").delete().eq("id", id);
       if (error) throw error;
+      await logAudit(
+        req.session.userId,
+        req.session.userName || "desconhecido",
+        "excluiu",
+        "ordem_servico",
+        id,
+        `OS ${anterior?.numero || id} — Lote ${anterior?.lote || "?"}`,
+        anterior,
+        null
+      );
       res.json({ success: true });
     } catch (error: any) {
       res.status(500).json({ error: "Erro ao excluir ordem" });
@@ -1847,12 +1956,11 @@ export async function registerRoutes(app: Express): Promise<void> {
   app.get("/api/contrato-config/:lote", requireAuth, async (req, res) => {
     try {
       const lote = parseInt(req.params.lote);
-      const pool = createDbPool();
+      const pool = getPool();
       const result = await pool.query(
         "SELECT * FROM contrato_config WHERE lote = $1",
         [lote]
       );
-      await pool.end();
       res.json(result.rows[0] ?? { lote });
     } catch (error: any) {
       res.status(500).json({ error: "Erro ao buscar configuração do contrato" });
@@ -1868,7 +1976,7 @@ export async function registerRoutes(app: Express): Promise<void> {
         diretor_nome, gerente_nome, fiscal_nome,
       } = req.body;
 
-      const pool = createDbPool();
+      const pool = getPool();
       await pool.query(`
         INSERT INTO contrato_config
           (lote, regiao, processo_admin, pregao_eletronico, numero_contrato,
@@ -1887,7 +1995,6 @@ export async function registerRoutes(app: Express): Promise<void> {
           updated_at = NOW()
       `, [lote, regiao, processo_admin, pregao_eletronico, numero_contrato,
           contratada_nome, contratada_endereco, diretor_nome, gerente_nome, fiscal_nome]);
-      await pool.end();
       res.json({ success: true });
     } catch (error: any) {
       console.error("Erro ao salvar configuração do contrato:", error);
@@ -1947,7 +2054,7 @@ export async function registerRoutes(app: Express): Promise<void> {
     }
   });
 
-  app.post("/api/cronogramas", requireAuth, async (req, res) => {
+  app.post("/api/cronogramas", requireRole("admin", "fiscal"), async (req, res) => {
     try {
       const { lote, semana_inicio, semana_fim, observacao, area_ids } = req.body;
       if (!lote || !semana_inicio || !semana_fim || !area_ids?.length) {
@@ -1967,6 +2074,17 @@ export async function registerRoutes(app: Express): Promise<void> {
       const { error: e2 } = await sb.from("cronograma_areas").insert(links);
       if (e2) throw e2;
 
+      await logAudit(
+        req.session.userId,
+        req.session.userName || "desconhecido",
+        "criou",
+        "cronograma",
+        cronograma.id,
+        `Cronograma Lote ${lote} — ${semana_inicio} a ${semana_fim}`,
+        null,
+        { lote, semana_inicio, semana_fim, observacao, area_ids }
+      );
+
       res.status(201).json(cronograma);
     } catch (error: any) {
       console.error("Erro ao criar cronograma:", error);
@@ -1974,12 +2092,14 @@ export async function registerRoutes(app: Express): Promise<void> {
     }
   });
 
-  app.patch("/api/cronogramas/:id", requireAuth, async (req, res) => {
+  app.patch("/api/cronogramas/:id", requireRole("admin", "fiscal"), async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       const { lote, semana_inicio, semana_fim, observacao, area_ids } = req.body;
 
       const sb = getSupabase();
+
+      const { data: anterior } = await sb.from("cronogramas_semanais").select("*").eq("id", id).single();
 
       const updateData: any = { updated_at: new Date().toISOString() };
       if (lote !== undefined) updateData.lote = lote;
@@ -2000,6 +2120,17 @@ export async function registerRoutes(app: Express): Promise<void> {
         }
       }
 
+      await logAudit(
+        req.session.userId,
+        req.session.userName || "desconhecido",
+        "editou",
+        "cronograma",
+        id,
+        `Cronograma Lote ${anterior?.lote || "?"} — ${anterior?.semana_inicio || ""} a ${anterior?.semana_fim || ""}`,
+        anterior,
+        { ...updateData, area_ids }
+      );
+
       res.json({ success: true });
     } catch (error: any) {
       console.error("Erro ao atualizar cronograma:", error);
@@ -2007,15 +2138,55 @@ export async function registerRoutes(app: Express): Promise<void> {
     }
   });
 
-  app.delete("/api/cronogramas/:id", requireRole("admin", "gestor"), async (req, res) => {
+  app.delete("/api/cronogramas/:id", requireRole("admin", "gestor", "fiscal"), async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       const sb = getSupabase();
+      const { data: anterior } = await sb.from("cronogramas_semanais").select("*").eq("id", id).single();
       const { error } = await sb.from("cronogramas_semanais").delete().eq("id", id);
       if (error) throw error;
+      await logAudit(
+        req.session.userId,
+        req.session.userName || "desconhecido",
+        "excluiu",
+        "cronograma",
+        id,
+        `Cronograma Lote ${anterior?.lote || "?"} — ${anterior?.semana_inicio || ""} a ${anterior?.semana_fim || ""}`,
+        anterior,
+        null
+      );
       res.json({ success: true });
     } catch (error: any) {
       res.status(500).json({ error: "Erro ao excluir cronograma" });
+    }
+  });
+
+  // ===================== AUDITORIA =====================
+
+  app.get("/api/audit-log", requireRole("admin", "gestor"), async (req, res) => {
+    try {
+      const { tipo, usuario_id, from, to, limit: lim } = req.query;
+      const pool = getPool();
+      const conditions: string[] = [];
+      const params: any[] = [];
+      let idx = 1;
+      if (tipo) { conditions.push(`tipo = $${idx++}`); params.push(tipo); }
+      if (usuario_id) { conditions.push(`usuario_id = $${idx++}`); params.push(parseInt(usuario_id as string)); }
+      if (from) { conditions.push(`created_at >= $${idx++}`); params.push(from); }
+      if (to) { conditions.push(`created_at <= $${idx++}`); params.push(to + "T23:59:59"); }
+      const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+      const limitVal = Math.min(parseInt((lim as string) || "200"), 500);
+      const { rows } = await pool.query(
+        `SELECT id, usuario_id, usuario_nome, acao, tipo, referencia_id, descricao, dados_anteriores, dados_novos, created_at
+         FROM audit_log ${where}
+         ORDER BY created_at DESC
+         LIMIT ${limitVal}`,
+        params
+      );
+      res.json(rows);
+    } catch (error: any) {
+      console.error("Erro ao buscar audit log:", error);
+      res.status(500).json({ error: "Erro ao buscar histórico" });
     }
   });
 
@@ -2050,7 +2221,7 @@ export async function registerRoutes(app: Express): Promise<void> {
   app.get("/api/demandas", requireAuth, async (req, res) => {
     try {
       const { status, tipo, origem, setor_id } = req.query;
-      const pool = createDbPool();
+      const pool = getPool();
       const conditions: string[] = [];
       const vals: any[] = [];
       let i = 1;
@@ -2072,7 +2243,6 @@ export async function registerRoutes(app: Express): Promise<void> {
         ORDER BY d.created_at DESC
         LIMIT 200
       `, vals);
-      await pool.end();
       res.json(rows.map(rowToDemanda));
     } catch (error) {
       res.status(500).json({ error: "Erro ao buscar demandas" });
@@ -2082,7 +2252,7 @@ export async function registerRoutes(app: Express): Promise<void> {
   app.get("/api/demandas/:id", requireAuth, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
-      const pool = createDbPool();
+      const pool = getPool();
       const { rows } = await pool.query(`
         SELECT d.*,
                s.nome AS setor_nome,
@@ -2094,7 +2264,6 @@ export async function registerRoutes(app: Express): Promise<void> {
         LEFT JOIN service_areas sa ON sa.id = d.area_id
         WHERE d.id=$1
       `, [id]);
-      await pool.end();
       if (!rows.length) return res.status(404).json({ error: "Demanda não encontrada" });
       res.json(rowToDemanda(rows[0]));
     } catch (error) {
@@ -2112,7 +2281,7 @@ export async function registerRoutes(app: Express): Promise<void> {
       if (!origem || !solicitanteNome || !dataSolicitacao || !tipo) {
         return res.status(400).json({ error: "Campos obrigatórios ausentes" });
       }
-      const pool = createDbPool();
+      const pool = getPool();
       const { rows } = await pool.query(`
         INSERT INTO demandas
           (origem, numero_processo, solicitante_nome, solicitante_whatsapp, solicitante_orgao,
@@ -2135,7 +2304,6 @@ export async function registerRoutes(app: Express): Promise<void> {
          WHERE NOT EXISTS (SELECT 1 FROM solicitantes WHERE lower(nome) = lower($1))`,
         [solicitanteNome, solicitanteWhatsapp ?? null, solicitanteOrgao ?? null]
       );
-      await pool.end();
       // Notificar responsável
       if (responsavelId) {
         await createNotificacao(
@@ -2182,11 +2350,10 @@ export async function registerRoutes(app: Express): Promise<void> {
       if (!sets.length) return res.status(400).json({ error: "Nenhum campo para atualizar" });
       sets.push(`updated_at=NOW()`);
       vals.push(id);
-      const pool = createDbPool();
+      const pool = getPool();
       const { rows } = await pool.query(
         `UPDATE demandas SET ${sets.join(", ")} WHERE id=$${i} RETURNING *`, vals
       );
-      await pool.end();
       if (!rows.length) return res.status(404).json({ error: "Demanda não encontrada" });
       res.json(rowToDemanda(rows[0]));
     } catch (error) {
@@ -2197,9 +2364,8 @@ export async function registerRoutes(app: Express): Promise<void> {
   app.delete("/api/demandas/:id", requireRole("admin", "gestor"), async (req, res) => {
     try {
       const id = parseInt(req.params.id);
-      const pool = createDbPool();
+      const pool = getPool();
       await pool.query("DELETE FROM demandas WHERE id=$1", [id]);
-      await pool.end();
       res.json({ success: true });
     } catch (error) {
       res.status(500).json({ error: "Erro ao excluir demanda" });
@@ -2211,12 +2377,11 @@ export async function registerRoutes(app: Express): Promise<void> {
   app.get("/api/notificacoes", requireAuth, async (req, res) => {
     try {
       const userId = req.session.userId!;
-      const pool = createDbPool();
+      const pool = getPool();
       const { rows } = await pool.query(
         `SELECT * FROM notificacoes WHERE usuario_id=$1 ORDER BY created_at DESC LIMIT 50`,
         [userId]
       );
-      await pool.end();
       res.json(rows.map(r => ({
         id: r.id,
         usuarioId: r.usuario_id,
@@ -2235,12 +2400,11 @@ export async function registerRoutes(app: Express): Promise<void> {
   app.get("/api/notificacoes/nao-lidas", requireAuth, async (req, res) => {
     try {
       const userId = req.session.userId!;
-      const pool = createDbPool();
+      const pool = getPool();
       const { rows } = await pool.query(
         `SELECT COUNT(*) FROM notificacoes WHERE usuario_id=$1 AND lida=false`,
         [userId]
       );
-      await pool.end();
       res.json({ count: parseInt(rows[0].count) });
     } catch (error) {
       res.status(500).json({ error: "Erro ao contar notificações" });
@@ -2251,12 +2415,11 @@ export async function registerRoutes(app: Express): Promise<void> {
     try {
       const id = parseInt(req.params.id);
       const userId = req.session.userId!;
-      const pool = createDbPool();
+      const pool = getPool();
       await pool.query(
         `UPDATE notificacoes SET lida=true WHERE id=$1 AND usuario_id=$2`,
         [id, userId]
       );
-      await pool.end();
       res.json({ success: true });
     } catch (error) {
       res.status(500).json({ error: "Erro ao marcar notificação" });
@@ -2266,12 +2429,11 @@ export async function registerRoutes(app: Express): Promise<void> {
   app.patch("/api/notificacoes/lida-todas", requireAuth, async (req, res) => {
     try {
       const userId = req.session.userId!;
-      const pool = createDbPool();
+      const pool = getPool();
       await pool.query(
         `UPDATE notificacoes SET lida=true WHERE usuario_id=$1 AND lida=false`,
         [userId]
       );
-      await pool.end();
       res.json({ success: true });
     } catch (error) {
       res.status(500).json({ error: "Erro ao marcar notificações" });
@@ -2283,14 +2445,13 @@ export async function registerRoutes(app: Express): Promise<void> {
   app.get("/api/solicitantes", requireAuth, async (req, res) => {
     try {
       const q = String(req.query.q ?? "");
-      const pool = createDbPool();
+      const pool = getPool();
       const { rows } = await pool.query(
         `SELECT id, nome, whatsapp, orgao FROM solicitantes
          WHERE lower(nome) LIKE lower($1)
          ORDER BY nome LIMIT 8`,
         [`%${q}%`]
       );
-      await pool.end();
       res.json(rows);
     } catch (error) {
       res.status(500).json({ error: "Erro ao buscar solicitantes" });
@@ -2301,11 +2462,10 @@ export async function registerRoutes(app: Express): Promise<void> {
 
   app.get("/api/setores", requireAuth, async (req, res) => {
     try {
-      const pool = createDbPool();
+      const pool = getPool();
       const { rows } = await pool.query(
         "SELECT * FROM setores ORDER BY parent_id NULLS FIRST, nome"
       );
-      await pool.end();
       res.json(rows);
     } catch (error) {
       res.status(500).json({ error: "Erro ao buscar setores" });
@@ -2316,12 +2476,11 @@ export async function registerRoutes(app: Express): Promise<void> {
     try {
       const { nome, parentId, ativo = true } = req.body;
       if (!nome?.trim()) return res.status(400).json({ error: "Nome é obrigatório" });
-      const pool = createDbPool();
+      const pool = getPool();
       const { rows } = await pool.query(
         "INSERT INTO setores (nome, parent_id, ativo) VALUES ($1, $2, $3) RETURNING *",
         [nome.trim(), parentId ?? null, ativo]
       );
-      await pool.end();
       res.json(rows[0]);
     } catch (error) {
       res.status(500).json({ error: "Erro ao criar setor" });
@@ -2332,13 +2491,12 @@ export async function registerRoutes(app: Express): Promise<void> {
     try {
       const id = parseInt(req.params.id);
       const { nome, parentId, ativo } = req.body;
-      const pool = createDbPool();
+      const pool = getPool();
       const { rows } = await pool.query(
         `UPDATE setores SET nome=$1, parent_id=$2, ativo=$3, updated_at=NOW()
          WHERE id=$4 RETURNING *`,
         [nome, parentId ?? null, ativo, id]
       );
-      await pool.end();
       if (!rows.length) return res.status(404).json({ error: "Setor não encontrado" });
       res.json(rows[0]);
     } catch (error) {
@@ -2349,17 +2507,15 @@ export async function registerRoutes(app: Express): Promise<void> {
   app.delete("/api/setores/:id", requireRole("admin"), async (req, res) => {
     try {
       const id = parseInt(req.params.id);
-      const pool = createDbPool();
+      const pool = getPool();
       // Verificar se tem filhos
       const { rows: filhos } = await pool.query(
         "SELECT id FROM setores WHERE parent_id=$1 LIMIT 1", [id]
       );
       if (filhos.length > 0) {
-        await pool.end();
         return res.status(400).json({ error: "Não é possível excluir um setor com sub-setores" });
       }
       await pool.query("DELETE FROM setores WHERE id=$1", [id]);
-      await pool.end();
       res.json({ success: true });
     } catch (error) {
       res.status(500).json({ error: "Erro ao excluir setor" });
