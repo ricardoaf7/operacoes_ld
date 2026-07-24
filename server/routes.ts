@@ -251,6 +251,35 @@ async function ensureContratoConfigTable() {
   }
 }
 
+async function ensureVarricaoLocaisTable() {
+  try {
+    const pool = getPool();
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS varricao_locais (
+        id SERIAL PRIMARY KEY,
+        nome TEXT NOT NULL,
+        complemento TEXT,
+        regiao VARCHAR(100),
+        tipo VARCHAR(50),
+        secao VARCHAR(50) NOT NULL DEFAULT 'varricao',
+        metragem_unica NUMERIC,
+        frequencia VARCHAR(30) NOT NULL DEFAULT 'diario',
+        dias_semana JSONB,
+        lat DOUBLE PRECISION,
+        lng DOUBLE PRECISION,
+        geocode_status VARCHAR(20) DEFAULT 'pendente',
+        ativo BOOLEAN DEFAULT true,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_varricao_locais_secao ON varricao_locais (secao);
+      CREATE INDEX IF NOT EXISTS idx_varricao_locais_regiao ON varricao_locais (regiao);
+    `);
+  } catch (e) {
+    console.warn("varricao_locais table check:", e);
+  }
+}
+
 // Função para converter ServiceArea[] para CSV compatível com Supabase
 function convertToSupabaseCSV(areas: ServiceArea[]): string {
   if (areas.length === 0) {
@@ -378,6 +407,7 @@ export async function registerRoutes(app: Express): Promise<void> {
   await ensureUsersSetorColumn();
   await ensureSolicitantesTable();
   await ensureContratoConfigTable();
+  await ensureVarricaoLocaisTable();
 
   // Middleware: bloqueia gravações para usuário demo (retorna sucesso sem salvar)
   app.use((req, res, next) => {
@@ -2455,6 +2485,111 @@ export async function registerRoutes(app: Express): Promise<void> {
       res.json(rows);
     } catch (error) {
       res.status(500).json({ error: "Erro ao buscar solicitantes" });
+    }
+  });
+
+  // ===================== VARRIÇÃO — LOCAIS =====================
+
+  app.get("/api/varricao/locais", requireAuth, async (req, res) => {
+    try {
+      const pool = getPool();
+      const { rows } = await pool.query(
+        `SELECT * FROM varricao_locais ORDER BY regiao, nome`
+      );
+      res.json(rows);
+    } catch (error) {
+      res.status(500).json({ error: "Erro ao buscar locais de varrição" });
+    }
+  });
+
+  app.post("/api/varricao/locais", requireAuth, async (req, res) => {
+    try {
+      const {
+        nome, complemento, regiao, tipo, secao, metragemUnica,
+        frequencia, diasSemana, lat, lng,
+      } = req.body;
+      if (!nome || !String(nome).trim()) {
+        return res.status(400).json({ error: "Nome do local é obrigatório" });
+      }
+      const pool = getPool();
+      const { rows } = await pool.query(
+        `INSERT INTO varricao_locais
+           (nome, complemento, regiao, tipo, secao, metragem_unica, frequencia, dias_semana, lat, lng, geocode_status)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+         RETURNING *`,
+        [
+          String(nome).trim(),
+          complemento || null,
+          regiao || null,
+          tipo || null,
+          secao || "varricao",
+          metragemUnica ?? null,
+          frequencia || "diario",
+          diasSemana ? JSON.stringify(diasSemana) : null,
+          lat ?? null,
+          lng ?? null,
+          lat != null && lng != null ? "manual" : "pendente",
+        ]
+      );
+      res.status(201).json(rows[0]);
+    } catch (error) {
+      console.error("Erro ao criar local de varrição:", error);
+      res.status(500).json({ error: "Erro ao criar local" });
+    }
+  });
+
+  app.patch("/api/varricao/locais/:id", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const campos: Record<string, string> = {
+        nome: "nome", complemento: "complemento", regiao: "regiao",
+        tipo: "tipo", secao: "secao", metragemUnica: "metragem_unica",
+        frequencia: "frequencia", lat: "lat", lng: "lng",
+        geocodeStatus: "geocode_status", ativo: "ativo",
+      };
+      const sets: string[] = [];
+      const vals: any[] = [];
+      for (const [key, col] of Object.entries(campos)) {
+        if (key in req.body) {
+          vals.push(req.body[key]);
+          sets.push(`${col}=$${vals.length}`);
+        }
+      }
+      if ("diasSemana" in req.body) {
+        vals.push(req.body.diasSemana ? JSON.stringify(req.body.diasSemana) : null);
+        sets.push(`dias_semana=$${vals.length}`);
+      }
+      // Reposicionar o pino manualmente confirma a localização
+      if ("lat" in req.body && "lng" in req.body && !("geocodeStatus" in req.body)) {
+        sets.push(`geocode_status='manual'`);
+      }
+      if (sets.length === 0) {
+        return res.status(400).json({ error: "Nenhum campo para atualizar" });
+      }
+      sets.push("updated_at=NOW()");
+      vals.push(id);
+      const pool = getPool();
+      const { rows } = await pool.query(
+        `UPDATE varricao_locais SET ${sets.join(", ")} WHERE id=$${vals.length} RETURNING *`,
+        vals
+      );
+      if (!rows.length) return res.status(404).json({ error: "Local não encontrado" });
+      res.json(rows[0]);
+    } catch (error) {
+      console.error("Erro ao atualizar local de varrição:", error);
+      res.status(500).json({ error: "Erro ao atualizar local" });
+    }
+  });
+
+  app.delete("/api/varricao/locais/:id", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const pool = getPool();
+      const { rowCount } = await pool.query("DELETE FROM varricao_locais WHERE id=$1", [id]);
+      if (!rowCount) return res.status(404).json({ error: "Local não encontrado" });
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Erro ao excluir local" });
     }
   });
 

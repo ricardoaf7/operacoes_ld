@@ -304,6 +304,30 @@ export function AppSidebar({
                   label="Varrição"
                   testId="service-varricao"
                 />
+
+                <AnimatePresence initial={false}>
+                  {selectedService === "varricao" && (
+                    <motion.div
+                      key="varricao-tools"
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: "auto" }}
+                      exit={{ opacity: 0, height: 0 }}
+                      transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
+                      className="overflow-hidden"
+                    >
+                      <Link href="/varricao/locais">
+                        <button
+                          className="w-full flex items-center gap-2.5 pl-9 pr-3 py-1.5 rounded-md text-xs transition-colors text-foreground/60 hover:text-foreground hover:bg-muted/50"
+                          data-testid="button-varricao-locais"
+                        >
+                          <MapPin className="h-3.5 w-3.5 text-foreground/40 flex-shrink-0" />
+                          <span>Cadastro de Locais</span>
+                        </button>
+                      </Link>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
                 <ServiceButton
                   active={selectedService === "podas"}
                   onClick={() => handleServiceClick("podas")}
