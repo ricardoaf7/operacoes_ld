@@ -10,11 +10,42 @@ import type { ServiceArea } from "@shared/schema";
 import type { TimeRangeFilter } from "./MapLegend";
 import { useTheme } from "@/components/theme-provider";
 
+export interface VarricaoLocalMapa {
+  id: number;
+  nome: string;
+  complemento: string | null;
+  regiao: string | null;
+  tipo: string | null;
+  secao: string;
+  metragem_unica: string | null;
+  lat: number | null;
+  lng: number | null;
+  geocode_status: string;
+}
+
+const SECAO_LABELS: Record<string, string> = {
+  varricao: "Varrição",
+  varricao_2turno: "Varrição — 2º turno",
+  sanitarios: "Sanitários",
+  lavagem_vias_noturna: "Lavagem de vias (noturna)",
+  lavagem_pracas_noturna: "Lavagem de praças (noturna)",
+  lavagem_vias_diurna: "Lavagem de vias (diurna)",
+  lavagem_pracas_diurna: "Lavagem de praças (diurna)",
+};
+
+function getVarricaoColor(secao: string): string {
+  if (secao.startsWith("lavagem")) return "#0284c7"; // azul — lavagem
+  if (secao === "sanitarios") return "#8b5cf6"; // roxo — sanitários
+  return "#059669"; // verde — varrição
+}
+
 interface DashboardMapProps {
   rocagemAreas: ServiceArea[];
+  varricaoLocais?: VarricaoLocalMapa[];
   layerFilters: {
     rocagemLote1: boolean;
     rocagemLote2: boolean;
+    varricao?: boolean;
   };
   onAreaClick: (area: ServiceArea) => void;
   onMapClick?: (lat: number, lng: number) => void;
@@ -34,6 +65,7 @@ interface DashboardMapProps {
 
 export function DashboardMap({
   rocagemAreas,
+  varricaoLocais = [],
   layerFilters,
   onAreaClick,
   onMapClick,
@@ -156,6 +188,7 @@ export function DashboardMap({
     layerGroupsRef.current = {
       rocagemLote1: L.layerGroup().addTo(map),
       rocagemLote2: L.layerGroup().addTo(map),
+      varricao: L.layerGroup().addTo(map),
     };
 
     mapRef.current = map;
@@ -405,6 +438,55 @@ export function DashboardMap({
       marker.addTo(layerGroup);
     });
   }, [rocagemAreas, onAreaClick, filteredAreaIds, searchQuery, relocatingAreaId, onPositionChange, selectedAreaId, activeFilter]);
+
+  // Pontos de varrição / lavagem
+  useEffect(() => {
+    if (!mapRef.current) return;
+
+    const layerGroup = layerGroupsRef.current.varricao;
+    if (!layerGroup) return;
+    layerGroup.clearLayers();
+
+    varricaoLocais.forEach((local) => {
+      if (local.lat == null || local.lng == null) return;
+
+      const color = getVarricaoColor(local.secao);
+      const icon = L.divIcon({
+        className: "area-marker",
+        html: `<div style="
+          background-color: ${color};
+          width: 14px;
+          height: 14px;
+          border-radius: 50%;
+          border: 2px solid white;
+          box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+          opacity: 0.9;
+          cursor: pointer;
+        "></div>`,
+        iconSize: [14, 14],
+        iconAnchor: [7, 7],
+      });
+
+      const metragem = local.metragem_unica
+        ? Number(local.metragem_unica).toLocaleString("pt-BR", {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          })
+        : null;
+
+      const detalhes = `<div class="font-sans text-xs">
+        <strong>${local.nome}</strong><br/>
+        ${local.complemento ? `<span style="opacity:.75">${local.complemento}</span><br/>` : ""}
+        ${SECAO_LABELS[local.secao] ?? local.secao}${local.tipo ? ` · ${local.tipo}` : ""}${local.regiao ? ` · ${local.regiao}` : ""}<br/>
+        ${metragem ? `Metragem: ${metragem}` : ""}
+      </div>`;
+
+      const marker = L.marker([local.lat, local.lng], { icon });
+      marker.bindTooltip(detalhes, { sticky: true, opacity: 0.95 });
+      marker.bindPopup(detalhes);
+      marker.addTo(layerGroup);
+    });
+  }, [varricaoLocais]);
 
   return (
     <div className="relative w-full h-full">

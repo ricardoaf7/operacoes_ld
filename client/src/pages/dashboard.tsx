@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo, useDeferredValue, useCallback } from "react";
-import { DashboardMap } from "@/components/DashboardMap";
+import { DashboardMap, type VarricaoLocalMapa } from "@/components/DashboardMap";
 import { AppSidebar } from "@/components/AppSidebar";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { MapInfoCard } from "@/components/MapInfoCard";
@@ -221,6 +221,18 @@ export default function Dashboard({ isPublicView = false }: DashboardProps) {
       return res.json();
     },
     staleTime: 30000, // Cache por 30 segundos
+  });
+
+  // Locais de varrição — carregados apenas quando o serviço está selecionado
+  const { data: varricaoLocais = [] } = useQuery<VarricaoLocalMapa[]>({
+    queryKey: ["/api/varricao/locais"],
+    queryFn: async () => {
+      const res = await fetch("/api/varricao/locais", { credentials: "include" });
+      if (!res.ok) throw new Error("Falha ao carregar locais de varrição");
+      return res.json();
+    },
+    enabled: selectedService === "varricao",
+    staleTime: 60000,
   });
 
   const { data: config } = useQuery<AppConfig>({
@@ -638,9 +650,11 @@ export default function Dashboard({ isPublicView = false }: DashboardProps) {
         <main className="flex-1 overflow-hidden relative">
           <DashboardMap
             rocagemAreas={rocagemAreas}
+            varricaoLocais={varricaoLocais}
             layerFilters={{
               rocagemLote1: selectedService === 'rocagem' || isPublicView || !!selectedOsId,
               rocagemLote2: selectedService === 'rocagem' || isPublicView || !!selectedOsId,
+              varricao: selectedService === 'varricao',
             }}
             onAreaClick={handleAreaClick}
             onMapClick={isPublicView ? undefined : handleMapClick}
@@ -871,9 +885,11 @@ export default function Dashboard({ isPublicView = false }: DashboardProps) {
           <main className="flex-1 overflow-hidden relative">
             <DashboardMap
               rocagemAreas={rocagemAreas}
+              varricaoLocais={varricaoLocais}
               layerFilters={{
                 rocagemLote1: selectedService === 'rocagem' || !!selectedOsId,
                 rocagemLote2: selectedService === 'rocagem' || !!selectedOsId,
+                varricao: selectedService === 'varricao',
               }}
               onAreaClick={handleAreaClick}
               onMapClick={handleMapClick}
