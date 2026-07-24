@@ -131,11 +131,11 @@ export class MemStorage implements IStorage {
 
   private initializeJardinsAreas(): ServiceArea[] {
     return [
-      { id: 1001, tipo: "ROT", endereco: "Av. Henrique Mansano x Av. Lucia Helena Gonçalves Vianna (Sanepar)", servico: "Manutenção", lat: -23.282252, lng: -51.155120, status: "Pendente", history: [], polygon: null, scheduledDate: null, manualSchedule: false },
-      { id: 1002, tipo: "ROT", endereco: "Av. Maringá x Rua Prof. Joaquim de Matos Barreto (Aterro Maior)", servico: "Irrigação", lat: -23.324934, lng: -51.176449, status: "Pendente", history: [], polygon: null, scheduledDate: null, manualSchedule: false },
-      { id: 1003, tipo: "ROT", endereco: "Praça Rocha Pombo", servico: "Manutenção", lat: -23.314200, lng: -51.157800, status: "Pendente", history: [], polygon: null, scheduledDate: null, manualSchedule: false },
-      { id: 1004, tipo: "ROT", endereco: "Parque Arthur Thomas", servico: "Irrigação", lat: -23.316700, lng: -51.178900, status: "Pendente", history: [], polygon: null, scheduledDate: null, manualSchedule: false },
-      { id: 1005, tipo: "ROT", endereco: "Jardim Botânico", servico: "Manutenção", lat: -23.328900, lng: -51.156700, status: "Pendente", history: [], polygon: null, scheduledDate: null, manualSchedule: false },
+      { id: 1001, fotos: [], executando: false, tipo: "ROT", endereco: "Av. Henrique Mansano x Av. Lucia Helena Gonçalves Vianna (Sanepar)", servico: "Manutenção", lat: -23.282252, lng: -51.155120, status: "Pendente", history: [], polygon: null, scheduledDate: null, manualSchedule: false },
+      { id: 1002, fotos: [], executando: false, tipo: "ROT", endereco: "Av. Maringá x Rua Prof. Joaquim de Matos Barreto (Aterro Maior)", servico: "Irrigação", lat: -23.324934, lng: -51.176449, status: "Pendente", history: [], polygon: null, scheduledDate: null, manualSchedule: false },
+      { id: 1003, fotos: [], executando: false, tipo: "ROT", endereco: "Praça Rocha Pombo", servico: "Manutenção", lat: -23.314200, lng: -51.157800, status: "Pendente", history: [], polygon: null, scheduledDate: null, manualSchedule: false },
+      { id: 1004, fotos: [], executando: false, tipo: "ROT", endereco: "Parque Arthur Thomas", servico: "Irrigação", lat: -23.316700, lng: -51.178900, status: "Pendente", history: [], polygon: null, scheduledDate: null, manualSchedule: false },
+      { id: 1005, fotos: [], executando: false, tipo: "ROT", endereco: "Jardim Botânico", servico: "Manutenção", lat: -23.328900, lng: -51.156700, status: "Pendente", history: [], polygon: null, scheduledDate: null, manualSchedule: false },
     ];
   }
 

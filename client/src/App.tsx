@@ -43,7 +43,7 @@ function AuthenticatedRoutes() {
       {user.role === "demo" && <DemoBanner />}
       <div style={user.role === "demo" ? { paddingTop: "2rem" } : undefined}>
         <Switch>
-          <Route path="/" component={Dashboard} />
+          <Route path="/">{() => <Dashboard />}</Route>
           <Route path="/relatorios" component={RelatoriosPage} />
           <Route path="/relatorios/rocagens" component={RelatorioRocagensPage} />
           <Route path="/ordem-servico" component={OrdemServicoPage} />

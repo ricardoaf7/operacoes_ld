@@ -547,12 +547,12 @@ export function MowingStatsBar({ visible = true, expanded, onPeriodChange, onPer
   });
 
   const bairroOptions = useMemo(() =>
-    [...new Set(lightAreas.map((a: any) => a.bairro).filter(Boolean))].sort() as string[],
+    Array.from(new Set(lightAreas.map((a: any) => a.bairro).filter(Boolean))).sort() as string[],
     [lightAreas]
   );
 
   const tipoOptions = useMemo(() =>
-    [...new Set(lightAreas.map((a: any) => a.tipo).filter(Boolean))].sort() as string[],
+    Array.from(new Set(lightAreas.map((a: any) => a.tipo).filter(Boolean))).sort() as string[],
     [lightAreas]
   );
 
