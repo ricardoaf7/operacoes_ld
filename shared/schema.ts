@@ -174,7 +174,7 @@ export const userSchema = z.object({
   nome: z.string(),
   email: z.string().email(),
   senha: z.string(),
-  role: z.enum(["admin", "gestor", "fiscal", "demo"]),
+  role: z.enum(["admin", "gestor", "fiscal", "encarregado", "demo"]),
   ativo: z.boolean().default(true),
 });
 

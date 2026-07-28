@@ -409,6 +409,20 @@ export async function registerRoutes(app: Express): Promise<void> {
   await ensureContratoConfigTable();
   await ensureVarricaoLocaisTable();
 
+  // Middleware: encarregado (terceirizada) só acessa login e o fluxo de fotos da varrição
+  app.use((req, res, next) => {
+    if (req.session?.userRole === "encarregado" && req.path.startsWith("/api/")) {
+      const permitido =
+        req.path.startsWith("/api/auth/") ||
+        (req.path === "/api/varricao/locais" && req.method === "GET") ||
+        req.path.startsWith("/api/varricao/fotos");
+      if (!permitido) {
+        return res.status(403).json({ error: "Acesso restrito ao envio de fotos" });
+      }
+    }
+    next();
+  });
+
   // Middleware: bloqueia gravações para usuário demo (retorna sucesso sem salvar)
   app.use((req, res, next) => {
     if (

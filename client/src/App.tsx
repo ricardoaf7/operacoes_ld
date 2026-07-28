@@ -15,6 +15,7 @@ import ConfiguracoesPage from "@/pages/configuracoes";
 import SetoresPage from "@/pages/setores";
 import DemandasPage from "@/pages/demandas";
 import VarricaoLocaisPage from "@/pages/varricao-locais";
+import EncarregadoPage from "@/pages/encarregado";
 import OrdemServicoPage from "@/pages/ordem-servico";
 import CronogramaPage from "@/pages/cronograma";
 import PublicCronogramaPage from "@/pages/public-cronograma";
@@ -36,6 +37,11 @@ function AuthenticatedRoutes() {
 
   if (!user) {
     return <LoginPage />;
+  }
+
+  // Encarregado (terceirizada) vê apenas a tela de registro de fotos
+  if (user.role === "encarregado") {
+    return <EncarregadoPage />;
   }
 
   return (
