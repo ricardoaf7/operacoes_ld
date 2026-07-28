@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useMemo, useDeferredValue, useCallback } from "react";
 import { DashboardMap, type VarricaoLocalMapa } from "@/components/DashboardMap";
 import { VarricaoSearchBar } from "@/components/VarricaoSearchBar";
+import { VarricaoInfoCard } from "@/components/VarricaoInfoCard";
 import { AppSidebar } from "@/components/AppSidebar";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { MapInfoCard } from "@/components/MapInfoCard";
@@ -96,7 +97,10 @@ export default function Dashboard({ isPublicView = false }: DashboardProps) {
   const [pendingNewAreaCoords, setPendingNewAreaCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [showNewAreaConfirm, setShowNewAreaConfirm] = useState(false);
   const [selectedVarricaoLocalId, setSelectedVarricaoLocalId] = useState<number | null>(null);
-  const [placingVarricaoLocalId, setPlacingVarricaoLocalId] = useState<number | null>(null);
+  const [showVarricaoCard, setShowVarricaoCard] = useState(false);
+  const [relocatingVarricaoLocalId, setRelocatingVarricaoLocalId] = useState<number | null>(null);
+  const [pendingVarricaoRelocation, setPendingVarricaoRelocation] = useState<{ id: number; lat: number; lng: number } | null>(null);
+  const [showVarricaoRelocationConfirm, setShowVarricaoRelocationConfirm] = useState(false);
   const mapRef = useRef<L.Map | null>(null);
   const ignoreSearchClearRef = useRef(false); // Flag para ignorar limpeza após seleção
   const lastZoomedAreaIdRef = useRef<number | null>(null); // Para evitar zoom repetido
@@ -242,7 +246,8 @@ export default function Dashboard({ isPublicView = false }: DashboardProps) {
   useEffect(() => {
     if (selectedService !== "varricao") {
       setSelectedVarricaoLocalId(null);
-      setPlacingVarricaoLocalId(null);
+      setShowVarricaoCard(false);
+      setRelocatingVarricaoLocalId(null);
     }
   }, [selectedService]);
 
@@ -550,7 +555,9 @@ export default function Dashboard({ isPublicView = false }: DashboardProps) {
     setShowMapCard(false);
   }, []);
 
-  // ---- Varrição: seleção, posicionamento e ajuste de pino ----
+  // ---- Varrição: seleção (só mostra o card), ajuste de pino é ação separada e explícita ----
+  const selectedVarricaoLocal = varricaoLocais.find((l) => l.id === selectedVarricaoLocalId) ?? null;
+
   const updateVarricaoPositionMutation = useMutation({
     mutationFn: async ({ id, lat, lng }: { id: number; lat: number; lng: number }) => {
       return await apiRequest("PATCH", `/api/varricao/locais/${id}`, { lat, lng });
@@ -561,7 +568,9 @@ export default function Dashboard({ isPublicView = false }: DashboardProps) {
         title: "Localização salva",
         description: "A posição do local de varrição foi atualizada.",
       });
-      setPlacingVarricaoLocalId(null);
+      setRelocatingVarricaoLocalId(null);
+      setPendingVarricaoRelocation(null);
+      setShowVarricaoRelocationConfirm(false);
     },
     onError: () => {
       toast({
@@ -572,36 +581,107 @@ export default function Dashboard({ isPublicView = false }: DashboardProps) {
     },
   });
 
+  // Selecionar (busca ou clique no marcador) só exibe o card de informações — nunca entra em modo de arraste sozinho
   const handleVarricaoLocalSelect = useCallback((local: VarricaoLocalMapa) => {
+    setSelectedVarricaoLocalId(local.id);
+    setShowVarricaoCard(true);
+
+    // Trocar de seleção cancela um ajuste de posição em andamento de outro local
+    setRelocatingVarricaoLocalId((prev) => {
+      if (prev && prev !== local.id) {
+        queryClient.invalidateQueries({ queryKey: ["/api/varricao/locais"] });
+        return null;
+      }
+      return prev;
+    });
+
     if (local.lat != null && local.lng != null) {
-      setSelectedVarricaoLocalId(local.id);
-      setPlacingVarricaoLocalId(null);
       if (mapRef.current) {
         mapRef.current.flyTo([local.lat, local.lng], 17, { animate: true, duration: 1.2 });
       }
     } else {
-      // Local ainda sem posição: próximo clique no mapa define o pino
-      setSelectedVarricaoLocalId(null);
-      setPlacingVarricaoLocalId(local.id);
-      toast({
-        title: "Local sem posição no mapa",
-        description: `Clique no mapa onde fica "${local.nome}" para posicionar o pino.`,
-      });
+      // Sem posição ainda: entra direto no modo de posicionar, já que não há pino para só "ver"
+      setRelocatingVarricaoLocalId(local.id);
     }
+
     if (isMobile) {
       setBottomSheetState("minimized");
     }
-  }, [isMobile, toast]);
+  }, [isMobile]);
 
+  // Clique num marcador já existente no mapa (delega para a mesma lógica da busca)
+  const handleVarricaoMarkerClick = useCallback((id: number) => {
+    const local = varricaoLocais.find((l) => l.id === id);
+    if (local) handleVarricaoLocalSelect(local);
+  }, [varricaoLocais, handleVarricaoLocalSelect]);
+
+  // Botão explícito "Ajustar Posição" dentro do card
+  const handleStartVarricaoRelocation = useCallback(() => {
+    if (selectedVarricaoLocalId) {
+      setRelocatingVarricaoLocalId(selectedVarricaoLocalId);
+      toast({
+        title: "Modo de Posicionamento Ativo",
+        description: "Clique no mapa ou arraste o pino para o local correto.",
+      });
+    }
+  }, [selectedVarricaoLocalId, toast]);
+
+  // Clique no mapa (ou dragend do marcador) propondo uma nova posição
   const handleVarricaoPositionChange = useCallback((id: number, lat: number, lng: number) => {
-    setSelectedVarricaoLocalId(id);
-    updateVarricaoPositionMutation.mutate({ id, lat, lng });
-  }, [updateVarricaoPositionMutation.mutate]);
+    const local = varricaoLocais.find((l) => l.id === id);
+    const isFirstPlacement = !local || local.lat == null || local.lng == null;
+
+    if (isFirstPlacement) {
+      // Nada a sobrescrever — salva direto, sem confirmação
+      updateVarricaoPositionMutation.mutate({ id, lat, lng });
+    } else {
+      setPendingVarricaoRelocation({ id, lat, lng });
+      setShowVarricaoRelocationConfirm(true);
+    }
+  }, [varricaoLocais, updateVarricaoPositionMutation]);
+
+  const handleConfirmVarricaoRelocation = () => {
+    if (pendingVarricaoRelocation) {
+      updateVarricaoPositionMutation.mutate(pendingVarricaoRelocation);
+    }
+  };
+
+  const handleCancelVarricaoRelocation = () => {
+    setShowVarricaoRelocationConfirm(false);
+    setPendingVarricaoRelocation(null);
+    setRelocatingVarricaoLocalId(null);
+    // Invalidar para resetar a posição visual do marcador arrastado
+    queryClient.invalidateQueries({ queryKey: ["/api/varricao/locais"] });
+  };
+
+  const handleCloseVarricaoCard = useCallback(() => {
+    setShowVarricaoCard(false);
+    if (relocatingVarricaoLocalId) {
+      queryClient.invalidateQueries({ queryKey: ["/api/varricao/locais"] });
+    }
+    setRelocatingVarricaoLocalId(null);
+  }, [relocatingVarricaoLocalId]);
 
   const clearVarricaoSelection = useCallback(() => {
     setSelectedVarricaoLocalId(null);
-    setPlacingVarricaoLocalId(null);
-  }, []);
+    setShowVarricaoCard(false);
+    if (relocatingVarricaoLocalId) {
+      queryClient.invalidateQueries({ queryKey: ["/api/varricao/locais"] });
+    }
+    setRelocatingVarricaoLocalId(null);
+  }, [relocatingVarricaoLocalId]);
+
+  // Tecla Esc fecha o card / cancela o posicionamento em andamento
+  useEffect(() => {
+    if (selectedService !== "varricao") return;
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && (selectedVarricaoLocalId || relocatingVarricaoLocalId)) {
+        clearVarricaoSelection();
+      }
+    };
+    document.addEventListener("keydown", handleEsc);
+    return () => document.removeEventListener("keydown", handleEsc);
+  }, [selectedService, selectedVarricaoLocalId, relocatingVarricaoLocalId, clearVarricaoSelection]);
 
   // Mobile layout com BottomSheet
   if (isMobile) {
@@ -726,8 +806,8 @@ export default function Dashboard({ isPublicView = false }: DashboardProps) {
             rocagemAreas={rocagemAreas}
             varricaoLocais={varricaoLocais}
             selectedVarricaoLocalId={selectedVarricaoLocalId}
-            placingVarricaoLocalId={placingVarricaoLocalId}
-            onVarricaoSelect={setSelectedVarricaoLocalId}
+            relocatingVarricaoLocalId={relocatingVarricaoLocalId}
+            onVarricaoSelect={handleVarricaoMarkerClick}
             onVarricaoPositionChange={handleVarricaoPositionChange}
             layerFilters={{
               rocagemLote1: selectedService === 'rocagem' || isPublicView || !!selectedOsId,
@@ -760,7 +840,18 @@ export default function Dashboard({ isPublicView = false }: DashboardProps) {
               />
             </div>
           )}
-          
+
+          {showVarricaoCard && selectedVarricaoLocal && (
+            <div className="absolute top-4 left-4 z-[1000] pointer-events-auto">
+              <VarricaoInfoCard
+                local={selectedVarricaoLocal}
+                onClose={handleCloseVarricaoCard}
+                onAdjustPosition={handleStartVarricaoRelocation}
+                isRelocating={relocatingVarricaoLocalId === selectedVarricaoLocal.id}
+              />
+            </div>
+          )}
+
           {!isPublicView && (
             <BottomSheet
               state={bottomSheetState}
@@ -812,6 +903,29 @@ export default function Dashboard({ isPublicView = false }: DashboardProps) {
               />
             </>
           )}
+
+          <AlertDialog open={showVarricaoRelocationConfirm} onOpenChange={setShowVarricaoRelocationConfirm}>
+            <AlertDialogContent data-testid="dialog-varricao-relocation-confirm-mobile" className="z-[9999]">
+              <AlertDialogHeader>
+                <AlertDialogTitle>Alterar Localização?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Tem certeza que deseja alterar a localização deste local de varrição para as novas coordenadas?
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <div className="flex gap-2 justify-end">
+                <AlertDialogCancel onClick={handleCancelVarricaoRelocation}>
+                  Cancelar
+                </AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={handleConfirmVarricaoRelocation}
+                  className="bg-blue-600 hover:bg-blue-700"
+                  disabled={updateVarricaoPositionMutation.isPending}
+                >
+                  {updateVarricaoPositionMutation.isPending ? "Salvando..." : "Confirmar"}
+                </AlertDialogAction>
+              </div>
+            </AlertDialogContent>
+          </AlertDialog>
         </main>
       </div>
     );
@@ -975,8 +1089,8 @@ export default function Dashboard({ isPublicView = false }: DashboardProps) {
               rocagemAreas={rocagemAreas}
               varricaoLocais={varricaoLocais}
               selectedVarricaoLocalId={selectedVarricaoLocalId}
-              placingVarricaoLocalId={placingVarricaoLocalId}
-              onVarricaoSelect={setSelectedVarricaoLocalId}
+              relocatingVarricaoLocalId={relocatingVarricaoLocalId}
+              onVarricaoSelect={handleVarricaoMarkerClick}
               onVarricaoPositionChange={handleVarricaoPositionChange}
               layerFilters={{
                 rocagemLote1: selectedService === 'rocagem' || !!selectedOsId,
@@ -1005,6 +1119,17 @@ export default function Dashboard({ isPublicView = false }: DashboardProps) {
                   onEdit={handleOpenEdit}
                   onChangeLocation={handleStartRelocation}
                   isRelocating={relocatingAreaId === selectedArea.id}
+                />
+              </div>
+            )}
+
+            {showVarricaoCard && selectedVarricaoLocal && (
+              <div className="absolute top-4 left-4 z-[1000] pointer-events-auto">
+                <VarricaoInfoCard
+                  local={selectedVarricaoLocal}
+                  onClose={handleCloseVarricaoCard}
+                  onAdjustPosition={handleStartVarricaoRelocation}
+                  isRelocating={relocatingVarricaoLocalId === selectedVarricaoLocal.id}
                 />
               </div>
             )}
@@ -1051,6 +1176,30 @@ export default function Dashboard({ isPublicView = false }: DashboardProps) {
               data-testid="button-confirm-relocation"
             >
               {updatePositionMutation.isPending ? "Salvando..." : "Confirmar"}
+            </AlertDialogAction>
+          </div>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={showVarricaoRelocationConfirm} onOpenChange={setShowVarricaoRelocationConfirm}>
+        <AlertDialogContent data-testid="dialog-varricao-relocation-confirm" className="z-[9999]">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Alterar Localização?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza que deseja alterar a localização deste local de varrição para as novas coordenadas?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="flex gap-2 justify-end">
+            <AlertDialogCancel onClick={handleCancelVarricaoRelocation} data-testid="button-cancel-varricao-relocation">
+              Cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmVarricaoRelocation}
+              className="bg-blue-600 hover:bg-blue-700"
+              disabled={updateVarricaoPositionMutation.isPending}
+              data-testid="button-confirm-varricao-relocation"
+            >
+              {updateVarricaoPositionMutation.isPending ? "Salvando..." : "Confirmar"}
             </AlertDialogAction>
           </div>
         </AlertDialogContent>
