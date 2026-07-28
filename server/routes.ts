@@ -410,13 +410,15 @@ async function ensureAdminExists() {
 }
 
 export async function registerRoutes(app: Express): Promise<void> {
+  // Colunas/tabelas precisam existir ANTES de qualquer leitura de usuários
+  // (ensureAdminExists consulta a tabela users com todas as colunas do schema)
+  await ensureSetoresTable();
+  await ensureUsersSetorColumn();
+  await ensureUsersContratoColumn();
   await ensureAdminExists();
   await ensureAuditLogTable();
   await ensureDemandasTable();
   await ensureNotificacoesTable();
-  await ensureSetoresTable();
-  await ensureUsersSetorColumn();
-  await ensureUsersContratoColumn();
   await ensureSolicitantesTable();
   await ensureContratoConfigTable();
   await ensureVarricaoLocaisTable();
