@@ -5,6 +5,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   Camera, LogOut, MapPin, Search, ChevronLeft, CheckCircle2,
   Navigation, Loader2, ImageIcon, X, Clock, UploadCloud,
@@ -46,6 +47,7 @@ interface FotoEnviada {
   url: string;
   created_at: string;
   local_nome: string;
+  local_complemento: string | null;
 }
 
 function distanciaMetros(lat1: number, lng1: number, lat2: number, lng2: number): number {
@@ -263,6 +265,22 @@ export default function EncarregadoPage() {
     fotosHoje.forEach((f) => m.set(f.local_id, (m.get(f.local_id) ?? 0) + 1));
     return m;
   }, [fotosHoje]);
+
+  // Fotos do dia agrupadas por local, para o painel "minhas fotos de hoje"
+  const gruposFotosHoje = useMemo(() => {
+    const grupos = new Map<number, { nome: string; complemento: string | null; fotos: FotoEnviada[] }>();
+    fotosHoje.forEach((f) => {
+      if (!grupos.has(f.local_id)) {
+        grupos.set(f.local_id, { nome: f.local_nome, complemento: f.local_complemento, fotos: [] });
+      }
+      grupos.get(f.local_id)!.fotos.push(f);
+    });
+    return Array.from(grupos.values()).sort(
+      (a, b) => b.fotos[0].created_at.localeCompare(a.fotos[0].created_at)
+    );
+  }, [fotosHoje]);
+
+  const [mostrarMinhasFotos, setMostrarMinhasFotos] = useState(false);
 
   // Ordenação: buscando → relevância (nome primeiro); sem busca → programados
   // para hoje primeiro, depois por distância do GPS
@@ -540,9 +558,16 @@ export default function EncarregadoPage() {
       {/* Resumo do dia */}
       <div className="px-4 py-2.5 bg-emerald-50 dark:bg-emerald-950 border-b border-emerald-100 dark:border-emerald-900 flex items-center gap-2">
         <ImageIcon className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-        <p className="text-sm text-emerald-800 dark:text-emerald-300">
-          <b>{fotosHoje.length}</b> foto{fotosHoje.length === 1 ? "" : "s"} enviada{fotosHoje.length === 1 ? "" : "s"} hoje
-        </p>
+        {fotosHoje.length > 0 ? (
+          <button
+            className="text-sm text-emerald-800 dark:text-emerald-300 underline decoration-dotted underline-offset-2"
+            onClick={() => setMostrarMinhasFotos(true)}
+          >
+            <b>{fotosHoje.length}</b> foto{fotosHoje.length === 1 ? "" : "s"} enviada{fotosHoje.length === 1 ? "" : "s"} hoje
+          </button>
+        ) : (
+          <p className="text-sm text-emerald-800 dark:text-emerald-300">Nenhuma foto enviada hoje ainda</p>
+        )}
         {gpsErro && (
           <span className="ml-auto text-[11px] text-amber-600">GPS desligado</span>
         )}
@@ -642,6 +667,37 @@ export default function EncarregadoPage() {
         })}
         <div className="h-6" />
       </main>
+
+      {/* Painel: minhas fotos enviadas hoje, agrupadas por local */}
+      <Dialog open={mostrarMinhasFotos} onOpenChange={setMostrarMinhasFotos}>
+        <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Fotos enviadas hoje</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            {gruposFotosHoje.map((grupo) => (
+              <div key={grupo.nome + (grupo.complemento ?? "")}>
+                <p className="text-sm font-medium leading-tight">{grupo.nome}</p>
+                {grupo.complemento && (
+                  <p className="text-xs text-muted-foreground mb-1.5">{grupo.complemento}</p>
+                )}
+                <div className="grid grid-cols-4 gap-1.5 mt-1.5">
+                  {grupo.fotos.map((f: FotoEnviada) => (
+                    <a key={f.id} href={f.url} target="_blank" rel="noreferrer">
+                      <img
+                        src={f.url}
+                        alt={`Foto enviada em ${grupo.nome}`}
+                        className="aspect-square object-cover rounded-md border border-border"
+                        loading="lazy"
+                      />
+                    </a>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
