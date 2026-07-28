@@ -68,20 +68,52 @@ function programadoHoje(l: VarricaoLocal): boolean {
   return (l.dias_semana ?? []).includes(dia);
 }
 
+// Descobre as dimensões do arquivo sem decodificar a imagem inteira na memória
+function getDimensoesImagem(file: File): Promise<{ width: number; height: number }> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      resolve({ width: img.naturalWidth, height: img.naturalHeight });
+      URL.revokeObjectURL(url);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("Não foi possível ler a imagem")); };
+    img.src = url;
+  });
+}
+
 // Reduz a foto para no máx. 1600px e JPEG 80% — economiza dados móveis do encarregado.
+// Câmeras de celular tiram fotos de 12-48 megapixels: decodificar a imagem inteira
+// antes de reduzir pode exigir 100-200MB de memória e travar o navegador em aparelhos
+// mais simples. Por isso pedimos ao navegador para já decodificar em tamanho reduzido
+// (createImageBitmap com resizeWidth/resizeHeight), evitando esse pico de memória.
 // A marca d'água (local, GPS, data/hora) é gravada na própria imagem para valer
 // como registro perante fiscalização.
 async function comprimirImagem(file: File, marcaDagua: string[]): Promise<Blob> {
-  const bitmap = await createImageBitmap(file);
   const maxDim = 1600;
-  const scale = Math.min(1, maxDim / Math.max(bitmap.width, bitmap.height));
-  const w = Math.round(bitmap.width * scale);
-  const h = Math.round(bitmap.height * scale);
+  const { width: origW, height: origH } = await getDimensoesImagem(file);
+  const scale = Math.min(1, maxDim / Math.max(origW, origH));
+  const w = Math.round(origW * scale);
+  const h = Math.round(origH * scale);
+
+  let bitmap: ImageBitmap;
+  try {
+    bitmap = await createImageBitmap(file, {
+      resizeWidth: w,
+      resizeHeight: h,
+      resizeQuality: "medium",
+    });
+  } catch {
+    // Navegador sem suporte a resize no decode: cai para o modo antigo
+    bitmap = await createImageBitmap(file);
+  }
+
   const canvas = document.createElement("canvas");
   canvas.width = w;
   canvas.height = h;
   const ctx = canvas.getContext("2d")!;
   ctx.drawImage(bitmap, 0, 0, w, h);
+  bitmap.close(); // libera a memória do bitmap imediatamente, sem esperar o coletor de lixo
 
   if (marcaDagua.length > 0) {
     const fontSize = Math.max(14, Math.round(w / 42));
@@ -105,9 +137,12 @@ async function comprimirImagem(file: File, marcaDagua: string[]): Promise<Blob> 
     });
   }
 
-  return new Promise((resolve) =>
+  const blob = await new Promise<Blob>((resolve) =>
     canvas.toBlob((b) => resolve(b ?? file), "image/jpeg", 0.8)
   );
+  canvas.width = 0;
+  canvas.height = 0; // ajuda o navegador a liberar o buffer do canvas antes do GC
+  return blob;
 }
 
 const hojeLocal = () => new Date().toLocaleDateString("en-CA"); // YYYY-MM-DD no fuso do aparelho
@@ -196,6 +231,7 @@ export default function EncarregadoPage() {
   const [busca, setBusca] = useState("");
   const [localSelecionado, setLocalSelecionado] = useState<VarricaoLocal | null>(null);
   const [preview, setPreview] = useState<{ url: string; blob: Blob } | null>(null);
+  const [processando, setProcessando] = useState(false);
 
   const contratoLabel = user?.contrato ? CONTRATO_LABELS[user.contrato] ?? user.contrato : null;
 
@@ -345,14 +381,30 @@ export default function EncarregadoPage() {
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file || !localSelecionado) return;
-    const agora = new Date();
-    const linhas = [
-      localSelecionado.nome + (localSelecionado.complemento ? ` (${localSelecionado.complemento})` : ""),
-      `${agora.toLocaleDateString("pt-BR")} ${agora.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}` +
-        (gps ? `  ·  GPS ${gps.lat.toFixed(6)}, ${gps.lng.toFixed(6)}` : "  ·  GPS indisponível"),
-    ];
-    const blob = await comprimirImagem(file, linhas);
-    setPreview({ url: URL.createObjectURL(blob), blob });
+
+    // Libera a prévia anterior (se houver) antes de processar a nova — evita
+    // acumular fotos não liberadas na memória ao tirar várias seguidas
+    setPreview((prev) => { if (prev) URL.revokeObjectURL(prev.url); return null; });
+    setProcessando(true);
+
+    try {
+      const agora = new Date();
+      const linhas = [
+        localSelecionado.nome + (localSelecionado.complemento ? ` (${localSelecionado.complemento})` : ""),
+        `${agora.toLocaleDateString("pt-BR")} ${agora.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}` +
+          (gps ? `  ·  GPS ${gps.lat.toFixed(6)}, ${gps.lng.toFixed(6)}` : "  ·  GPS indisponível"),
+      ];
+      const blob = await comprimirImagem(file, linhas);
+      setPreview({ url: URL.createObjectURL(blob), blob });
+    } catch (err) {
+      toast({
+        variant: "destructive",
+        title: "Não foi possível processar a foto",
+        description: "Tente tirar a foto novamente.",
+      });
+    } finally {
+      setProcessando(false);
+    }
   }
 
   // ---------- TELA DE UM LOCAL (câmera) ----------
@@ -380,7 +432,12 @@ export default function EncarregadoPage() {
         </header>
 
         <main className="flex-1 flex flex-col p-4 gap-4">
-          {preview ? (
+          {processando ? (
+            <div className="flex-none rounded-2xl border-2 border-dashed border-emerald-500/50 bg-emerald-500/5 py-14 flex flex-col items-center justify-center gap-3">
+              <Loader2 className="h-10 w-10 text-emerald-600 animate-spin" />
+              <span className="font-medium text-emerald-700 dark:text-emerald-400">Processando foto...</span>
+            </div>
+          ) : preview ? (
             <>
               <div className="relative rounded-xl overflow-hidden border border-border">
                 <img src={preview.url} alt="Prévia da foto" className="w-full max-h-[55vh] object-contain bg-black" />
