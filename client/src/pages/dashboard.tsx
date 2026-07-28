@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useMemo, useDeferredValue, useCallback } from "react";
 import { DashboardMap, type VarricaoLocalMapa } from "@/components/DashboardMap";
+import { VarricaoSearchBar } from "@/components/VarricaoSearchBar";
 import { AppSidebar } from "@/components/AppSidebar";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { MapInfoCard } from "@/components/MapInfoCard";
@@ -94,6 +95,8 @@ export default function Dashboard({ isPublicView = false }: DashboardProps) {
   const [showRelocationConfirm, setShowRelocationConfirm] = useState(false);
   const [pendingNewAreaCoords, setPendingNewAreaCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [showNewAreaConfirm, setShowNewAreaConfirm] = useState(false);
+  const [selectedVarricaoLocalId, setSelectedVarricaoLocalId] = useState<number | null>(null);
+  const [placingVarricaoLocalId, setPlacingVarricaoLocalId] = useState<number | null>(null);
   const mapRef = useRef<L.Map | null>(null);
   const ignoreSearchClearRef = useRef(false); // Flag para ignorar limpeza após seleção
   const lastZoomedAreaIdRef = useRef<number | null>(null); // Para evitar zoom repetido
@@ -234,6 +237,14 @@ export default function Dashboard({ isPublicView = false }: DashboardProps) {
     enabled: selectedService === "varricao",
     staleTime: 60000,
   });
+
+  // Limpar seleção de varrição ao trocar de serviço
+  useEffect(() => {
+    if (selectedService !== "varricao") {
+      setSelectedVarricaoLocalId(null);
+      setPlacingVarricaoLocalId(null);
+    }
+  }, [selectedService]);
 
   const { data: config } = useQuery<AppConfig>({
     queryKey: ["/api/config"],
@@ -539,6 +550,59 @@ export default function Dashboard({ isPublicView = false }: DashboardProps) {
     setShowMapCard(false);
   }, []);
 
+  // ---- Varrição: seleção, posicionamento e ajuste de pino ----
+  const updateVarricaoPositionMutation = useMutation({
+    mutationFn: async ({ id, lat, lng }: { id: number; lat: number; lng: number }) => {
+      return await apiRequest("PATCH", `/api/varricao/locais/${id}`, { lat, lng });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/varricao/locais"] });
+      toast({
+        title: "Localização salva",
+        description: "A posição do local de varrição foi atualizada.",
+      });
+      setPlacingVarricaoLocalId(null);
+    },
+    onError: () => {
+      toast({
+        variant: "destructive",
+        title: "Erro",
+        description: "Não foi possível salvar a posição. Tente novamente.",
+      });
+    },
+  });
+
+  const handleVarricaoLocalSelect = useCallback((local: VarricaoLocalMapa) => {
+    if (local.lat != null && local.lng != null) {
+      setSelectedVarricaoLocalId(local.id);
+      setPlacingVarricaoLocalId(null);
+      if (mapRef.current) {
+        mapRef.current.flyTo([local.lat, local.lng], 17, { animate: true, duration: 1.2 });
+      }
+    } else {
+      // Local ainda sem posição: próximo clique no mapa define o pino
+      setSelectedVarricaoLocalId(null);
+      setPlacingVarricaoLocalId(local.id);
+      toast({
+        title: "Local sem posição no mapa",
+        description: `Clique no mapa onde fica "${local.nome}" para posicionar o pino.`,
+      });
+    }
+    if (isMobile) {
+      setBottomSheetState("minimized");
+    }
+  }, [isMobile, toast]);
+
+  const handleVarricaoPositionChange = useCallback((id: number, lat: number, lng: number) => {
+    setSelectedVarricaoLocalId(id);
+    updateVarricaoPositionMutation.mutate({ id, lat, lng });
+  }, [updateVarricaoPositionMutation.mutate]);
+
+  const clearVarricaoSelection = useCallback(() => {
+    setSelectedVarricaoLocalId(null);
+    setPlacingVarricaoLocalId(null);
+  }, []);
+
   // Mobile layout com BottomSheet
   if (isMobile) {
     const toggleBottomSheet = () => {
@@ -646,11 +710,25 @@ export default function Dashboard({ isPublicView = false }: DashboardProps) {
         {(selectedService === 'rocagem' || isPublicView) && (
           <MowingStatsBar expanded={reportOpen} onPeriodChange={handleStatsPeriodChange} onPeriodClear={handleStatsPeriodClear} />
         )}
-        
+
+        {selectedService === 'varricao' && !isPublicView && (
+          <VarricaoSearchBar
+            locais={varricaoLocais}
+            onLocalSelect={handleVarricaoLocalSelect}
+            onGeocodeFlyTo={handleGeocodeFlyTo}
+            selectedLocalId={selectedVarricaoLocalId}
+            onClearSelection={clearVarricaoSelection}
+          />
+        )}
+
         <main className="flex-1 overflow-hidden relative">
           <DashboardMap
             rocagemAreas={rocagemAreas}
             varricaoLocais={varricaoLocais}
+            selectedVarricaoLocalId={selectedVarricaoLocalId}
+            placingVarricaoLocalId={placingVarricaoLocalId}
+            onVarricaoSelect={setSelectedVarricaoLocalId}
+            onVarricaoPositionChange={handleVarricaoPositionChange}
             layerFilters={{
               rocagemLote1: selectedService === 'rocagem' || isPublicView || !!selectedOsId,
               rocagemLote2: selectedService === 'rocagem' || isPublicView || !!selectedOsId,
@@ -863,6 +941,16 @@ export default function Dashboard({ isPublicView = false }: DashboardProps) {
           <MowingStatsBar expanded={reportOpen} onPeriodChange={handleStatsPeriodChange} onPeriodClear={handleStatsPeriodClear} />
         )}
 
+          {selectedService === 'varricao' && (
+            <VarricaoSearchBar
+              locais={varricaoLocais}
+              onLocalSelect={handleVarricaoLocalSelect}
+              onGeocodeFlyTo={handleGeocodeFlyTo}
+              selectedLocalId={selectedVarricaoLocalId}
+              onClearSelection={clearVarricaoSelection}
+            />
+          )}
+
           {selectedOsId && selectedOs && (
             <div className="flex items-center gap-3 px-4 py-2 bg-emerald-600 text-white text-sm flex-shrink-0">
               <ClipboardList className="h-4 w-4 flex-shrink-0" />
@@ -886,6 +974,10 @@ export default function Dashboard({ isPublicView = false }: DashboardProps) {
             <DashboardMap
               rocagemAreas={rocagemAreas}
               varricaoLocais={varricaoLocais}
+              selectedVarricaoLocalId={selectedVarricaoLocalId}
+              placingVarricaoLocalId={placingVarricaoLocalId}
+              onVarricaoSelect={setSelectedVarricaoLocalId}
+              onVarricaoPositionChange={handleVarricaoPositionChange}
               layerFilters={{
                 rocagemLote1: selectedService === 'rocagem' || !!selectedOsId,
                 rocagemLote2: selectedService === 'rocagem' || !!selectedOsId,

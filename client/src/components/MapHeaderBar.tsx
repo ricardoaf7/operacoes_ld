@@ -7,7 +7,7 @@ import { useQuery } from '@tanstack/react-query';
 import type { TimeRangeFilter } from './MapLegend';
 import type { ServiceArea } from '@shared/schema';
 
-interface GeocodedResult {
+export interface GeocodedResult {
   display_name: string;
   lat: number;
   lng: number;
@@ -44,11 +44,11 @@ function escapeRegExp(string: string): string {
   return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-function removeAccents(str: string): string {
+export function removeAccents(str: string): string {
   return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 }
 
-function highlightMatch(text: string, query: string): JSX.Element {
+export function highlightMatch(text: string, query: string): JSX.Element {
   const trimmedQuery = query.trim();
   if (!trimmedQuery) return <>{text}</>;
   
@@ -106,7 +106,7 @@ function highlightMatch(text: string, query: string): JSX.Element {
   );
 }
 
-function simplifyDisplayName(displayName: string): string {
+export function simplifyDisplayName(displayName: string): string {
   const parts = displayName.split(',').map(p => p.trim());
   const filtered = parts.filter(p => {
     const lower = p.toLowerCase();

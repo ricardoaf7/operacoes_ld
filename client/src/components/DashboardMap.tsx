@@ -42,6 +42,10 @@ function getVarricaoColor(secao: string): string {
 interface DashboardMapProps {
   rocagemAreas: ServiceArea[];
   varricaoLocais?: VarricaoLocalMapa[];
+  selectedVarricaoLocalId?: number | null;
+  placingVarricaoLocalId?: number | null;
+  onVarricaoSelect?: (id: number) => void;
+  onVarricaoPositionChange?: (id: number, lat: number, lng: number) => void;
   layerFilters: {
     rocagemLote1: boolean;
     rocagemLote2: boolean;
@@ -66,6 +70,10 @@ interface DashboardMapProps {
 export function DashboardMap({
   rocagemAreas,
   varricaoLocais = [],
+  selectedVarricaoLocalId = null,
+  placingVarricaoLocalId = null,
+  onVarricaoSelect,
+  onVarricaoPositionChange,
   layerFilters,
   onAreaClick,
   onMapClick,
@@ -106,14 +114,18 @@ export function DashboardMap({
   // Refs para manter valores atualizados no listener de clique
   const relocatingAreaIdRef = useRef<number | null>(null);
   const onPositionChangeRef = useRef<((areaId: number, lat: number, lng: number) => void) | undefined>(undefined);
+  const placingVarricaoIdRef = useRef<number | null>(null);
+  const onVarricaoPositionChangeRef = useRef<((id: number, lat: number, lng: number) => void) | undefined>(undefined);
   const isDraggingMapRef = useRef(false);
   const lastMoveTimeRef = useRef(0);
-  
+
   // Manter refs sincronizadas com props
   useEffect(() => {
     relocatingAreaIdRef.current = relocatingAreaId;
     onPositionChangeRef.current = onPositionChange;
-  }, [relocatingAreaId, onPositionChange]);
+    placingVarricaoIdRef.current = placingVarricaoLocalId;
+    onVarricaoPositionChangeRef.current = onVarricaoPositionChange;
+  }, [relocatingAreaId, onPositionChange, placingVarricaoLocalId, onVarricaoPositionChange]);
 
   const updatePositionMutation = useMutation({
     mutationFn: async ({ areaId, lat, lng }: { areaId: number; lat: number; lng: number }) => {
@@ -223,9 +235,22 @@ export function DashboardMap({
     // Usa refs para sempre ter acesso ao valor mais recente
     // Ignora cliques que acontecem logo após arrastar o mapa
     const handleMapClick = (e: L.LeafletMouseEvent) => {
+      // Posicionar local de varrição sem coordenada
+      const placingId = placingVarricaoIdRef.current;
+      const varricaoCallback = onVarricaoPositionChangeRef.current;
+      if (placingId && varricaoCallback) {
+        const timeSincePlaceMove = Date.now() - lastMoveTimeRef.current;
+        if (isDraggingMapRef.current || timeSincePlaceMove < 300) return;
+        const { lat, lng } = e.latlng;
+        if (typeof lat === "number" && typeof lng === "number" && isFinite(lat) && isFinite(lng)) {
+          varricaoCallback(placingId, lat, lng);
+        }
+        return;
+      }
+
       const areaId = relocatingAreaIdRef.current;
       const callback = onPositionChangeRef.current;
-      
+
       if (!areaId || !callback) return;
       
       // Ignorar clique se o mapa foi arrastado nos últimos 300ms
@@ -450,21 +475,23 @@ export function DashboardMap({
     varricaoLocais.forEach((local) => {
       if (local.lat == null || local.lng == null) return;
 
+      const isSelected = selectedVarricaoLocalId === local.id;
       const color = getVarricaoColor(local.secao);
       const icon = L.divIcon({
         className: "area-marker",
         html: `<div style="
           background-color: ${color};
-          width: 14px;
-          height: 14px;
+          width: ${isSelected ? "20px" : "14px"};
+          height: ${isSelected ? "20px" : "14px"};
           border-radius: 50%;
-          border: 2px solid white;
-          box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+          border: ${isSelected ? "3px solid #3b82f6" : "2px solid white"};
+          box-shadow: ${isSelected ? "0 0 12px rgba(59, 130, 246, 0.8)" : "0 2px 4px rgba(0,0,0,0.3)"};
           opacity: 0.9;
-          cursor: pointer;
+          cursor: ${isSelected ? "move" : "pointer"};
+          ${isSelected ? "animation: pulse-relocate 1s ease-in-out infinite;" : ""}
         "></div>`,
-        iconSize: [14, 14],
-        iconAnchor: [7, 7],
+        iconSize: [isSelected ? 20 : 14, isSelected ? 20 : 14],
+        iconAnchor: [isSelected ? 10 : 7, isSelected ? 10 : 7],
       });
 
       const metragem = local.metragem_unica
@@ -481,12 +508,34 @@ export function DashboardMap({
         ${metragem ? `Metragem: ${metragem}` : ""}
       </div>`;
 
-      const marker = L.marker([local.lat, local.lng], { icon });
-      marker.bindTooltip(detalhes, { sticky: true, opacity: 0.95 });
+      const marker = L.marker([local.lat, local.lng], {
+        icon,
+        draggable: isSelected,
+      });
+
+      if (isSelected) {
+        // Etiqueta fixa com instrução de arraste
+        marker.bindTooltip(
+          `<div class="search-label">${local.nome} — arraste para reposicionar</div>`,
+          { permanent: true, direction: "top", className: "search-tooltip", opacity: 1, offset: [0, -10] }
+        );
+        if (onVarricaoPositionChange) {
+          marker.on("dragend", (e) => {
+            const pos = (e.target as L.Marker).getLatLng();
+            if (pos && isFinite(pos.lat) && isFinite(pos.lng)) {
+              onVarricaoPositionChange(local.id, pos.lat, pos.lng);
+            }
+          });
+        }
+      } else {
+        marker.bindTooltip(detalhes, { sticky: true, opacity: 0.95 });
+        marker.on("click", () => onVarricaoSelect?.(local.id));
+      }
+
       marker.bindPopup(detalhes);
       marker.addTo(layerGroup);
     });
-  }, [varricaoLocais]);
+  }, [varricaoLocais, selectedVarricaoLocalId, onVarricaoSelect, onVarricaoPositionChange]);
 
   return (
     <div className="relative w-full h-full">
