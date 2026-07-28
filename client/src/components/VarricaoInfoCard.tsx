@@ -88,12 +88,16 @@ export function VarricaoInfoCard({ local, onClose, onAdjustPosition, isRelocatin
 
         <Separator className="mb-3" />
 
-        {!hasCoords || isRelocating ? (
+        {!hasCoords ? (
+          <div className="rounded-md bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 px-3 py-2.5 text-xs text-amber-700 dark:text-amber-300">
+            <MapPin className="h-3.5 w-3.5 inline mr-1.5" />
+            Este pino âmbar (!) está no grupo de pendentes no centro do mapa.
+            Arraste-o para o local correto — a posição é salva automaticamente.
+          </div>
+        ) : isRelocating ? (
           <div className="rounded-md bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 px-3 py-2.5 text-xs text-blue-700 dark:text-blue-300">
             <MapPin className="h-3.5 w-3.5 inline mr-1.5" />
-            {hasCoords
-              ? "Clique no mapa ou arraste o pino para reposicionar."
-              : "Clique no mapa onde fica este local para posicioná-lo."}
+            Clique no mapa ou arraste o pino para reposicionar.
           </div>
         ) : (
           <Button

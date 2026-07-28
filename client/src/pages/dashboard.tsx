@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo, useDeferredValue, useCallback } from "react";
-import { DashboardMap, type VarricaoLocalMapa } from "@/components/DashboardMap";
+import { DashboardMap, getVarricaoDisplayPos, type VarricaoLocalMapa } from "@/components/DashboardMap";
 import { VarricaoSearchBar } from "@/components/VarricaoSearchBar";
 import { VarricaoInfoCard } from "@/components/VarricaoInfoCard";
 import { AppSidebar } from "@/components/AppSidebar";
@@ -581,39 +581,42 @@ export default function Dashboard({ isPublicView = false }: DashboardProps) {
     },
   });
 
-  // Selecionar (busca ou clique no marcador) só exibe o card de informações — nunca entra em modo de arraste sozinho
-  const handleVarricaoLocalSelect = useCallback((local: VarricaoLocalMapa) => {
-    setSelectedVarricaoLocalId(local.id);
-    setShowVarricaoCard(true);
-
-    // Trocar de seleção cancela um ajuste de posição em andamento de outro local
+  // Cancela um ajuste de posição em andamento de outro local ao trocar de seleção
+  const cancelOtherVarricaoRelocation = useCallback((newId: number) => {
     setRelocatingVarricaoLocalId((prev) => {
-      if (prev && prev !== local.id) {
+      if (prev && prev !== newId) {
         queryClient.invalidateQueries({ queryKey: ["/api/varricao/locais"] });
         return null;
       }
       return prev;
     });
+  }, []);
 
-    if (local.lat != null && local.lng != null) {
-      if (mapRef.current) {
-        mapRef.current.flyTo([local.lat, local.lng], 17, { animate: true, duration: 1.2 });
-      }
-    } else {
-      // Sem posição ainda: entra direto no modo de posicionar, já que não há pino para só "ver"
-      setRelocatingVarricaoLocalId(local.id);
+  // Seleção pela BUSCA: voa até o ponto (real ou da grade de pendentes) e já abre o card
+  const handleVarricaoLocalSelect = useCallback((local: VarricaoLocalMapa) => {
+    setSelectedVarricaoLocalId(local.id);
+    setShowVarricaoCard(true);
+    cancelOtherVarricaoRelocation(local.id);
+
+    if (mapRef.current) {
+      const pos = getVarricaoDisplayPos(varricaoLocais, local);
+      mapRef.current.flyTo([pos.lat, pos.lng], 17, { animate: true, duration: 1.2 });
     }
 
     if (isMobile) {
       setBottomSheetState("minimized");
     }
-  }, [isMobile]);
+  }, [isMobile, varricaoLocais, cancelOtherVarricaoRelocation]);
 
-  // Clique num marcador já existente no mapa (delega para a mesma lógica da busca)
+  // Clique num marcador no mapa: só abre o card, sem mover a câmera (evita a "tremidinha")
   const handleVarricaoMarkerClick = useCallback((id: number) => {
-    const local = varricaoLocais.find((l) => l.id === id);
-    if (local) handleVarricaoLocalSelect(local);
-  }, [varricaoLocais, handleVarricaoLocalSelect]);
+    setSelectedVarricaoLocalId(id);
+    setShowVarricaoCard(true);
+    cancelOtherVarricaoRelocation(id);
+    if (isMobile) {
+      setBottomSheetState("minimized");
+    }
+  }, [isMobile, cancelOtherVarricaoRelocation]);
 
   // Botão explícito "Ajustar Posição" dentro do card
   const handleStartVarricaoRelocation = useCallback(() => {

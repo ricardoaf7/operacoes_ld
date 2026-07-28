@@ -39,6 +39,25 @@ function getVarricaoColor(secao: string): string {
   return "#059669"; // verde — varrição
 }
 
+// Locais sem geolocalização aparecem numa grade espaçada no centro de Londrina,
+// prontos para serem arrastados ao local correto (posição é salva no 1º arraste)
+const GRADE_PENDENTES = { lat: -23.304, lng: -51.172, dLat: 0.0014, dLng: 0.0017, cols: 6 };
+
+export function getVarricaoDisplayPos(
+  locais: VarricaoLocalMapa[],
+  local: VarricaoLocalMapa
+): { lat: number; lng: number } {
+  if (local.lat != null && local.lng != null) return { lat: local.lat, lng: local.lng };
+  const pendentes = locais.filter((l) => l.lat == null || l.lng == null);
+  const idx = Math.max(0, pendentes.findIndex((l) => l.id === local.id));
+  const col = idx % GRADE_PENDENTES.cols;
+  const row = Math.floor(idx / GRADE_PENDENTES.cols);
+  return {
+    lat: GRADE_PENDENTES.lat - row * GRADE_PENDENTES.dLat,
+    lng: GRADE_PENDENTES.lng + col * GRADE_PENDENTES.dLng,
+  };
+}
+
 interface DashboardMapProps {
   rocagemAreas: ServiceArea[];
   varricaoLocais?: VarricaoLocalMapa[];
@@ -473,28 +492,83 @@ export function DashboardMap({
     layerGroup.clearLayers();
 
     varricaoLocais.forEach((local) => {
-      if (local.lat == null || local.lng == null) return;
-
-      // isSelected = card de informações aberto para este local (destaque visual)
-      // isRelocating = modo de ajuste de posição ativo (arrastável), ação explícita e separada
+      // isPendente = ainda sem geolocalização: aparece na grade do centro, âmbar com "!", arrastável direto
+      // isSelected = card de informações aberto (destaque visual bonito, não arrastável)
+      // isRelocating = modo de ajuste explícito via botão do card (arrastável)
+      const isPendente = local.lat == null || local.lng == null;
       const isSelected = selectedVarricaoLocalId === local.id;
       const isRelocating = relocatingVarricaoLocalId === local.id;
-      const color = isSelected ? "#171717" : getVarricaoColor(local.secao);
+      const pos = getVarricaoDisplayPos(varricaoLocais, local);
+      const draggable = isPendente || isRelocating;
+      const color = getVarricaoColor(local.secao);
+
+      let html: string;
+      let size: number;
+      if (isPendente) {
+        size = isSelected ? 24 : 20;
+        html = `<div style="
+          background-color: #f59e0b;
+          width: ${size}px;
+          height: ${size}px;
+          border-radius: 50%;
+          border: ${isSelected ? "3px solid #3b82f6" : "2px solid white"};
+          box-shadow: ${isSelected ? "0 0 12px rgba(59, 130, 246, 0.8)" : "0 2px 6px rgba(0,0,0,0.4)"};
+          cursor: move;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: white;
+          font-weight: bold;
+          font-size: ${size - 8}px;
+          font-family: sans-serif;
+          animation: pulse-relocate 1.6s ease-in-out infinite;
+        ">!</div>`;
+      } else if (isRelocating) {
+        size = 20;
+        html = `<div style="
+          background-color: ${color};
+          width: 20px;
+          height: 20px;
+          border-radius: 50%;
+          border: 3px solid #3b82f6;
+          box-shadow: 0 0 12px rgba(59, 130, 246, 0.8);
+          opacity: 0.9;
+          cursor: move;
+          animation: pulse-relocate 1s ease-in-out infinite;
+        "></div>`;
+      } else if (isSelected) {
+        // Destaque de seleção: cor do serviço com anel azul pulsante (só visual, não arrastável)
+        size = 20;
+        html = `<div style="
+          background-color: ${color};
+          width: 20px;
+          height: 20px;
+          border-radius: 50%;
+          border: 3px solid #3b82f6;
+          box-shadow: 0 0 12px rgba(59, 130, 246, 0.8);
+          opacity: 0.95;
+          cursor: pointer;
+          animation: pulse-relocate 1.4s ease-in-out infinite;
+        "></div>`;
+      } else {
+        size = 14;
+        html = `<div style="
+          background-color: ${color};
+          width: 14px;
+          height: 14px;
+          border-radius: 50%;
+          border: 2px solid white;
+          box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+          opacity: 0.9;
+          cursor: pointer;
+        "></div>`;
+      }
+
       const icon = L.divIcon({
         className: "area-marker",
-        html: `<div style="
-          background-color: ${color};
-          width: ${isRelocating ? "20px" : "14px"};
-          height: ${isRelocating ? "20px" : "14px"};
-          border-radius: 50%;
-          border: ${isRelocating ? "3px solid #3b82f6" : "2px solid white"};
-          box-shadow: ${isRelocating ? "0 0 12px rgba(59, 130, 246, 0.8)" : "0 2px 4px rgba(0,0,0,0.3)"};
-          opacity: 0.9;
-          cursor: ${isRelocating ? "move" : "pointer"};
-          ${isRelocating ? "animation: pulse-relocate 1s ease-in-out infinite;" : ""}
-        "></div>`,
-        iconSize: [isRelocating ? 20 : 14, isRelocating ? 20 : 14],
-        iconAnchor: [isRelocating ? 10 : 7, isRelocating ? 10 : 7],
+        html,
+        iconSize: [size, size],
+        iconAnchor: [size / 2, size / 2],
       });
 
       const metragem = local.metragem_unica
@@ -507,14 +581,12 @@ export function DashboardMap({
       const detalhes = `<div class="font-sans text-xs">
         <strong>${local.nome}</strong><br/>
         ${local.complemento ? `<span style="opacity:.75">${local.complemento}</span><br/>` : ""}
+        ${isPendente ? `<span style="color:#d97706;font-weight:600">⚠ Não geolocalizado — arraste para o local correto</span><br/>` : ""}
         ${SECAO_LABELS[local.secao] ?? local.secao}${local.tipo ? ` · ${local.tipo}` : ""}${local.regiao ? ` · ${local.regiao}` : ""}<br/>
         ${metragem ? `Metragem: ${metragem}` : ""}
       </div>`;
 
-      const marker = L.marker([local.lat, local.lng], {
-        icon,
-        draggable: isRelocating,
-      });
+      const marker = L.marker([pos.lat, pos.lng], { icon, draggable });
 
       if (isRelocating) {
         marker.bindTooltip(
@@ -523,21 +595,21 @@ export function DashboardMap({
         );
       } else if (isSelected) {
         marker.bindTooltip(
-          `<div class="search-label">${local.nome}</div>`,
-          { permanent: true, direction: "top", className: "search-tooltip", opacity: 1, offset: [0, -8] }
+          `<div class="search-label">${local.nome}${isPendente ? " — arraste para o local correto" : ""}</div>`,
+          { permanent: true, direction: "top", className: "search-tooltip", opacity: 1, offset: [0, -10] }
         );
       } else {
         marker.bindTooltip(detalhes, { sticky: true, opacity: 0.95 });
       }
 
-      // Clique sempre seleciona (mostra o card) — arrastar é a única forma de mover
+      // Clique seleciona (abre o card); arrastar move (pendentes e modo de ajuste)
       marker.on("click", () => onVarricaoSelect?.(local.id));
 
-      if (isRelocating && onVarricaoPositionChange) {
+      if (draggable && onVarricaoPositionChange) {
         marker.on("dragend", (e) => {
-          const pos = (e.target as L.Marker).getLatLng();
-          if (pos && isFinite(pos.lat) && isFinite(pos.lng)) {
-            onVarricaoPositionChange(local.id, pos.lat, pos.lng);
+          const novaPos = (e.target as L.Marker).getLatLng();
+          if (novaPos && isFinite(novaPos.lat) && isFinite(novaPos.lng)) {
+            onVarricaoPositionChange(local.id, novaPos.lat, novaPos.lng);
           }
         });
       }

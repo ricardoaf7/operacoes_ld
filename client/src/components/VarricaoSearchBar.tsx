@@ -259,7 +259,7 @@ export function VarricaoSearchBar({
           )}
         </div>
         <Badge variant="outline" className="text-xs whitespace-nowrap">
-          {comCoords} / {locais.length} no mapa
+          {comCoords} / {locais.length} confirmados
         </Badge>
       </div>
     </div>
