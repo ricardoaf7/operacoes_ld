@@ -2710,9 +2710,17 @@ export async function registerRoutes(app: Express): Promise<void> {
 
   app.get("/api/varricao/fotos", requireAuth, async (req, res) => {
     try {
-      const data = String(req.query.data ?? new Date().toISOString().split("T")[0]);
-      const conds: string[] = ["f.data_servico = $1"];
-      const vals: any[] = [data];
+      const conds: string[] = [];
+      const vals: any[] = [];
+      if (req.query.dataInicio && req.query.dataFim) {
+        // Período livre (ex.: card do ponto no mapa)
+        vals.push(String(req.query.dataInicio), String(req.query.dataFim));
+        conds.push(`f.data_servico BETWEEN $1 AND $2`);
+      } else {
+        const data = String(req.query.data ?? new Date().toISOString().split("T")[0]);
+        vals.push(data);
+        conds.push(`f.data_servico = $1`);
+      }
       if (req.query.localId) {
         vals.push(parseInt(String(req.query.localId)));
         conds.push(`f.local_id = $${vals.length}`);

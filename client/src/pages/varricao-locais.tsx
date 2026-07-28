@@ -16,6 +16,7 @@ import {
   ChevronLeft, Plus, Pencil, Trash2, Search, MapPin, AlertTriangle,
 } from "lucide-react";
 import { Link } from "wouter";
+import { correspondeBusca } from "@/lib/search-utils";
 
 interface VarricaoLocal {
   id: number;
@@ -90,9 +91,8 @@ export default function VarricaoLocaisPage() {
   const filtrados = locais.filter((l) => {
     if (filtroRegiao && l.regiao !== filtroRegiao) return false;
     if (filtroSecao && l.secao !== filtroSecao) return false;
-    if (busca) {
-      const alvo = `${l.nome} ${l.complemento ?? ""}`.toLowerCase();
-      if (!alvo.includes(busca.toLowerCase())) return false;
+    if (busca && !correspondeBusca(`${l.nome} ${l.complemento ?? ""} ${l.regiao ?? ""}`, busca)) {
+      return false;
     }
     return true;
   });

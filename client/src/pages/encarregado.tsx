@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   Camera, LogOut, MapPin, Search, ChevronLeft, CheckCircle2,
-  Navigation, Loader2, ImageIcon, X,
+  Navigation, Loader2, ImageIcon, X, Clock, UploadCloud,
 } from "lucide-react";
 
 const CONTRATO_LABELS: Record<string, string> = {
@@ -89,6 +89,80 @@ async function comprimirImagem(file: File): Promise<Blob> {
 
 const hojeLocal = () => new Date().toLocaleDateString("en-CA"); // YYYY-MM-DD no fuso do aparelho
 
+// ---------- Fila offline (IndexedDB): fotos guardadas no aparelho até ter internet ----------
+interface FilaItem {
+  id?: number;
+  localId: number;
+  localNome: string;
+  blob: Blob;
+  dataServico: string;
+  lat: number | null;
+  lng: number | null;
+}
+
+function abrirFilaDb(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open("varricao-fila-fotos", 1);
+    req.onupgradeneeded = () => {
+      if (!req.result.objectStoreNames.contains("fotos")) {
+        req.result.createObjectStore("fotos", { keyPath: "id", autoIncrement: true });
+      }
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function filaAdicionar(item: Omit<FilaItem, "id">): Promise<void> {
+  const db = await abrirFilaDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction("fotos", "readwrite");
+    tx.objectStore("fotos").add(item);
+    tx.oncomplete = () => { db.close(); resolve(); };
+    tx.onerror = () => { db.close(); reject(tx.error); };
+  });
+}
+
+async function filaListar(): Promise<FilaItem[]> {
+  const db = await abrirFilaDb();
+  return new Promise((resolve, reject) => {
+    const req = db.transaction("fotos", "readonly").objectStore("fotos").getAll();
+    req.onsuccess = () => { db.close(); resolve(req.result as FilaItem[]); };
+    req.onerror = () => { db.close(); reject(req.error); };
+  });
+}
+
+async function filaRemover(id: number): Promise<void> {
+  const db = await abrirFilaDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction("fotos", "readwrite");
+    tx.objectStore("fotos").delete(id);
+    tx.oncomplete = () => { db.close(); resolve(); };
+    tx.onerror = () => { db.close(); reject(tx.error); };
+  });
+}
+
+async function uploadFotoVarricao(item: Omit<FilaItem, "id">): Promise<void> {
+  const form = new FormData();
+  form.append("photo", item.blob, "foto.jpg");
+  form.append("localId", String(item.localId));
+  form.append("dataServico", item.dataServico);
+  if (item.lat != null && item.lng != null) {
+    form.append("lat", String(item.lat));
+    form.append("lng", String(item.lng));
+  }
+  const res = await fetch("/api/varricao/fotos", {
+    method: "POST",
+    body: form,
+    credentials: "include",
+  });
+  if (!res.ok) throw new Error((await res.json()).error ?? "Erro ao enviar");
+}
+
+function erroDeRede(e: unknown): boolean {
+  return !navigator.onLine || e instanceof TypeError || /fetch|network/i.test(String((e as Error)?.message));
+}
+
 export default function EncarregadoPage() {
   const { user, logout } = useAuth();
   const { toast } = useToast();
@@ -158,34 +232,89 @@ export default function EncarregadoPage() {
     return comDist;
   }, [locais, busca, gps]);
 
-  const enviarMutation = useMutation({
-    mutationFn: async () => {
-      if (!preview || !localSelecionado) throw new Error("Sem foto");
-      const form = new FormData();
-      form.append("photo", preview.blob, "foto.jpg");
-      form.append("localId", String(localSelecionado.id));
-      form.append("dataServico", hojeLocal());
-      if (gps) {
-        form.append("lat", String(gps.lat));
-        form.append("lng", String(gps.lng));
-      }
-      const res = await fetch("/api/varricao/fotos", {
-        method: "POST",
-        body: form,
-        credentials: "include",
-      });
-      if (!res.ok) throw new Error((await res.json()).error ?? "Erro ao enviar");
-      return res.json();
-    },
-    onSuccess: () => {
-      toast({ title: "Foto enviada!", description: localSelecionado?.nome });
+  // Fila offline
+  const [fila, setFila] = useState<FilaItem[]>([]);
+  const [enviando, setEnviando] = useState(false);
+  const [enviandoFila, setEnviandoFila] = useState(false);
+
+  async function recarregarFila() {
+    try { setFila(await filaListar()); } catch { /* IndexedDB indisponível */ }
+  }
+  useEffect(() => { recarregarFila(); }, []);
+
+  function itemDaFoto(): Omit<FilaItem, "id"> {
+    return {
+      localId: localSelecionado!.id,
+      localNome: localSelecionado!.nome,
+      blob: preview!.blob,
+      dataServico: hojeLocal(),
+      lat: gps?.lat ?? null,
+      lng: gps?.lng ?? null,
+    };
+  }
+
+  async function enviarAgora() {
+    if (!preview || !localSelecionado) return;
+    setEnviando(true);
+    const item = itemDaFoto();
+    try {
+      await uploadFotoVarricao(item);
+      toast({ title: "Foto enviada!", description: localSelecionado.nome });
       queryClient.invalidateQueries({ queryKey: ["/api/varricao/fotos"] });
-      if (preview) URL.revokeObjectURL(preview.url);
+      URL.revokeObjectURL(preview.url);
       setPreview(null);
-    },
-    onError: (e: Error) =>
-      toast({ variant: "destructive", title: "Erro ao enviar", description: e.message }),
-  });
+    } catch (e) {
+      if (erroDeRede(e)) {
+        // Sem internet: guarda no aparelho para enviar depois
+        await filaAdicionar(item);
+        await recarregarFila();
+        toast({
+          title: "Sem internet — foto guardada",
+          description: "Ela será enviada quando você tocar em Enviar Todas.",
+        });
+        URL.revokeObjectURL(preview.url);
+        setPreview(null);
+      } else {
+        toast({ variant: "destructive", title: "Erro ao enviar", description: (e as Error).message });
+      }
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  async function guardarParaDepois() {
+    if (!preview || !localSelecionado) return;
+    await filaAdicionar(itemDaFoto());
+    await recarregarFila();
+    toast({ title: "Foto guardada no aparelho", description: "Envie depois pelo botão Enviar Todas." });
+    URL.revokeObjectURL(preview.url);
+    setPreview(null);
+  }
+
+  async function enviarFilaCompleta() {
+    setEnviandoFila(true);
+    let ok = 0, falhas = 0;
+    for (const item of fila) {
+      try {
+        await uploadFotoVarricao(item);
+        if (item.id != null) await filaRemover(item.id);
+        ok++;
+      } catch (e) {
+        falhas++;
+        if (erroDeRede(e)) break; // continua sem internet, para de tentar
+      }
+    }
+    await recarregarFila();
+    queryClient.invalidateQueries({ queryKey: ["/api/varricao/fotos"] });
+    if (ok > 0 && falhas === 0) {
+      toast({ title: `${ok} foto${ok > 1 ? "s" : ""} enviada${ok > 1 ? "s" : ""}!` });
+    } else if (ok > 0) {
+      toast({ title: `${ok} enviada(s), ${falhas} pendente(s)`, description: "Tente novamente quando tiver internet." });
+    } else {
+      toast({ variant: "destructive", title: "Não foi possível enviar", description: "Verifique a internet e tente de novo." });
+    }
+    setEnviandoFila(false);
+  }
 
   async function handleArquivoSelecionado(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -233,18 +362,23 @@ export default function EncarregadoPage() {
               </div>
               <Button
                 className="h-14 text-base bg-emerald-600 hover:bg-emerald-700"
-                disabled={enviarMutation.isPending}
-                onClick={() => enviarMutation.mutate()}
+                disabled={enviando}
+                onClick={enviarAgora}
               >
-                {enviarMutation.isPending ? (
+                {enviando ? (
                   <><Loader2 className="h-5 w-5 mr-2 animate-spin" /> Enviando...</>
                 ) : (
-                  <><CheckCircle2 className="h-5 w-5 mr-2" /> Enviar Foto</>
+                  <><CheckCircle2 className="h-5 w-5 mr-2" /> Enviar Agora</>
                 )}
               </Button>
-              <Button variant="outline" className="h-11" onClick={() => fileInputRef.current?.click()}>
-                <Camera className="h-4 w-4 mr-2" /> Tirar outra
-              </Button>
+              <div className="grid grid-cols-2 gap-2">
+                <Button variant="outline" className="h-11" disabled={enviando} onClick={guardarParaDepois}>
+                  <Clock className="h-4 w-4 mr-2" /> Enviar depois
+                </Button>
+                <Button variant="outline" className="h-11" disabled={enviando} onClick={() => fileInputRef.current?.click()}>
+                  <Camera className="h-4 w-4 mr-2" /> Tirar outra
+                </Button>
+              </div>
             </>
           ) : (
             <button
@@ -325,6 +459,28 @@ export default function EncarregadoPage() {
           <span className="ml-auto text-[11px] text-amber-600">GPS desligado</span>
         )}
       </div>
+
+      {/* Fotos aguardando envio (guardadas no aparelho) */}
+      {fila.length > 0 && (
+        <div className="px-4 py-2.5 bg-amber-50 dark:bg-amber-950 border-b border-amber-200 dark:border-amber-800 flex items-center gap-2">
+          <Clock className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
+          <p className="text-sm text-amber-800 dark:text-amber-300 flex-1">
+            <b>{fila.length}</b> foto{fila.length > 1 ? "s" : ""} aguardando envio
+          </p>
+          <Button
+            size="sm"
+            className="h-8 bg-amber-600 hover:bg-amber-700 text-white"
+            disabled={enviandoFila}
+            onClick={enviarFilaCompleta}
+          >
+            {enviandoFila ? (
+              <><Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" /> Enviando...</>
+            ) : (
+              <><UploadCloud className="h-3.5 w-3.5 mr-1.5" /> Enviar Todas</>
+            )}
+          </Button>
+        </div>
+      )}
 
       {/* Busca */}
       <div className="p-3 border-b border-border">

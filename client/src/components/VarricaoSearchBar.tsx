@@ -6,10 +6,10 @@ import { Badge } from "@/components/ui/badge";
 import { useQuery } from "@tanstack/react-query";
 import {
   highlightMatch,
-  removeAccents,
   simplifyDisplayName,
   type GeocodedResult,
 } from "./MapHeaderBar";
+import { correspondeBusca } from "@/lib/search-utils";
 import type { VarricaoLocalMapa } from "./DashboardMap";
 
 interface VarricaoSearchBarProps {
@@ -36,15 +36,12 @@ export function VarricaoSearchBar({
   const dropdownRef = useRef<HTMLDivElement>(null);
   const geocodeTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Busca nos locais cadastrados (nome + complemento + região, sem acentos)
-  const query = removeAccents(localValue.trim().toLowerCase());
+  // Busca nos locais cadastrados — tolerante a acentos, pontuação e ordem
+  const query = localValue.trim();
   const suggestions = query.length > 0
-    ? locais.filter((l) => {
-        const alvo = removeAccents(
-          `${l.nome} ${l.complemento ?? ""} ${l.regiao ?? ""}`.toLowerCase()
-        );
-        return alvo.includes(query);
-      }).slice(0, 6)
+    ? locais.filter((l) =>
+        correspondeBusca(`${l.nome} ${l.complemento ?? ""} ${l.regiao ?? ""}`, query)
+      ).slice(0, 6)
     : [];
 
   // Busca de qualquer endereço no OpenStreetMap (com atraso para não sobrecarregar)
