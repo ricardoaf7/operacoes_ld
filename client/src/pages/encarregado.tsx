@@ -9,6 +9,7 @@ import {
   Camera, LogOut, MapPin, Search, ChevronLeft, CheckCircle2,
   Navigation, Loader2, ImageIcon, X, Clock, UploadCloud,
 } from "lucide-react";
+import { rankearBusca } from "@/lib/search-utils";
 
 const CONTRATO_LABELS: Record<string, string> = {
   rocagem_lote1: "Capina e Roçagem — Lote 1",
@@ -67,12 +68,10 @@ function programadoHoje(l: VarricaoLocal): boolean {
   return (l.dias_semana ?? []).includes(dia);
 }
 
-function removeAccents(str: string): string {
-  return str.normalize("NFD").replace(/[̀-ͯ]/g, "");
-}
-
-// Reduz a foto para no máx. 1600px e JPEG 80% — economiza dados móveis do encarregado
-async function comprimirImagem(file: File): Promise<Blob> {
+// Reduz a foto para no máx. 1600px e JPEG 80% — economiza dados móveis do encarregado.
+// A marca d'água (local, GPS, data/hora) é gravada na própria imagem para valer
+// como registro perante fiscalização.
+async function comprimirImagem(file: File, marcaDagua: string[]): Promise<Blob> {
   const bitmap = await createImageBitmap(file);
   const maxDim = 1600;
   const scale = Math.min(1, maxDim / Math.max(bitmap.width, bitmap.height));
@@ -81,7 +80,31 @@ async function comprimirImagem(file: File): Promise<Blob> {
   const canvas = document.createElement("canvas");
   canvas.width = w;
   canvas.height = h;
-  canvas.getContext("2d")!.drawImage(bitmap, 0, 0, w, h);
+  const ctx = canvas.getContext("2d")!;
+  ctx.drawImage(bitmap, 0, 0, w, h);
+
+  if (marcaDagua.length > 0) {
+    const fontSize = Math.max(14, Math.round(w / 42));
+    const pad = Math.round(fontSize * 0.6);
+    const lineH = Math.round(fontSize * 1.35);
+    const boxH = pad * 2 + lineH * marcaDagua.length;
+
+    ctx.fillStyle = "rgba(0, 0, 0, 0.55)";
+    ctx.fillRect(0, h - boxH, w, boxH);
+
+    ctx.fillStyle = "#ffffff";
+    ctx.font = `bold ${fontSize}px sans-serif`;
+    ctx.textBaseline = "top";
+    marcaDagua.forEach((linha, i) => {
+      // Corta a linha se for mais larga que a foto
+      let texto = linha;
+      while (ctx.measureText(texto).width > w - pad * 2 && texto.length > 4) {
+        texto = texto.slice(0, -5) + "…";
+      }
+      ctx.fillText(texto, pad, h - boxH + pad + i * lineH);
+    });
+  }
+
   return new Promise((resolve) =>
     canvas.toBlob((b) => resolve(b ?? file), "image/jpeg", 0.8)
   );
@@ -205,13 +228,12 @@ export default function EncarregadoPage() {
     return m;
   }, [fotosHoje]);
 
-  // Ordenação: programados para hoje primeiro, depois por distância do GPS
+  // Ordenação: buscando → relevância (nome primeiro); sem busca → programados
+  // para hoje primeiro, depois por distância do GPS
   const listaOrdenada = useMemo(() => {
-    const q = removeAccents(busca.trim().toLowerCase());
+    const q = busca.trim();
     const filtrados = q
-      ? locais.filter((l) =>
-          removeAccents(`${l.nome} ${l.complemento ?? ""} ${l.regiao ?? ""}`.toLowerCase()).includes(q)
-        )
+      ? rankearBusca(locais, q, (l) => l.nome, (l) => `${l.complemento ?? ""} ${l.regiao ?? ""}`)
       : locais;
 
     const comDist = filtrados.map((l) => ({
@@ -221,6 +243,9 @@ export default function EncarregadoPage() {
         ? distanciaMetros(gps.lat, gps.lng, l.lat, l.lng)
         : null,
     }));
+
+    // Com busca ativa, mantém a ordem de relevância do rankeamento
+    if (q) return comDist;
 
     comDist.sort((a, b) => {
       if (a.hoje !== b.hoje) return a.hoje ? -1 : 1;
@@ -319,8 +344,14 @@ export default function EncarregadoPage() {
   async function handleArquivoSelecionado(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     e.target.value = "";
-    if (!file) return;
-    const blob = await comprimirImagem(file);
+    if (!file || !localSelecionado) return;
+    const agora = new Date();
+    const linhas = [
+      localSelecionado.nome + (localSelecionado.complemento ? ` (${localSelecionado.complemento})` : ""),
+      `${agora.toLocaleDateString("pt-BR")} ${agora.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}` +
+        (gps ? `  ·  GPS ${gps.lat.toFixed(6)}, ${gps.lng.toFixed(6)}` : "  ·  GPS indisponível"),
+    ];
+    const blob = await comprimirImagem(file, linhas);
     setPreview({ url: URL.createObjectURL(blob), blob });
   }
 

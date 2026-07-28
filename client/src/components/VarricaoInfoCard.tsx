@@ -1,12 +1,24 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
-import { X, MapPin, Ruler, Move, CheckCircle2, AlertTriangle, ImageIcon } from "lucide-react";
+import { createPortal } from "react-dom";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/use-auth";
+import { X, MapPin, Ruler, Move, CheckCircle2, AlertTriangle, ImageIcon, Trash2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Input } from "@/components/ui/input";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import type { VarricaoLocalMapa } from "./DashboardMap";
 
 const SECAO_LABELS: Record<string, string> = {
@@ -46,10 +58,14 @@ function formatDataBR(iso: string): string {
 }
 
 export function VarricaoInfoCard({ local, onClose, onAdjustPosition, isRelocating }: VarricaoInfoCardProps) {
+  const { toast } = useToast();
+  const { user } = useAuth();
+  const podeExcluir = user?.role === "admin" || user?.role === "gestor" || user?.role === "fiscal";
   const hasCoords = local.lat != null && local.lng != null;
   // Padrão: últimas duas semanas
   const [inicio, setInicio] = useState(() => dataLocalISO(13));
   const [fim, setFim] = useState(() => dataLocalISO(0));
+  const [fotoParaExcluir, setFotoParaExcluir] = useState<FotoLocal | null>(null);
 
   const { data: fotos = [], isLoading: carregandoFotos } = useQuery<FotoLocal[]>({
     queryKey: ["/api/varricao/fotos", "local", local.id, inicio, fim],
@@ -58,6 +74,20 @@ export function VarricaoInfoCard({ local, onClose, onAdjustPosition, isRelocatin
         "GET",
         `/api/varricao/fotos?localId=${local.id}&dataInicio=${inicio}&dataFim=${fim}`
       )).json(),
+  });
+
+  const excluirMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await apiRequest("DELETE", `/api/varricao/fotos/${id}`);
+      if (!res.ok) throw new Error((await res.json()).error);
+    },
+    onSuccess: () => {
+      toast({ title: "Foto excluída" });
+      queryClient.invalidateQueries({ queryKey: ["/api/varricao/fotos"] });
+      setFotoParaExcluir(null);
+    },
+    onError: (e: Error) =>
+      toast({ variant: "destructive", title: "Erro ao excluir", description: e.message }),
   });
 
   const metragem = local.metragem_unica
@@ -158,24 +188,34 @@ export function VarricaoInfoCard({ local, onClose, onAdjustPosition, isRelocatin
           ) : (
             <div className="grid grid-cols-3 gap-1.5">
               {fotos.map((f) => (
-                <a
-                  key={f.id}
-                  href={f.url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="block group relative"
-                  title={`${formatDataBR(f.data_servico)}${f.enviado_por_nome ? ` — ${f.enviado_por_nome}` : ""}`}
-                >
-                  <img
-                    src={f.url}
-                    alt={`Foto de ${formatDataBR(f.data_servico)}`}
-                    className="aspect-square object-cover rounded-md border border-border group-hover:opacity-85 transition-opacity"
-                    loading="lazy"
-                  />
-                  <span className="absolute bottom-0.5 right-0.5 bg-black/65 text-white text-[9px] px-1 rounded">
-                    {formatDataBR(f.data_servico).slice(0, 5)}
-                  </span>
-                </a>
+                <div key={f.id} className="relative group">
+                  <a
+                    href={f.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="block"
+                    title={`${formatDataBR(f.data_servico)}${f.enviado_por_nome ? ` — ${f.enviado_por_nome}` : ""}`}
+                  >
+                    <img
+                      src={f.url}
+                      alt={`Foto de ${formatDataBR(f.data_servico)}`}
+                      className="aspect-square object-cover rounded-md border border-border group-hover:opacity-85 transition-opacity"
+                      loading="lazy"
+                    />
+                    <span className="absolute bottom-0.5 right-0.5 bg-black/65 text-white text-[9px] px-1 rounded">
+                      {formatDataBR(f.data_servico).slice(0, 5)}
+                    </span>
+                  </a>
+                  {podeExcluir && (
+                    <button
+                      className="absolute top-0.5 right-0.5 bg-black/60 hover:bg-red-600 text-white rounded p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                      title="Excluir foto"
+                      onClick={() => setFotoParaExcluir(f)}
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </button>
+                  )}
+                </div>
               ))}
             </div>
           )}
@@ -206,6 +246,32 @@ export function VarricaoInfoCard({ local, onClose, onAdjustPosition, isRelocatin
           </Button>
         )}
       </CardContent>
+
+      {createPortal(
+        <AlertDialog open={!!fotoParaExcluir} onOpenChange={(v) => !v && setFotoParaExcluir(null)}>
+          <AlertDialogContent className="z-[9999]">
+            <AlertDialogHeader>
+              <AlertDialogTitle>Excluir foto?</AlertDialogTitle>
+              <AlertDialogDescription>
+                A foto de {fotoParaExcluir ? formatDataBR(fotoParaExcluir.data_servico) : ""}
+                {fotoParaExcluir?.enviado_por_nome ? ` enviada por ${fotoParaExcluir.enviado_por_nome}` : ""} será
+                removida permanentemente. Essa ação não pode ser desfeita.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <div className="flex gap-2 justify-end">
+              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+              <AlertDialogAction
+                className="bg-red-600 hover:bg-red-700"
+                disabled={excluirMutation.isPending}
+                onClick={() => fotoParaExcluir && excluirMutation.mutate(fotoParaExcluir.id)}
+              >
+                {excluirMutation.isPending ? "Excluindo..." : "Excluir"}
+              </AlertDialogAction>
+            </div>
+          </AlertDialogContent>
+        </AlertDialog>,
+        document.body
+      )}
     </Card>
   );
 }

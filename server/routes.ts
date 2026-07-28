@@ -2708,6 +2708,31 @@ export async function registerRoutes(app: Express): Promise<void> {
     }
   });
 
+  // Excluir foto: apenas fiscalização (encarregado não apaga registro enviado)
+  app.delete("/api/varricao/fotos/:id", requireRole("admin", "gestor", "fiscal"), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const pool = getPool();
+      const { rows } = await pool.query("SELECT url FROM varricao_fotos WHERE id=$1", [id]);
+      if (!rows.length) return res.status(404).json({ error: "Foto não encontrada" });
+
+      // Remove o arquivo do Supabase Storage
+      const marker = `/storage/v1/object/public/fotos/`;
+      const idx = rows[0].url.indexOf(marker);
+      if (idx >= 0) {
+        const filePath = decodeURIComponent(rows[0].url.slice(idx + marker.length));
+        const supabase = getSupabase();
+        await supabase.storage.from("fotos").remove([filePath]);
+      }
+
+      await pool.query("DELETE FROM varricao_fotos WHERE id=$1", [id]);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Erro ao excluir foto de varrição:", error);
+      res.status(500).json({ error: "Erro ao excluir a foto" });
+    }
+  });
+
   app.get("/api/varricao/fotos", requireAuth, async (req, res) => {
     try {
       const conds: string[] = [];

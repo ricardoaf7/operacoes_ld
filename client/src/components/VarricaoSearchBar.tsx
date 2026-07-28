@@ -9,7 +9,7 @@ import {
   simplifyDisplayName,
   type GeocodedResult,
 } from "./MapHeaderBar";
-import { correspondeBusca } from "@/lib/search-utils";
+import { rankearBusca } from "@/lib/search-utils";
 import type { VarricaoLocalMapa } from "./DashboardMap";
 
 interface VarricaoSearchBarProps {
@@ -36,12 +36,17 @@ export function VarricaoSearchBar({
   const dropdownRef = useRef<HTMLDivElement>(null);
   const geocodeTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Busca nos locais cadastrados — tolerante a acentos, pontuação e ordem
+  // Busca nos locais cadastrados — tolerante a acentos/pontuação e ordenada
+  // por relevância (nome primeiro, depois complemento/região)
   const query = localValue.trim();
   const suggestions = query.length > 0
-    ? locais.filter((l) =>
-        correspondeBusca(`${l.nome} ${l.complemento ?? ""} ${l.regiao ?? ""}`, query)
-      ).slice(0, 6)
+    ? rankearBusca(
+        locais,
+        query,
+        (l) => l.nome,
+        (l) => `${l.complemento ?? ""} ${l.regiao ?? ""}`,
+        8
+      )
     : [];
 
   // Busca de qualquer endereço no OpenStreetMap (com atraso para não sobrecarregar)
