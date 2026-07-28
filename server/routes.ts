@@ -291,6 +291,29 @@ async function ensureVarricaoLocaisTable() {
   }
 }
 
+async function ensureVarricaoFotosTable() {
+  try {
+    const pool = getPool();
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS varricao_fotos (
+        id SERIAL PRIMARY KEY,
+        local_id INTEGER NOT NULL REFERENCES varricao_locais(id) ON DELETE CASCADE,
+        url TEXT NOT NULL,
+        data_servico DATE NOT NULL,
+        lat DOUBLE PRECISION,
+        lng DOUBLE PRECISION,
+        enviado_por_id INTEGER,
+        enviado_por_nome VARCHAR(150),
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_varricao_fotos_data ON varricao_fotos (data_servico);
+      CREATE INDEX IF NOT EXISTS idx_varricao_fotos_local ON varricao_fotos (local_id);
+    `);
+  } catch (e) {
+    console.warn("varricao_fotos table check:", e);
+  }
+}
+
 // Função para converter ServiceArea[] para CSV compatível com Supabase
 function convertToSupabaseCSV(areas: ServiceArea[]): string {
   if (areas.length === 0) {
@@ -422,6 +445,7 @@ export async function registerRoutes(app: Express): Promise<void> {
   await ensureSolicitantesTable();
   await ensureContratoConfigTable();
   await ensureVarricaoLocaisTable();
+  await ensureVarricaoFotosTable();
 
   // Middleware: encarregado (terceirizada) só acessa o universo do contrato dele
   app.use((req, res, next) => {
@@ -2638,6 +2662,77 @@ export async function registerRoutes(app: Express): Promise<void> {
       res.json({ success: true });
     } catch (error) {
       res.status(500).json({ error: "Erro ao excluir local" });
+    }
+  });
+
+  // ===================== VARRIÇÃO — FOTOS =====================
+
+  app.post("/api/varricao/fotos", requireAuth, upload.single("photo"), async (req, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ error: "Nenhuma foto enviada" });
+      const localId = parseInt(req.body.localId);
+      if (!localId) return res.status(400).json({ error: "Local é obrigatório" });
+
+      const dataServico = req.body.dataServico || new Date().toISOString().split("T")[0];
+      const lat = req.body.lat ? parseFloat(req.body.lat) : null;
+      const lng = req.body.lng ? parseFloat(req.body.lng) : null;
+
+      const pool = getPool();
+      const { rows: locais } = await pool.query(
+        "SELECT id FROM varricao_locais WHERE id=$1", [localId]
+      );
+      if (!locais.length) return res.status(404).json({ error: "Local não encontrado" });
+
+      const ext = (req.file.originalname.split(".").pop() || "jpg").toLowerCase();
+      const filePath = `varricao/${localId}/${Date.now()}.${ext}`;
+
+      const supabase = getSupabase();
+      const { error: uploadError } = await supabase.storage
+        .from("fotos")
+        .upload(filePath, req.file.buffer, { contentType: req.file.mimetype, upsert: false });
+      if (uploadError) {
+        console.error("Supabase upload error (varricao):", uploadError);
+        return res.status(500).json({ error: uploadError.message });
+      }
+      const { data: { publicUrl } } = supabase.storage.from("fotos").getPublicUrl(filePath);
+
+      const { rows } = await pool.query(
+        `INSERT INTO varricao_fotos (local_id, url, data_servico, lat, lng, enviado_por_id, enviado_por_nome)
+         VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+        [localId, publicUrl, dataServico, lat, lng, req.session.userId ?? null, req.session.userName ?? null]
+      );
+      res.status(201).json(rows[0]);
+    } catch (error) {
+      console.error("Erro no upload de foto de varrição:", error);
+      res.status(500).json({ error: "Erro ao enviar a foto" });
+    }
+  });
+
+  app.get("/api/varricao/fotos", requireAuth, async (req, res) => {
+    try {
+      const data = String(req.query.data ?? new Date().toISOString().split("T")[0]);
+      const conds: string[] = ["f.data_servico = $1"];
+      const vals: any[] = [data];
+      if (req.query.localId) {
+        vals.push(parseInt(String(req.query.localId)));
+        conds.push(`f.local_id = $${vals.length}`);
+      }
+      if (req.query.minhas === "1") {
+        vals.push(req.session.userId);
+        conds.push(`f.enviado_por_id = $${vals.length}`);
+      }
+      const pool = getPool();
+      const { rows } = await pool.query(
+        `SELECT f.*, l.nome AS local_nome, l.complemento AS local_complemento, l.regiao AS local_regiao
+         FROM varricao_fotos f
+         JOIN varricao_locais l ON l.id = f.local_id
+         WHERE ${conds.join(" AND ")}
+         ORDER BY f.created_at DESC`,
+        vals
+      );
+      res.json(rows);
+    } catch (error) {
+      res.status(500).json({ error: "Erro ao buscar fotos" });
     }
   });
 
