@@ -156,6 +156,17 @@ async function ensureUsersSetorColumn() {
   }
 }
 
+async function ensureUsersContratoColumn() {
+  try {
+    const pool = getPool();
+    await pool.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS contrato VARCHAR(50)
+    `);
+  } catch (e) {
+    console.warn("users.contrato column check:", e);
+  }
+}
+
 async function ensureSetoresTable() {
   try {
     const pool = getPool();
@@ -405,19 +416,33 @@ export async function registerRoutes(app: Express): Promise<void> {
   await ensureNotificacoesTable();
   await ensureSetoresTable();
   await ensureUsersSetorColumn();
+  await ensureUsersContratoColumn();
   await ensureSolicitantesTable();
   await ensureContratoConfigTable();
   await ensureVarricaoLocaisTable();
 
-  // Middleware: encarregado (terceirizada) só acessa login e o fluxo de fotos da varrição
+  // Middleware: encarregado (terceirizada) só acessa o universo do contrato dele
   app.use((req, res, next) => {
     if (req.session?.userRole === "encarregado" && req.path.startsWith("/api/")) {
-      const permitido =
-        req.path.startsWith("/api/auth/") ||
-        (req.path === "/api/varricao/locais" && req.method === "GET") ||
-        req.path.startsWith("/api/varricao/fotos");
+      const contrato = req.session.userContrato || "";
+      let permitido = req.path.startsWith("/api/auth/");
+
+      if (!permitido && contrato === "varricao") {
+        // Varrição: locais (leitura) + fluxo de fotos
+        permitido =
+          (req.path === "/api/varricao/locais" && req.method === "GET") ||
+          req.path.startsWith("/api/varricao/fotos");
+      }
+
+      if (!permitido && contrato.startsWith("rocagem")) {
+        // Roçagem: áreas e OS do contrato (leitura) + envio de fotos das áreas
+        permitido =
+          (req.method === "GET" && (req.path.startsWith("/api/areas") || req.path.startsWith("/api/ordens"))) ||
+          (req.method === "POST" && /^\/api\/areas\/\d+\/photos$/.test(req.path));
+      }
+
       if (!permitido) {
-        return res.status(403).json({ error: "Acesso restrito ao envio de fotos" });
+        return res.status(403).json({ error: "Acesso restrito ao contrato do encarregado" });
       }
     }
     next();
@@ -466,12 +491,14 @@ export async function registerRoutes(app: Express): Promise<void> {
       req.session.userId = user.id;
       req.session.userRole = user.role;
       req.session.userName = user.nome;
+      req.session.userContrato = user.contrato ?? undefined;
 
       res.json({
         id: user.id,
         nome: user.nome,
         email: user.email,
         role: user.role,
+        contrato: user.contrato ?? null,
       });
     } catch (error) {
       console.error("Login error:", error);
@@ -503,6 +530,7 @@ export async function registerRoutes(app: Express): Promise<void> {
       nome: user.nome,
       email: user.email,
       role: user.role,
+      contrato: user.contrato ?? null,
     });
   });
 
@@ -562,14 +590,14 @@ export async function registerRoutes(app: Express): Promise<void> {
     try {
       const pool = getPool();
       const { rows } = await pool.query(`
-        SELECT u.id, u.nome, u.email, u.role, u.ativo, u.setor_id,
+        SELECT u.id, u.nome, u.email, u.role, u.contrato, u.ativo, u.setor_id,
                s.nome AS setor_nome
         FROM users u
         LEFT JOIN setores s ON s.id = u.setor_id
         ORDER BY u.nome
       `);
       res.json(rows.map(u => ({
-        id: u.id, nome: u.nome, email: u.email, role: u.role, ativo: u.ativo,
+        id: u.id, nome: u.nome, email: u.email, role: u.role, contrato: u.contrato, ativo: u.ativo,
         setorId: u.setor_id, setorNome: u.setor_nome,
       })));
     } catch (error) {
@@ -579,9 +607,12 @@ export async function registerRoutes(app: Express): Promise<void> {
 
   app.post("/api/users", requireRole("admin"), async (req, res) => {
     try {
-      const { nome, email, senha, role, setorId } = req.body;
+      const { nome, email, senha, role, setorId, contrato } = req.body;
       if (!nome || !email || !senha || !role) {
         return res.status(400).json({ error: "Todos os campos são obrigatórios" });
+      }
+      if (role === "encarregado" && !contrato) {
+        return res.status(400).json({ error: "Informe o contrato do encarregado" });
       }
 
       const existing = await storage.getUserByEmail(email);
@@ -592,12 +623,12 @@ export async function registerRoutes(app: Express): Promise<void> {
       const hashedPassword = await bcrypt.hash(senha, 10);
       const pool = getPool();
       const { rows } = await pool.query(
-        `INSERT INTO users (nome, email, senha, role, ativo, setor_id)
-         VALUES ($1,$2,$3,$4,true,$5) RETURNING id, nome, email, role, ativo, setor_id`,
-        [nome, email, hashedPassword, role, setorId ?? null]
+        `INSERT INTO users (nome, email, senha, role, ativo, setor_id, contrato)
+         VALUES ($1,$2,$3,$4,true,$5,$6) RETURNING id, nome, email, role, contrato, ativo, setor_id`,
+        [nome, email, hashedPassword, role, setorId ?? null, role === "encarregado" ? contrato : null]
       );
       const u = rows[0];
-      res.json({ id: u.id, nome: u.nome, email: u.email, role: u.role, ativo: u.ativo, setorId: u.setor_id });
+      res.json({ id: u.id, nome: u.nome, email: u.email, role: u.role, contrato: u.contrato, ativo: u.ativo, setorId: u.setor_id });
     } catch (error) {
       res.status(500).json({ error: "Erro ao criar usuário" });
     }
@@ -606,29 +637,30 @@ export async function registerRoutes(app: Express): Promise<void> {
   app.patch("/api/users/:id", requireRole("admin"), async (req, res) => {
     try {
       const id = parseInt(req.params.id);
-      const { nome, email, senha, role, ativo, setorId } = req.body;
+      const { nome, email, senha, role, ativo, setorId, contrato } = req.body;
 
       const sets: string[] = [];
       const vals: any[] = [];
       let i = 1;
-      if (nome !== undefined)    { sets.push(`nome=$${i++}`);     vals.push(nome); }
-      if (email !== undefined)   { sets.push(`email=$${i++}`);    vals.push(email); }
-      if (role !== undefined)    { sets.push(`role=$${i++}`);     vals.push(role); }
-      if (ativo !== undefined)   { sets.push(`ativo=$${i++}`);    vals.push(ativo); }
-      if (setorId !== undefined) { sets.push(`setor_id=$${i++}`); vals.push(setorId ?? null); }
-      if (senha)                 { sets.push(`senha=$${i++}`);    vals.push(await bcrypt.hash(senha, 10)); }
+      if (nome !== undefined)     { sets.push(`nome=$${i++}`);     vals.push(nome); }
+      if (email !== undefined)    { sets.push(`email=$${i++}`);    vals.push(email); }
+      if (role !== undefined)     { sets.push(`role=$${i++}`);     vals.push(role); }
+      if (ativo !== undefined)    { sets.push(`ativo=$${i++}`);    vals.push(ativo); }
+      if (setorId !== undefined)  { sets.push(`setor_id=$${i++}`); vals.push(setorId ?? null); }
+      if (contrato !== undefined) { sets.push(`contrato=$${i++}`); vals.push(contrato ?? null); }
+      if (senha)                  { sets.push(`senha=$${i++}`);    vals.push(await bcrypt.hash(senha, 10)); }
 
       if (!sets.length) return res.status(400).json({ error: "Nenhum campo para atualizar" });
 
       vals.push(id);
       const pool = getPool();
       const { rows } = await pool.query(
-        `UPDATE users SET ${sets.join(", ")}, updated_at=NOW() WHERE id=$${i} RETURNING id, nome, email, role, ativo, setor_id`,
+        `UPDATE users SET ${sets.join(", ")}, updated_at=NOW() WHERE id=$${i} RETURNING id, nome, email, role, contrato, ativo, setor_id`,
         vals
       );
       if (!rows.length) return res.status(404).json({ error: "Usuário não encontrado" });
       const u = rows[0];
-      res.json({ id: u.id, nome: u.nome, email: u.email, role: u.role, ativo: u.ativo, setorId: u.setor_id });
+      res.json({ id: u.id, nome: u.nome, email: u.email, role: u.role, contrato: u.contrato, ativo: u.ativo, setorId: u.setor_id });
     } catch (error) {
       res.status(500).json({ error: "Erro ao atualizar usuário" });
     }

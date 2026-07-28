@@ -164,6 +164,7 @@ export const users = pgTable("users", {
   email: text("email").notNull(),
   senha: text("senha").notNull(),
   role: text("role").notNull().default("fiscal"),
+  contrato: text("contrato"),
   ativo: boolean("ativo").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -175,6 +176,7 @@ export const userSchema = z.object({
   email: z.string().email(),
   senha: z.string(),
   role: z.enum(["admin", "gestor", "fiscal", "encarregado", "demo"]),
+  contrato: z.string().nullable().optional(),
   ativo: z.boolean().default(true),
 });
 

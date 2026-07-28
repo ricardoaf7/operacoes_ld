@@ -2,8 +2,15 @@ import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { Camera, LogOut } from "lucide-react";
 
+const CONTRATO_LABELS: Record<string, string> = {
+  rocagem_lote1: "Capina e Roçagem — Lote 1",
+  rocagem_lote2: "Capina e Roçagem — Lote 2",
+  varricao: "Varrição e Lavação",
+};
+
 export default function EncarregadoPage() {
   const { user, logout } = useAuth();
+  const contratoLabel = user?.contrato ? CONTRATO_LABELS[user.contrato] ?? user.contrato : null;
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -14,7 +21,10 @@ export default function EncarregadoPage() {
           <p className="text-[10px] font-semibold uppercase tracking-widest text-green-300">
             CMTU Londrina — Zeladoria
           </p>
-          <h1 className="text-lg font-bold text-white">Registro de Varrição</h1>
+          <h1 className="text-lg font-bold text-white">Registro de Serviços</h1>
+          {contratoLabel && (
+            <p className="text-xs text-green-200 mt-0.5">{contratoLabel}</p>
+          )}
         </div>
         <Button
           variant="ghost"
@@ -36,9 +46,9 @@ export default function EncarregadoPage() {
           Olá, {user?.nome?.split(" ")[0]}!
         </h2>
         <p className="text-sm text-muted-foreground max-w-xs">
-          Em breve você vai registrar as fotos dos serviços de varrição e
-          lavação por aqui, direto do celular. A tela de envio de fotos está
-          em construção.
+          Em breve você vai registrar as fotos dos serviços do seu contrato
+          por aqui, direto do celular, além de consultar suas áreas e ordens
+          de serviço. Esta tela está em construção.
         </p>
       </main>
 

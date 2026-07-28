@@ -30,10 +30,17 @@ interface UserData {
   nome: string;
   email: string;
   role: string;
+  contrato: string | null;
   ativo: boolean;
   setorId: number | null;
   setorNome: string | null;
 }
+
+const CONTRATO_LABELS: Record<string, string> = {
+  rocagem_lote1: "Capina e Roçagem — Lote 1",
+  rocagem_lote2: "Capina e Roçagem — Lote 2",
+  varricao: "Varrição e Lavação",
+};
 
 const ROLE_LABELS: Record<string, string> = {
   admin: "Administrador",
@@ -62,6 +69,7 @@ export default function UserManagement() {
   const [senha, setSenha] = useState("");
   const [role, setRole] = useState("fiscal");
   const [setorId, setSetorId] = useState<string>("");
+  const [contrato, setContrato] = useState<string>("");
 
   const { data: users = [], isLoading } = useQuery<UserData[]>({
     queryKey: ["/api/users"],
@@ -85,6 +93,7 @@ export default function UserManagement() {
       const res = await apiRequest("POST", "/api/users", {
         nome, email, senha, role,
         setorId: setorId ? parseInt(setorId) : null,
+        contrato: role === "encarregado" ? contrato || null : null,
       });
       if (!res.ok) {
         const err = await res.json();
@@ -105,7 +114,11 @@ export default function UserManagement() {
   const updateMutation = useMutation({
     mutationFn: async () => {
       if (!editingUser) return;
-      const body: any = { id: editingUser.id, nome, email, role, setorId: setorId ? parseInt(setorId) : null };
+      const body: any = {
+        id: editingUser.id, nome, email, role,
+        setorId: setorId ? parseInt(setorId) : null,
+        contrato: role === "encarregado" ? contrato || null : null,
+      };
       if (senha) body.senha = senha;
       const res = await apiRequest("PATCH", `/api/users/${editingUser.id}`, body);
       if (!res.ok) {
@@ -141,7 +154,7 @@ export default function UserManagement() {
 
   function openCreate() {
     setEditingUser(null);
-    setNome(""); setEmail(""); setSenha(""); setRole("fiscal"); setSetorId("");
+    setNome(""); setEmail(""); setSenha(""); setRole("fiscal"); setSetorId(""); setContrato("");
     setShowDialog(true);
   }
 
@@ -149,6 +162,7 @@ export default function UserManagement() {
     setEditingUser(u);
     setNome(u.nome); setEmail(u.email); setSenha(""); setRole(u.role);
     setSetorId(u.setorId ? String(u.setorId) : "");
+    setContrato(u.contrato ?? "");
     setShowDialog(true);
   }
 
@@ -159,6 +173,10 @@ export default function UserManagement() {
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (role === "encarregado" && !contrato) {
+      toast({ variant: "destructive", title: "Informe o contrato do encarregado" });
+      return;
+    }
     if (editingUser) {
       updateMutation.mutate();
     } else {
@@ -215,6 +233,9 @@ export default function UserManagement() {
                       {u.email}
                       {u.setorNome && (
                         <span className="ml-2 text-xs text-foreground/50">· {u.setorNome}</span>
+                      )}
+                      {u.contrato && (
+                        <span className="ml-2 text-xs text-foreground/50">· {CONTRATO_LABELS[u.contrato] ?? u.contrato}</span>
                       )}
                     </div>
                   </div>
@@ -275,11 +296,29 @@ export default function UserManagement() {
                   <SelectItem value="admin">Administrador — Acesso total</SelectItem>
                   <SelectItem value="gestor">Gestor — Visualização completa + relatórios</SelectItem>
                   <SelectItem value="fiscal">Fiscal — Registrar serviços + upload de fotos</SelectItem>
-                  <SelectItem value="encarregado">Encarregado — Somente envio de fotos da varrição</SelectItem>
+                  <SelectItem value="encarregado">Encarregado — Áreas, fotos e OS do contrato dele</SelectItem>
                   <SelectItem value="demo">Demonstração — Visualiza e simula, sem salvar</SelectItem>
                 </SelectContent>
               </Select>
             </div>
+            {role === "encarregado" && (
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Contrato *</label>
+                <Select value={contrato} onValueChange={setContrato}>
+                  <SelectTrigger data-testid="select-user-contrato">
+                    <SelectValue placeholder="Selecione o contrato..." />
+                  </SelectTrigger>
+                  <SelectContent className="z-[9999]">
+                    {Object.entries(CONTRATO_LABELS).map(([k, v]) => (
+                      <SelectItem key={k} value={k}>{v}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  O encarregado só enxerga as áreas, fotos e ordens de serviço deste contrato.
+                </p>
+              </div>
+            )}
             <div className="space-y-2">
               <label className="text-sm font-medium">Setor</label>
               <Select value={setorId} onValueChange={v => setSetorId(v === "none" ? "" : v)}>

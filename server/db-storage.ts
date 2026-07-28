@@ -619,7 +619,8 @@ export class DbStorage implements IStorage {
       nome: dbUser.nome,
       email: dbUser.email,
       senha: dbUser.senha,
-      role: dbUser.role as "admin" | "gestor" | "fiscal",
+      role: dbUser.role as User["role"],
+      contrato: dbUser.contrato ?? null,
       ativo: dbUser.ativo,
     };
   }

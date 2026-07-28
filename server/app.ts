@@ -16,6 +16,7 @@ declare module "express-session" {
     userId?: number;
     userRole?: string;
     userName?: string;
+    userContrato?: string;
   }
 }
 
