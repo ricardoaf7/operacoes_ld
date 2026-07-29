@@ -483,18 +483,41 @@ function subtotais(locais: LocalComputado[], campo: "regiao" | "secao") {
 // pelo fiscal continua valendo até ele decidir o contrário), mas locais que
 // nunca apareceram em nenhuma OS finalizada entram automaticamente (recém-
 // cadastrados). Se nunca houve OS finalizada, começa com todos os ativos.
-async function idsBaseParaNovaOrdem(pool: any): Promise<number[] | null> {
-  const { rows: ultima } = await pool.query(
-    `SELECT id FROM varricao_ordens WHERE status='finalizada' ORDER BY mes_referencia DESC, created_at DESC LIMIT 1`
-  );
-  if (!ultima.length) return null; // sinaliza "usar todos os ativos"
+interface BaseParaNovaOrdem {
+  ids: number[] | null; // null = usar todos os ativos (nunca houve referência)
+  referencia: { id: number; numero: string; mesReferencia: string } | null;
+}
 
-  const { rows: daUltima } = await pool.query(
+// referenciaId: se informado, usa ESSA OS finalizada específica como base
+// (ex.: dezembro/2025 para gerar dezembro/2026, em vez do mês imediatamente
+// anterior, que pode ter calendário/feriados bem diferentes). Se omitido,
+// usa a última finalizada automaticamente — comportamento padrão.
+async function idsBaseParaNovaOrdem(pool: any, referenciaId?: number): Promise<BaseParaNovaOrdem> {
+  let base: { id: number; numero: string; mes_referencia: string } | null = null;
+
+  if (referenciaId) {
+    const { rows } = await pool.query(
+      `SELECT id, numero, mes_referencia FROM varricao_ordens WHERE id=$1 AND status='finalizada'`,
+      [referenciaId]
+    );
+    base = rows[0] ?? null;
+  } else {
+    const { rows } = await pool.query(
+      `SELECT id, numero, mes_referencia FROM varricao_ordens WHERE status='finalizada' ORDER BY mes_referencia DESC, created_at DESC LIMIT 1`
+    );
+    base = rows[0] ?? null;
+  }
+
+  if (!base) return { ids: null, referencia: null }; // nunca houve finalizada: usar todos os ativos
+
+  const { rows: daBase } = await pool.query(
     `SELECT local_id FROM varricao_ordens_locais WHERE ordem_id=$1 AND local_id IS NOT NULL`,
-    [ultima[0].id]
+    [base.id]
   );
-  const ids = new Set<number>(daUltima.map((r: any) => r.local_id));
+  const ids = new Set<number>(daBase.map((r: any) => r.local_id));
 
+  // Locais que nunca apareceram em NENHUMA OS finalizada (recém-cadastrados)
+  // entram automaticamente, independente de qual referência foi escolhida
   const { rows: jaFinalizadosAlgumaVez } = await pool.query(`
     SELECT DISTINCT l.local_id FROM varricao_ordens_locais l
     JOIN varricao_ordens o ON o.id = l.ordem_id
@@ -505,7 +528,10 @@ async function idsBaseParaNovaOrdem(pool: any): Promise<number[] | null> {
   const { rows: todosAtivos } = await pool.query(`SELECT id FROM varricao_locais WHERE ativo IS NOT FALSE`);
   todosAtivos.forEach((l: any) => { if (!idsJaVistos.has(l.id)) ids.add(l.id); });
 
-  return Array.from(ids);
+  return {
+    ids: Array.from(ids),
+    referencia: { id: base.id, numero: base.numero, mesReferencia: base.mes_referencia },
+  };
 }
 
 function totaisPorCategoria(locais: LocalComputado[]) {
@@ -2902,8 +2928,10 @@ export async function registerRoutes(app: Express): Promise<void> {
       if (!m) return res.status(400).json({ error: "Informe o mês no formato YYYY-MM" });
       const ano = parseInt(m[1]), mesNum = parseInt(m[2]);
 
+      const referenciaId = req.query.referenciaId ? parseInt(String(req.query.referenciaId)) : undefined;
+
       const pool = getPool();
-      const idsBase = await idsBaseParaNovaOrdem(pool);
+      const { ids: idsBase, referencia } = await idsBaseParaNovaOrdem(pool, referenciaId);
       const { rows: locaisRaw } = idsBase
         ? await pool.query(
             "SELECT * FROM varricao_locais WHERE id = ANY($1::int[]) AND ativo IS NOT FALSE ORDER BY regiao, nome",
@@ -2929,6 +2957,7 @@ export async function registerRoutes(app: Express): Promise<void> {
         totalLocais: locais.length,
         totalMetragem,
         ordemExistente: existente[0] ?? null,
+        referenciaUsada: referencia,
       });
     } catch (error) {
       console.error("Erro ao gerar prévia da OS de varrição:", error);

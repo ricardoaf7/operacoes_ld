@@ -59,6 +59,7 @@ export interface VarricaoOrdemPayload {
   totalLocais: number;
   totalMetragem: number;
   ordemExistente?: { id: number; numero: string; status: VarricaoOrdemStatus } | null;
+  referenciaUsada?: { id: number; numero: string; mesReferencia: string } | null;
 }
 
 export interface VarricaoConfig {

@@ -7,13 +7,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { ChevronLeft, FileDown, FileSpreadsheet, CheckCircle2, AlertTriangle, Settings, FileText } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ChevronLeft, FileDown, FileSpreadsheet, CheckCircle2, AlertTriangle, Settings, FileText, History } from "lucide-react";
 import { VarricaoStatusBadge } from "@/components/VarricaoStatusBadge";
 import { VarricaoOrdemRascunho } from "@/components/VarricaoOrdemRascunho";
 import { exportarOrdemExcel, exportarOrdemPdf } from "@/lib/varricao-ordens-export";
 import {
   formatMesReferencia,
-  type VarricaoOrdemPayload, type VarricaoOrdemLocal, type VarricaoConfig,
+  type VarricaoOrdemPayload, type VarricaoOrdemLocal, type VarricaoConfig, type VarricaoOrdemRegistro,
 } from "@/lib/varricao-ordens-types";
 import { calcularSubtotais } from "@/lib/varricao-ordens-utils";
 
@@ -39,15 +40,28 @@ export default function VarricaoOrdemNovaPage() {
   const { toast } = useToast();
   const [, navigate] = useLocation();
   const [mes, setMes] = useState(proximoMesISO());
+  const [referenciaId, setReferenciaId] = useState<string>(""); // "" = automática (última finalizada)
   const [numero, setNumero] = useState("");
   const [dataEmissao, setDataEmissao] = useState(() => new Date().toLocaleDateString("en-CA"));
   const [observacao, setObservacao] = useState("");
   const [rascunho, setRascunho] = useState<VarricaoOrdemLocal[] | null>(null);
-  const [mesCarregado, setMesCarregado] = useState<string | null>(null);
+  const [chaveCarregada, setChaveCarregada] = useState<string | null>(null);
 
+  const { data: ordens = [] } = useQuery<VarricaoOrdemRegistro[]>({
+    queryKey: ["/api/varricao/ordens"],
+    queryFn: async () => (await apiRequest("GET", "/api/varricao/ordens")).json(),
+  });
+  const finalizadas = ordens
+    .filter((o) => o.status === "finalizada")
+    .sort((a, b) => b.mes_referencia.localeCompare(a.mes_referencia));
+
+  const chaveAtual = `${mes}|${referenciaId}`;
   const { data: preview, isLoading } = useQuery<VarricaoOrdemPayload>({
-    queryKey: ["/api/varricao/ordens/preview", mes],
-    queryFn: async () => (await apiRequest("GET", `/api/varricao/ordens/preview?mes=${mes}`)).json(),
+    queryKey: ["/api/varricao/ordens/preview", mes, referenciaId],
+    queryFn: async () => {
+      const qs = referenciaId ? `&referenciaId=${referenciaId}` : "";
+      return (await apiRequest("GET", `/api/varricao/ordens/preview?mes=${mes}${qs}`)).json();
+    },
   });
 
   const { data: todosLocais = [] } = useQuery<VarricaoLocalCompleto[]>({
@@ -60,13 +74,13 @@ export default function VarricaoOrdemNovaPage() {
     queryFn: async () => (await apiRequest("GET", "/api/varricao/config")).json(),
   });
 
-  // Inicializa (ou reinicializa, se o mês mudar) o rascunho a partir da prévia calculada
+  // Inicializa (ou reinicializa, se o mês ou a referência mudarem) o rascunho a partir da prévia calculada
   useEffect(() => {
-    if (preview && mesCarregado !== mes) {
+    if (preview && chaveCarregada !== chaveAtual) {
       setRascunho(preview.locais);
-      setMesCarregado(mes);
+      setChaveCarregada(chaveAtual);
     }
-  }, [preview, mes, mesCarregado]);
+  }, [preview, chaveAtual, chaveCarregada]);
 
   const emitirMutation = useMutation({
     mutationFn: async () => {
@@ -176,6 +190,28 @@ export default function VarricaoOrdemNovaPage() {
             </div>
           </div>
           <div>
+            <Label className="text-xs flex items-center gap-1.5">
+              <History className="h-3 w-3" /> Usar como referência
+            </Label>
+            <Select value={referenciaId || "auto"} onValueChange={(v) => setReferenciaId(v === "auto" ? "" : v)}>
+              <SelectTrigger className="mt-1">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="z-[9999]">
+                <SelectItem value="auto">Automática — última OS finalizada</SelectItem>
+                {finalizadas.map((o) => (
+                  <SelectItem key={o.id} value={String(o.id)}>
+                    OS {o.numero} — {formatMesReferencia(o.mes_referencia)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-[11px] text-muted-foreground mt-1">
+              Nem sempre o mês anterior é o melhor ponto de partida (feriados, dias úteis diferentes).
+              Ex.: para dezembro, pode valer mais usar dezembro do ano passado.
+            </p>
+          </div>
+          <div>
             <Label className="text-xs">Observação (opcional)</Label>
             <Textarea
               className="mt-1 h-16 resize-none"
@@ -225,6 +261,11 @@ export default function VarricaoOrdemNovaPage() {
             <div className="flex items-center justify-between flex-wrap gap-2">
               <p className="text-sm text-muted-foreground">
                 Rascunho para <b className="text-foreground">{formatMesReferencia(mes)}</b> — {totalLocais} locais, ainda não emitida
+                {preview?.referenciaUsada && (
+                  <span className="block text-xs mt-0.5">
+                    Baseado na OS {preview.referenciaUsada.numero} — {formatMesReferencia(preview.referenciaUsada.mesReferencia)}
+                  </span>
+                )}
               </p>
               {payloadParaExportar && (
                 <div className="flex gap-2">
