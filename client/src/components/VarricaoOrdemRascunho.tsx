@@ -2,9 +2,10 @@ import { useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Search, X, ChevronDown, ChevronRight, Plus } from "lucide-react";
+import { Search, X, ChevronDown, ChevronRight, Plus, List, CalendarDays } from "lucide-react";
 import { VarricaoDiasPicker } from "./VarricaoDiasPicker";
 import { VarricaoBarraProgresso } from "./VarricaoBarraProgresso";
+import { VarricaoOrdemCalendario } from "./VarricaoOrdemCalendario";
 import { SECAO_LABELS } from "@/lib/varricao-utils";
 import { rankearBusca } from "@/lib/search-utils";
 import { diasUteisDoMes, formatarDiasTexto, diasDoMesParaLocal } from "@/lib/varricao-ordens-utils";
@@ -39,6 +40,7 @@ function categoriaDaSecao(secao: string): "varricao" | "lavacao" | "outros" {
 export function VarricaoOrdemRascunho({ mesReferencia, locais, todosLocais, config, onChange }: VarricaoOrdemRascunhoProps) {
   const [busca, setBusca] = useState("");
   const [expandido, setExpandido] = useState<number | null>(null);
+  const [visao, setVisao] = useState<"lista" | "calendario">("lista");
 
   const [ano, mes] = mesReferencia.split("-").map(Number);
   const diasUteis = diasUteisDoMes(ano, mes);
@@ -133,7 +135,31 @@ export function VarricaoOrdemRascunho({ mesReferencia, locais, todosLocais, conf
         )}
       </div>
 
-      {/* Lista editável agrupada por seção */}
+      {/* Alternância Lista (edição) / Calendário (conferência) */}
+      <div className="flex items-center gap-2">
+        <button
+          onClick={() => setVisao("lista")}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm border transition-colors ${
+            visao === "lista" ? "bg-accent border-accent-foreground/20" : "hover:bg-accent/50"
+          }`}
+        >
+          <List className="h-3.5 w-3.5" /> Lista (editar)
+        </button>
+        <button
+          onClick={() => setVisao("calendario")}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm border transition-colors ${
+            visao === "calendario" ? "bg-accent border-accent-foreground/20" : "hover:bg-accent/50"
+          }`}
+        >
+          <CalendarDays className="h-3.5 w-3.5" /> Calendário
+        </button>
+      </div>
+
+      {visao === "calendario" ? (
+        <div className="border rounded-lg p-4">
+          <VarricaoOrdemCalendario mesReferencia={mesReferencia} locais={locais} />
+        </div>
+      ) : (
       <div className="border rounded-lg overflow-hidden">
         {locais.length === 0 && (
           <p className="text-sm text-muted-foreground text-center py-8">
@@ -195,6 +221,7 @@ export function VarricaoOrdemRascunho({ mesReferencia, locais, todosLocais, conf
           );
         })}
       </div>
+      )}
     </div>
   );
 }
