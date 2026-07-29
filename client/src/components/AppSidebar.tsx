@@ -14,6 +14,7 @@ import {
   Lock,
   LogOut,
   Shield,
+  ImageIcon,
 } from "lucide-react";
 import { Link } from "wouter";
 import { useState } from "react";
@@ -322,6 +323,15 @@ export function AppSidebar({
                         >
                           <MapPin className="h-3.5 w-3.5 text-foreground/40 flex-shrink-0" />
                           <span>Cadastro de Locais</span>
+                        </button>
+                      </Link>
+                      <Link href="/varricao/cobertura">
+                        <button
+                          className="w-full flex items-center gap-2.5 pl-9 pr-3 py-1.5 rounded-md text-xs transition-colors text-foreground/60 hover:text-foreground hover:bg-muted/50"
+                          data-testid="button-varricao-cobertura"
+                        >
+                          <ImageIcon className="h-3.5 w-3.5 text-foreground/40 flex-shrink-0" />
+                          <span>Cobertura do Dia</span>
                         </button>
                       </Link>
                     </motion.div>

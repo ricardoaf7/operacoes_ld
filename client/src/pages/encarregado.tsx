@@ -11,21 +11,12 @@ import {
   Navigation, Loader2, ImageIcon, X, Clock, UploadCloud,
 } from "lucide-react";
 import { rankearBusca } from "@/lib/search-utils";
+import { SECAO_LABELS, distanciaMetros, formatDistancia, programadoNaData, dataLocalISO as dataLocalISOUtil } from "@/lib/varricao-utils";
 
 const CONTRATO_LABELS: Record<string, string> = {
   rocagem_lote1: "Capina e Roçagem — Lote 1",
   rocagem_lote2: "Capina e Roçagem — Lote 2",
   varricao: "Varrição e Lavação",
-};
-
-const SECAO_LABELS: Record<string, string> = {
-  varricao: "Varrição",
-  varricao_2turno: "Varrição — 2º turno",
-  sanitarios: "Sanitários",
-  lavagem_vias_noturna: "Lavagem de vias (noturna)",
-  lavagem_pracas_noturna: "Lavagem de praças (noturna)",
-  lavagem_vias_diurna: "Lavagem de vias (diurna)",
-  lavagem_pracas_diurna: "Lavagem de praças (diurna)",
 };
 
 interface VarricaoLocal {
@@ -48,26 +39,6 @@ interface FotoEnviada {
   created_at: string;
   local_nome: string;
   local_complemento: string | null;
-}
-
-function distanciaMetros(lat1: number, lng1: number, lat2: number, lng2: number): number {
-  const R = 6371000;
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLng = ((lng2 - lng1) * Math.PI) / 180;
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
-
-function formatDistancia(m: number): string {
-  return m < 1000 ? `${Math.round(m)} m` : `${(m / 1000).toFixed(1)} km`;
-}
-
-function programadoHoje(l: VarricaoLocal): boolean {
-  const dia = new Date().getDay(); // 0=Dom ... 6=Sáb
-  if (l.frequencia === "diario") return dia >= 1 && dia <= 6;
-  return (l.dias_semana ?? []).includes(dia);
 }
 
 // Descobre as dimensões do arquivo sem decodificar a imagem inteira na memória
@@ -147,7 +118,7 @@ async function comprimirImagem(file: File, marcaDagua: string[]): Promise<Blob> 
   return blob;
 }
 
-const hojeLocal = () => new Date().toLocaleDateString("en-CA"); // YYYY-MM-DD no fuso do aparelho
+const hojeLocal = () => dataLocalISOUtil(0);
 
 // ---------- Fila offline (IndexedDB): fotos guardadas no aparelho até ter internet ----------
 interface FilaItem {
@@ -292,7 +263,7 @@ export default function EncarregadoPage() {
 
     const comDist = filtrados.map((l) => ({
       local: l,
-      hoje: programadoHoje(l),
+      hoje: programadoNaData(l, hojeLocal()),
       dist: gps && l.lat != null && l.lng != null
         ? distanciaMetros(gps.lat, gps.lng, l.lat, l.lng)
         : null,

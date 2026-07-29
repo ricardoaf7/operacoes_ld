@@ -4,7 +4,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
-import { X, MapPin, Ruler, Move, CheckCircle2, AlertTriangle, ImageIcon, Trash2, Navigation } from "lucide-react";
+import { X, MapPin, Ruler, Move, CheckCircle2, AlertTriangle, ImageIcon } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -20,53 +20,16 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import type { VarricaoLocalMapa } from "./DashboardMap";
+import { VarricaoFotoThumb, type VarricaoFoto } from "./VarricaoFotoThumb";
+import { SECAO_LABELS, dataLocalISO, formatDataBR } from "@/lib/varricao-utils";
 
-const SECAO_LABELS: Record<string, string> = {
-  varricao: "Varrição",
-  varricao_2turno: "Varrição — 2º turno",
-  sanitarios: "Sanitários",
-  lavagem_vias_noturna: "Lavagem de vias (noturna)",
-  lavagem_pracas_noturna: "Lavagem de praças (noturna)",
-  lavagem_vias_diurna: "Lavagem de vias (diurna)",
-  lavagem_pracas_diurna: "Lavagem de praças (diurna)",
-};
-
-interface FotoLocal {
-  id: number;
-  url: string;
-  data_servico: string;
-  created_at: string;
-  enviado_por_nome: string | null;
-  lat: number | null;
-  lng: number | null;
-}
+type FotoLocal = VarricaoFoto;
 
 interface VarricaoInfoCardProps {
   local: VarricaoLocalMapa;
   onClose: () => void;
   onAdjustPosition: () => void;
   isRelocating: boolean;
-}
-
-function dataLocalISO(diasAtras = 0): string {
-  const d = new Date();
-  d.setDate(d.getDate() - diasAtras);
-  return d.toLocaleDateString("en-CA");
-}
-
-function formatDataBR(iso: string): string {
-  const [y, m, d] = iso.split("T")[0].split("-");
-  return `${d}/${m}/${y}`;
-}
-
-function distanciaMetros(lat1: number, lng1: number, lat2: number, lng2: number): number {
-  const R = 6371000;
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLng = ((lng2 - lng1) * Math.PI) / 180;
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
 export function VarricaoInfoCard({ local, onClose, onAdjustPosition, isRelocating }: VarricaoInfoCardProps) {
@@ -199,68 +162,16 @@ export function VarricaoInfoCard({ local, onClose, onAdjustPosition, isRelocatin
             </p>
           ) : (
             <div className="grid grid-cols-3 gap-1.5">
-              {fotos.map((f) => {
-                const dist = hasCoords && f.lat != null && f.lng != null
-                  ? distanciaMetros(local.lat!, local.lng!, f.lat, f.lng)
-                  : null;
-                const distLonge = dist != null && dist > 100;
-                return (
-                  <div key={f.id} className="relative group">
-                    <a
-                      href={f.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="block"
-                      title={`${formatDataBR(f.data_servico)}${f.enviado_por_nome ? ` — ${f.enviado_por_nome}` : ""}`}
-                    >
-                      <img
-                        src={f.url}
-                        alt={`Foto de ${formatDataBR(f.data_servico)}`}
-                        className="aspect-square object-cover rounded-md border border-border group-hover:opacity-85 transition-opacity"
-                        loading="lazy"
-                      />
-                      <span className="absolute bottom-0.5 right-0.5 bg-black/65 text-white text-[9px] px-1 rounded">
-                        {formatDataBR(f.data_servico).slice(0, 5)}
-                      </span>
-                    </a>
-                    {podeExcluir && (
-                      <button
-                        className="absolute top-0.5 right-0.5 bg-black/60 hover:bg-red-600 text-white rounded p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
-                        title="Excluir foto"
-                        onClick={() => setFotoParaExcluir(f)}
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </button>
-                    )}
-                    {f.lat != null && f.lng != null ? (
-                      <a
-                        href={`https://www.google.com/maps?q=${f.lat},${f.lng}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        onClick={(e) => e.stopPropagation()}
-                        title={
-                          dist != null
-                            ? `Foto tirada a ${Math.round(dist)}m do local cadastrado — ver no mapa`
-                            : "Ver onde a foto foi tirada"
-                        }
-                        className={`absolute top-0.5 left-0.5 flex items-center gap-0.5 text-white text-[9px] px-1 py-0.5 rounded ${
-                          distLonge ? "bg-amber-600" : "bg-black/60"
-                        }`}
-                      >
-                        <Navigation className="h-2.5 w-2.5" />
-                        {dist != null && `${dist < 1000 ? Math.round(dist) + "m" : (dist / 1000).toFixed(1) + "km"}`}
-                      </a>
-                    ) : (
-                      <span
-                        className="absolute top-0.5 left-0.5 bg-black/60 text-white text-[9px] px-1 py-0.5 rounded"
-                        title="Foto enviada sem GPS"
-                      >
-                        s/ GPS
-                      </span>
-                    )}
-                  </div>
-                );
-              })}
+              {fotos.map((f) => (
+                <VarricaoFotoThumb
+                  key={f.id}
+                  foto={f}
+                  localLat={local.lat}
+                  localLng={local.lng}
+                  podeExcluir={podeExcluir}
+                  onExcluir={setFotoParaExcluir}
+                />
+              ))}
             </div>
           )}
         </div>

@@ -9,6 +9,7 @@ import { MapLayerControl, type MapLayerType } from "./MapLayerControl";
 import type { ServiceArea } from "@shared/schema";
 import type { TimeRangeFilter } from "./MapLegend";
 import { useTheme } from "@/components/theme-provider";
+import { SECAO_LABELS } from "@/lib/varricao-utils";
 
 export interface VarricaoLocalMapa {
   id: number;
@@ -22,16 +23,6 @@ export interface VarricaoLocalMapa {
   lng: number | null;
   geocode_status: string;
 }
-
-const SECAO_LABELS: Record<string, string> = {
-  varricao: "Varrição",
-  varricao_2turno: "Varrição — 2º turno",
-  sanitarios: "Sanitários",
-  lavagem_vias_noturna: "Lavagem de vias (noturna)",
-  lavagem_pracas_noturna: "Lavagem de praças (noturna)",
-  lavagem_vias_diurna: "Lavagem de vias (diurna)",
-  lavagem_pracas_diurna: "Lavagem de praças (diurna)",
-};
 
 function getVarricaoColor(secao: string): string {
   if (secao.startsWith("lavagem")) return "#0284c7"; // azul — lavagem
