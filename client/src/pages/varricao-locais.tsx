@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { Link } from "wouter";
 import { correspondeBusca } from "@/lib/search-utils";
+import { CATEGORIA_LABELS, categoriaDaSecao, SECAO_LABELS, type VarricaoCategoria } from "@/lib/varricao-utils";
 
 interface VarricaoLocal {
   id: number;
@@ -34,15 +35,7 @@ interface VarricaoLocal {
   ativo: boolean;
 }
 
-const SECOES: Record<string, string> = {
-  varricao: "Varrição",
-  varricao_2turno: "Varrição — 2º turno",
-  sanitarios: "Sanitários",
-  lavagem_vias_noturna: "Lavagem de vias (noturna)",
-  lavagem_pracas_noturna: "Lavagem de praças (noturna)",
-  lavagem_vias_diurna: "Lavagem de vias (diurna)",
-  lavagem_pracas_diurna: "Lavagem de praças (diurna)",
-};
+const SECOES = SECAO_LABELS;
 
 const TIPOS = ["Praça", "Rua", "Travessa", "Alameda", "Canteiro", "Avenida", "Feira", "Sanitários"];
 const DIAS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
@@ -72,6 +65,7 @@ const emptyForm: FormState = {
 export default function VarricaoLocaisPage() {
   const { toast } = useToast();
   const [busca, setBusca] = useState("");
+  const [abaCategoria, setAbaCategoria] = useState<VarricaoCategoria | "todos">("todos");
   const [filtroRegiao, setFiltroRegiao] = useState("");
   const [filtroSecao, setFiltroSecao] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -88,7 +82,21 @@ export default function VarricaoLocaisPage() {
     new Set(locais.map((l) => l.regiao).filter(Boolean))
   ).sort() as string[];
 
+  // Contagem por categoria — "Praça X (Varrição)" e "Praça X (Lavação)" são a
+  // mesma praça em dois contratos diferentes (unidades de cobrança distintas:
+  // metro linear × metro quadrado), não uma duplicata. Separar em abas deixa
+  // isso claro em vez de misturar tudo numa lista só.
+  const contagemPorCategoria = locais.reduce(
+    (acc, l) => { acc[categoriaDaSecao(l.secao)]++; return acc; },
+    { varricao: 0, lavacao: 0, sanitario: 0 } as Record<VarricaoCategoria, number>
+  );
+
+  const secoesDaAba = Object.keys(SECOES).filter(
+    (s) => abaCategoria === "todos" || categoriaDaSecao(s) === abaCategoria
+  );
+
   const filtrados = locais.filter((l) => {
+    if (abaCategoria !== "todos" && categoriaDaSecao(l.secao) !== abaCategoria) return false;
     if (filtroRegiao && l.regiao !== filtroRegiao) return false;
     if (filtroSecao && l.secao !== filtroSecao) return false;
     if (busca && !correspondeBusca(`${l.nome} ${l.complemento ?? ""} ${l.regiao ?? ""}`, busca)) {
@@ -98,6 +106,11 @@ export default function VarricaoLocaisPage() {
   });
 
   const semGeo = locais.filter((l) => l.geocode_status === "revisar").length;
+
+  function mudarAba(aba: VarricaoCategoria | "todos") {
+    setAbaCategoria(aba);
+    setFiltroSecao(""); // seções disponíveis mudam por aba
+  }
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -203,6 +216,26 @@ export default function VarricaoLocaisPage() {
           </Button>
         </div>
 
+        {/* Abas por categoria de contrato */}
+        <div className="flex gap-1 border-b border-border overflow-x-auto">
+          {(["todos", "varricao", "lavacao", "sanitario"] as const).map((aba) => (
+            <button
+              key={aba}
+              onClick={() => mudarAba(aba)}
+              className={`px-3.5 py-2 text-sm font-medium whitespace-nowrap border-b-2 -mb-px transition-colors ${
+                abaCategoria === aba
+                  ? "border-primary text-foreground"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {aba === "todos" ? "Todos" : CATEGORIA_LABELS[aba]}
+              <span className="ml-1.5 text-xs opacity-60">
+                ({aba === "todos" ? locais.length : contagemPorCategoria[aba]})
+              </span>
+            </button>
+          ))}
+        </div>
+
         {/* Filtros */}
         <div className="flex flex-wrap gap-2">
           <div className="relative flex-1 min-w-[220px]">
@@ -225,17 +258,19 @@ export default function VarricaoLocaisPage() {
               ))}
             </SelectContent>
           </Select>
-          <Select value={filtroSecao || "all"} onValueChange={(v) => setFiltroSecao(v === "all" ? "" : v)}>
-            <SelectTrigger className="w-[210px]">
-              <SelectValue placeholder="Seção" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todas as seções</SelectItem>
-              {Object.entries(SECOES).map(([k, v]) => (
-                <SelectItem key={k} value={k}>{v}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {secoesDaAba.length > 1 && (
+            <Select value={filtroSecao || "all"} onValueChange={(v) => setFiltroSecao(v === "all" ? "" : v)}>
+              <SelectTrigger className="w-[210px]">
+                <SelectValue placeholder="Seção" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todas as seções</SelectItem>
+                {secoesDaAba.map((k) => (
+                  <SelectItem key={k} value={k}>{SECOES[k]}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
         </div>
 
         {/* Tabela */}
@@ -326,7 +361,8 @@ export default function VarricaoLocaisPage() {
           </div>
         </div>
         <p className="text-xs text-muted-foreground">
-          Mostrando {filtrados.length} de {locais.length} locais
+          Mostrando {filtrados.length} de {abaCategoria === "todos" ? locais.length : contagemPorCategoria[abaCategoria]} locais
+          {abaCategoria !== "todos" && ` em ${CATEGORIA_LABELS[abaCategoria]}`}
         </p>
       </div>
 

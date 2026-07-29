@@ -6,7 +6,7 @@ import { Search, X, ChevronDown, ChevronRight, Plus, List, CalendarDays } from "
 import { VarricaoDiasPicker } from "./VarricaoDiasPicker";
 import { VarricaoBarraProgresso } from "./VarricaoBarraProgresso";
 import { VarricaoOrdemCalendario } from "./VarricaoOrdemCalendario";
-import { SECAO_LABELS } from "@/lib/varricao-utils";
+import { SECAO_LABELS, categoriaDaSecao } from "@/lib/varricao-utils";
 import { rankearBusca } from "@/lib/search-utils";
 import { diasUteisDoMes, formatarDiasTexto, diasDoMesParaLocal } from "@/lib/varricao-ordens-utils";
 import { formatMetragem, type VarricaoOrdemLocal, type VarricaoConfig } from "@/lib/varricao-ordens-types";
@@ -29,12 +29,6 @@ interface VarricaoOrdemRascunhoProps {
   todosLocais: VarricaoLocalCompleto[];
   config?: VarricaoConfig;
   onChange: (locais: VarricaoOrdemLocal[]) => void;
-}
-
-function categoriaDaSecao(secao: string): "varricao" | "lavacao" | "outros" {
-  if (secao.startsWith("lavagem")) return "lavacao";
-  if (secao.startsWith("varricao")) return "varricao";
-  return "outros";
 }
 
 export function VarricaoOrdemRascunho({ mesReferencia, locais, todosLocais, config, onChange }: VarricaoOrdemRascunhoProps) {
@@ -90,7 +84,7 @@ export function VarricaoOrdemRascunho({ mesReferencia, locais, todosLocais, conf
       acc[categoriaDaSecao(l.secao)] += l.metragemTotal;
       return acc;
     },
-    { varricao: 0, lavacao: 0, outros: 0 }
+    { varricao: 0, lavacao: 0, sanitario: 0 }
   );
 
   const maxVarricao = config?.metragem_maxima_varricao != null ? Number(config.metragem_maxima_varricao) : null;

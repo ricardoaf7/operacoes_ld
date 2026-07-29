@@ -26,11 +26,13 @@ export interface VarricaoOrdemDuplicata {
 }
 
 export type VarricaoOrdemStatus = "rascunho" | "finalizada";
+export type VarricaoOrdemCategoria = "varricao" | "lavacao";
 
 export interface VarricaoOrdemRegistro {
   id: number;
   numero: string;
   mes_referencia: string;
+  categoria: VarricaoOrdemCategoria;
   data_emissao: string;
   emitido_por: string | null;
   observacao: string | null;
@@ -45,12 +47,13 @@ export interface VarricaoOrdemRegistro {
 export interface VarricaoTotaisPorCategoria {
   varricao: number;
   lavacao: number;
-  outros: number;
+  sanitario: number;
 }
 
 export interface VarricaoOrdemPayload {
   ordem?: VarricaoOrdemRegistro;
   mesReferencia: string;
+  categoria?: VarricaoOrdemCategoria;
   locais: VarricaoOrdemLocal[];
   duplicatas?: VarricaoOrdemDuplicata[];
   subtotaisRegiao: VarricaoOrdemSubtotal[];

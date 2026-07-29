@@ -14,9 +14,11 @@ import { VarricaoOrdemRascunho } from "@/components/VarricaoOrdemRascunho";
 import { exportarOrdemExcel, exportarOrdemPdf } from "@/lib/varricao-ordens-export";
 import {
   formatMesReferencia,
-  type VarricaoOrdemPayload, type VarricaoOrdemLocal, type VarricaoConfig, type VarricaoOrdemRegistro,
+  type VarricaoOrdemPayload, type VarricaoOrdemLocal, type VarricaoConfig,
+  type VarricaoOrdemRegistro, type VarricaoOrdemCategoria,
 } from "@/lib/varricao-ordens-types";
 import { calcularSubtotais } from "@/lib/varricao-ordens-utils";
+import { CATEGORIA_LABELS, categoriaDaSecao } from "@/lib/varricao-utils";
 
 interface VarricaoLocalCompleto {
   id: number;
@@ -40,6 +42,7 @@ export default function VarricaoOrdemNovaPage() {
   const { toast } = useToast();
   const [, navigate] = useLocation();
   const [mes, setMes] = useState(proximoMesISO());
+  const [categoria, setCategoria] = useState<VarricaoOrdemCategoria>("varricao");
   const [referenciaId, setReferenciaId] = useState<string>(""); // "" = automática (última finalizada)
   const [numero, setNumero] = useState("");
   const [dataEmissao, setDataEmissao] = useState(() => new Date().toLocaleDateString("en-CA"));
@@ -52,22 +55,29 @@ export default function VarricaoOrdemNovaPage() {
     queryFn: async () => (await apiRequest("GET", "/api/varricao/ordens")).json(),
   });
   const finalizadas = ordens
-    .filter((o) => o.status === "finalizada")
+    .filter((o) => o.status === "finalizada" && o.categoria === categoria)
     .sort((a, b) => b.mes_referencia.localeCompare(a.mes_referencia));
 
-  const chaveAtual = `${mes}|${referenciaId}`;
+  function mudarCategoria(v: VarricaoOrdemCategoria) {
+    setCategoria(v);
+    setReferenciaId(""); // referência é específica de cada categoria, não faz sentido carregar entre elas
+  }
+
+  const chaveAtual = `${mes}|${categoria}|${referenciaId}`;
   const { data: preview, isLoading } = useQuery<VarricaoOrdemPayload>({
-    queryKey: ["/api/varricao/ordens/preview", mes, referenciaId],
+    queryKey: ["/api/varricao/ordens/preview", mes, categoria, referenciaId],
     queryFn: async () => {
       const qs = referenciaId ? `&referenciaId=${referenciaId}` : "";
-      return (await apiRequest("GET", `/api/varricao/ordens/preview?mes=${mes}${qs}`)).json();
+      return (await apiRequest("GET", `/api/varricao/ordens/preview?mes=${mes}&categoria=${categoria}${qs}`)).json();
     },
   });
 
-  const { data: todosLocais = [] } = useQuery<VarricaoLocalCompleto[]>({
+  const { data: todosLocaisBrutos = [] } = useQuery<VarricaoLocalCompleto[]>({
     queryKey: ["/api/varricao/locais"],
     queryFn: async () => (await apiRequest("GET", "/api/varricao/locais")).json(),
   });
+  // Só locais da mesma categoria podem ser incluídos nesta OS
+  const todosLocais = todosLocaisBrutos.filter((l) => categoriaDaSecao(l.secao) === categoria);
 
   const { data: config } = useQuery<VarricaoConfig>({
     queryKey: ["/api/varricao/config"],
@@ -87,6 +97,7 @@ export default function VarricaoOrdemNovaPage() {
       const res = await apiRequest("POST", "/api/varricao/ordens", {
         numero: numero.trim(),
         mesReferencia: mes,
+        categoria,
         dataEmissao,
         observacao: observacao.trim() || undefined,
         locais: (rascunho ?? []).map((l) => ({ localId: l.localId, dias: l.dias })),
@@ -116,6 +127,7 @@ export default function VarricaoOrdemNovaPage() {
   const payloadParaExportar: VarricaoOrdemPayload | null = rascunho
     ? {
         mesReferencia: mes,
+        categoria,
         locais: rascunho,
         subtotaisRegiao: calcularSubtotais(rascunho, "regiao"),
         subtotaisSecao: calcularSubtotais(rascunho, "secao"),
@@ -146,6 +158,24 @@ export default function VarricaoOrdemNovaPage() {
               <Settings className="h-3.5 w-3.5 mr-1.5" /> Teto de metragem
             </Button>
           </Link>
+        </div>
+
+        {/* Categoria — Varrição e Lavação são cobradas em unidades diferentes
+            (metro linear × metro quadrado), por isso têm OS's separadas */}
+        <div className="flex gap-1 border-b border-border">
+          {(["varricao", "lavacao"] as const).map((c) => (
+            <button
+              key={c}
+              onClick={() => mudarCategoria(c)}
+              className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+                categoria === c
+                  ? "border-primary text-foreground"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {CATEGORIA_LABELS[c]}
+            </button>
+          ))}
         </div>
 
         {/* Formulário de emissão */}
@@ -226,7 +256,7 @@ export default function VarricaoOrdemNovaPage() {
           <div className="rounded-lg border border-blue-300 dark:border-blue-800 bg-blue-50 dark:bg-blue-950 p-3 flex items-center gap-3 flex-wrap">
             <FileText className="h-4 w-4 text-blue-600 dark:text-blue-400 shrink-0" />
             <p className="text-sm text-blue-800 dark:text-blue-300 flex-1">
-              Já existe a <b>OS {preview.ordemExistente.numero}</b> para {formatMesReferencia(mes)}{" "}
+              Já existe a <b>OS {preview.ordemExistente.numero}</b> de {CATEGORIA_LABELS[categoria]} para {formatMesReferencia(mes)}{" "}
               <VarricaoStatusBadge status={preview.ordemExistente.status} />
               {preview.ordemExistente.status === "rascunho"
                 ? " — edite-a em vez de criar outra."
@@ -260,7 +290,8 @@ export default function VarricaoOrdemNovaPage() {
           <>
             <div className="flex items-center justify-between flex-wrap gap-2">
               <p className="text-sm text-muted-foreground">
-                Rascunho para <b className="text-foreground">{formatMesReferencia(mes)}</b> — {totalLocais} locais, ainda não emitida
+                Rascunho de <b className="text-foreground">{CATEGORIA_LABELS[categoria]}</b> para{" "}
+                <b className="text-foreground">{formatMesReferencia(mes)}</b> — {totalLocais} locais, ainda não emitida
                 {preview?.referenciaUsada && (
                   <span className="block text-xs mt-0.5">
                     Baseado na OS {preview.referenciaUsada.numero} — {formatMesReferencia(preview.referenciaUsada.mesReferencia)}

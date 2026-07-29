@@ -310,10 +310,23 @@ async function ensureVarricaoConfigTable() {
 
 // Categoria orçamentária de uma seção — usada para conferir o teto de metragem
 // contratual de Varrição e de Lavação (Sanitários não tem teto definido)
-function secaoCategoria(secao: string): "varricao" | "lavacao" | "outros" {
+// Os 3 serviços do contrato: Varrição e Lavação são cobradas em unidades
+// diferentes (metro linear × metro quadrado) — cada uma tem sua própria
+// Ordem de Serviço (rascunho/finalizada) e teto de metragem. Sanitário é
+// simples (1 local, diário) e não tem rascunho/finalização própria — entra
+// direto no documento combinado, calculado na hora.
+type VarricaoCategoria = "varricao" | "lavacao" | "sanitario";
+
+const SECOES_POR_CATEGORIA: Record<VarricaoCategoria, string[]> = {
+  varricao: ["varricao", "varricao_2turno"],
+  lavacao: ["lavagem_vias_noturna", "lavagem_pracas_noturna", "lavagem_vias_diurna", "lavagem_pracas_diurna"],
+  sanitario: ["sanitarios"],
+};
+
+function secaoCategoria(secao: string): VarricaoCategoria {
   if (secao.startsWith("lavagem")) return "lavacao";
-  if (secao.startsWith("varricao")) return "varricao";
-  return "outros";
+  if (secao === "sanitarios") return "sanitario";
+  return "varricao";
 }
 
 async function ensureVarricaoOrdensTable() {
@@ -335,6 +348,8 @@ async function ensureVarricaoOrdensTable() {
       ALTER TABLE varricao_ordens ADD COLUMN IF NOT EXISTS status VARCHAR(20) NOT NULL DEFAULT 'rascunho';
       ALTER TABLE varricao_ordens ADD COLUMN IF NOT EXISTS finalizado_por VARCHAR(150);
       ALTER TABLE varricao_ordens ADD COLUMN IF NOT EXISTS finalizado_em TIMESTAMPTZ;
+      ALTER TABLE varricao_ordens ADD COLUMN IF NOT EXISTS categoria VARCHAR(20) NOT NULL DEFAULT 'varricao';
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_varricao_ordens_mes_categoria ON varricao_ordens (mes_referencia, categoria);
       CREATE TABLE IF NOT EXISTS varricao_ordens_locais (
         id SERIAL PRIMARY KEY,
         ordem_id INTEGER NOT NULL REFERENCES varricao_ordens(id) ON DELETE CASCADE,
@@ -488,27 +503,36 @@ interface BaseParaNovaOrdem {
   referencia: { id: number; numero: string; mesReferencia: string } | null;
 }
 
+// categoria: escopa tudo à categoria da OS sendo criada (varrição e lavação
+// têm históricos/referências totalmente independentes um do outro).
 // referenciaId: se informado, usa ESSA OS finalizada específica como base
 // (ex.: dezembro/2025 para gerar dezembro/2026, em vez do mês imediatamente
 // anterior, que pode ter calendário/feriados bem diferentes). Se omitido,
-// usa a última finalizada automaticamente — comportamento padrão.
-async function idsBaseParaNovaOrdem(pool: any, referenciaId?: number): Promise<BaseParaNovaOrdem> {
+// usa a última finalizada da mesma categoria automaticamente.
+async function idsBaseParaNovaOrdem(
+  pool: any,
+  categoria: "varricao" | "lavacao",
+  referenciaId?: number
+): Promise<BaseParaNovaOrdem> {
   let base: { id: number; numero: string; mes_referencia: string } | null = null;
 
   if (referenciaId) {
     const { rows } = await pool.query(
-      `SELECT id, numero, mes_referencia FROM varricao_ordens WHERE id=$1 AND status='finalizada'`,
-      [referenciaId]
+      `SELECT id, numero, mes_referencia FROM varricao_ordens WHERE id=$1 AND status='finalizada' AND categoria=$2`,
+      [referenciaId, categoria]
     );
     base = rows[0] ?? null;
   } else {
     const { rows } = await pool.query(
-      `SELECT id, numero, mes_referencia FROM varricao_ordens WHERE status='finalizada' ORDER BY mes_referencia DESC, created_at DESC LIMIT 1`
+      `SELECT id, numero, mes_referencia FROM varricao_ordens WHERE status='finalizada' AND categoria=$1 ORDER BY mes_referencia DESC, created_at DESC LIMIT 1`,
+      [categoria]
     );
     base = rows[0] ?? null;
   }
 
-  if (!base) return { ids: null, referencia: null }; // nunca houve finalizada: usar todos os ativos
+  const secoesDaCategoria = SECOES_POR_CATEGORIA[categoria];
+
+  if (!base) return { ids: null, referencia: null }; // nunca houve finalizada nesta categoria: usar todos os ativos dela
 
   const { rows: daBase } = await pool.query(
     `SELECT local_id FROM varricao_ordens_locais WHERE ordem_id=$1 AND local_id IS NOT NULL`,
@@ -516,16 +540,19 @@ async function idsBaseParaNovaOrdem(pool: any, referenciaId?: number): Promise<B
   );
   const ids = new Set<number>(daBase.map((r: any) => r.local_id));
 
-  // Locais que nunca apareceram em NENHUMA OS finalizada (recém-cadastrados)
-  // entram automaticamente, independente de qual referência foi escolhida
+  // Locais que nunca apareceram em NENHUMA OS finalizada desta categoria
+  // (recém-cadastrados) entram automaticamente
   const { rows: jaFinalizadosAlgumaVez } = await pool.query(`
     SELECT DISTINCT l.local_id FROM varricao_ordens_locais l
     JOIN varricao_ordens o ON o.id = l.ordem_id
-    WHERE o.status='finalizada' AND l.local_id IS NOT NULL
-  `);
+    WHERE o.status='finalizada' AND o.categoria=$1 AND l.local_id IS NOT NULL
+  `, [categoria]);
   const idsJaVistos = new Set<number>(jaFinalizadosAlgumaVez.map((r: any) => r.local_id));
 
-  const { rows: todosAtivos } = await pool.query(`SELECT id FROM varricao_locais WHERE ativo IS NOT FALSE`);
+  const { rows: todosAtivos } = await pool.query(
+    `SELECT id FROM varricao_locais WHERE ativo IS NOT FALSE AND secao = ANY($1::text[])`,
+    [secoesDaCategoria]
+  );
   todosAtivos.forEach((l: any) => { if (!idsJaVistos.has(l.id)) ids.add(l.id); });
 
   return {
@@ -535,7 +562,7 @@ async function idsBaseParaNovaOrdem(pool: any, referenciaId?: number): Promise<B
 }
 
 function totaisPorCategoria(locais: LocalComputado[]) {
-  const totais: Record<"varricao" | "lavacao" | "outros", number> = { varricao: 0, lavacao: 0, outros: 0 };
+  const totais: Record<VarricaoCategoria, number> = { varricao: 0, lavacao: 0, sanitario: 0 };
   locais.forEach((l) => {
     totais[secaoCategoria(l.secao)] += l.metragemTotal;
   });
@@ -2928,27 +2955,37 @@ export async function registerRoutes(app: Express): Promise<void> {
       if (!m) return res.status(400).json({ error: "Informe o mês no formato YYYY-MM" });
       const ano = parseInt(m[1]), mesNum = parseInt(m[2]);
 
+      const categoria = String(req.query.categoria ?? "");
+      if (categoria !== "varricao" && categoria !== "lavacao") {
+        return res.status(400).json({ error: "Informe a categoria: varricao ou lavacao" });
+      }
+
       const referenciaId = req.query.referenciaId ? parseInt(String(req.query.referenciaId)) : undefined;
 
       const pool = getPool();
-      const { ids: idsBase, referencia } = await idsBaseParaNovaOrdem(pool, referenciaId);
+      const { ids: idsBase, referencia } = await idsBaseParaNovaOrdem(pool, categoria, referenciaId);
+      const secoesDaCategoria = SECOES_POR_CATEGORIA[categoria];
       const { rows: locaisRaw } = idsBase
         ? await pool.query(
             "SELECT * FROM varricao_locais WHERE id = ANY($1::int[]) AND ativo IS NOT FALSE ORDER BY regiao, nome",
             [idsBase]
           )
-        : await pool.query("SELECT * FROM varricao_locais WHERE ativo IS NOT FALSE ORDER BY regiao, nome");
+        : await pool.query(
+            "SELECT * FROM varricao_locais WHERE secao = ANY($1::text[]) AND ativo IS NOT FALSE ORDER BY regiao, nome",
+            [secoesDaCategoria]
+          );
 
       const locais = calcularLocaisDoMes(locaisRaw, ano, mesNum);
       const duplicatas = detectarDuplicatas(locais);
       const totalMetragem = locais.reduce((s, l) => s + l.metragemTotal, 0);
 
       const { rows: existente } = await pool.query(
-        "SELECT id, numero, status FROM varricao_ordens WHERE mes_referencia=$1", [mes]
+        "SELECT id, numero, status FROM varricao_ordens WHERE mes_referencia=$1 AND categoria=$2", [mes, categoria]
       );
 
       res.json({
         mesReferencia: mes,
+        categoria,
         locais,
         duplicatas,
         subtotaisRegiao: subtotais(locais, "regiao"),
@@ -3012,6 +3049,95 @@ export async function registerRoutes(app: Express): Promise<void> {
     }
   });
 
+  // Documento combinado: junta a OS finalizada de Varrição + a de Lavação do
+  // mês + os Sanitários (calculados na hora, sem OS própria) num único
+  // payload exportável — igual ao documento que a Mariane já monta hoje.
+  // Não salva nada novo no banco, só monta o resultado para exportar.
+  app.get("/api/varricao/ordens/combinado", requireAuth, async (req, res) => {
+    try {
+      const mes = String(req.query.mes ?? "");
+      const m = mes.match(/^(\d{4})-(\d{2})$/);
+      if (!m) return res.status(400).json({ error: "Informe o mês no formato YYYY-MM" });
+      const ano = parseInt(m[1]), mesNum = parseInt(m[2]);
+
+      const pool = getPool();
+
+      const { rows: ordensDoMes } = await pool.query(
+        `SELECT * FROM varricao_ordens WHERE mes_referencia=$1 AND categoria IN ('varricao','lavacao')`,
+        [mes]
+      );
+      const ordemVarricao = ordensDoMes.find((o: any) => o.categoria === "varricao") ?? null;
+      const ordemLavacao = ordensDoMes.find((o: any) => o.categoria === "lavacao") ?? null;
+
+      const faltando: string[] = [];
+      if (!ordemVarricao || ordemVarricao.status !== "finalizada") faltando.push("Varrição");
+      if (!ordemLavacao || ordemLavacao.status !== "finalizada") faltando.push("Lavação");
+      if (faltando.length) {
+        return res.status(400).json({
+          error: `Finalize a OS de ${faltando.join(" e ")} deste mês antes de gerar o documento combinado.`,
+          faltando,
+        });
+      }
+
+      const [{ rows: locaisVarricaoRaw }, { rows: locaisLavacaoRaw }] = await Promise.all([
+        pool.query("SELECT * FROM varricao_ordens_locais WHERE ordem_id=$1", [ordemVarricao.id]),
+        pool.query("SELECT * FROM varricao_ordens_locais WHERE ordem_id=$1", [ordemLavacao.id]),
+      ]);
+
+      const mapear = (l: any): LocalComputado => ({
+        localId: l.local_id,
+        nome: l.nome,
+        complemento: l.complemento,
+        regiao: l.regiao,
+        tipo: l.tipo,
+        secao: l.secao,
+        metragemUnica: l.metragem_unica != null ? Number(l.metragem_unica) : null,
+        dias: l.dias,
+        diasTexto: l.dias_texto,
+        metragemTotal: l.metragem_total != null ? Number(l.metragem_total) : 0,
+      });
+
+      // Sanitário não tem OS própria — calcula ao vivo a partir da frequência,
+      // igual à prévia das outras categorias
+      const { rows: sanitariosRaw } = await pool.query(
+        "SELECT * FROM varricao_locais WHERE secao = ANY($1::text[]) AND ativo IS NOT FALSE",
+        [SECOES_POR_CATEGORIA.sanitario]
+      );
+      const locaisSanitarios = calcularLocaisDoMes(sanitariosRaw, ano, mesNum);
+
+      const locais: LocalComputado[] = [
+        ...locaisVarricaoRaw.map(mapear),
+        ...locaisLavacaoRaw.map(mapear),
+        ...locaisSanitarios,
+      ];
+      const totalMetragem = locais.reduce((s, l) => s + l.metragemTotal, 0);
+
+      res.json({
+        mesReferencia: mes,
+        ordem: {
+          numero: `Varrição ${ordemVarricao.numero} · Lavação ${ordemLavacao.numero}`,
+          mes_referencia: mes,
+          data_emissao: new Date().toISOString().split("T")[0],
+          emitido_por: req.session.userName ?? null,
+          observacao: null,
+          status: "finalizada",
+          finalizado_por: null,
+          finalizado_em: null,
+          created_at: new Date().toISOString(),
+        },
+        locais,
+        subtotaisRegiao: subtotais(locais, "regiao"),
+        subtotaisSecao: subtotais(locais, "secao"),
+        totaisPorCategoria: totaisPorCategoria(locais),
+        totalLocais: locais.length,
+        totalMetragem,
+      });
+    } catch (error) {
+      console.error("Erro ao gerar documento combinado:", error);
+      res.status(500).json({ error: "Erro ao gerar o documento combinado" });
+    }
+  });
+
   app.get("/api/varricao/ordens/:id", requireAuth, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
@@ -3053,9 +3179,12 @@ export async function registerRoutes(app: Express): Promise<void> {
 
   app.post("/api/varricao/ordens", requireRole("admin", "fiscal"), async (req, res) => {
     try {
-      const { numero, mesReferencia, dataEmissao, observacao, locais: locaisEscolhidos } = req.body;
+      const { numero, mesReferencia, categoria, dataEmissao, observacao, locais: locaisEscolhidos } = req.body;
       if (!numero || !mesReferencia || !dataEmissao) {
         return res.status(400).json({ error: "Número, mês de referência e data de emissão são obrigatórios" });
+      }
+      if (categoria !== "varricao" && categoria !== "lavacao") {
+        return res.status(400).json({ error: "Categoria inválida — deve ser varricao ou lavacao" });
       }
       if (!Array.isArray(locaisEscolhidos) || locaisEscolhidos.length === 0) {
         return res.status(400).json({ error: "Selecione ao menos um local para esta ordem de serviço" });
@@ -3069,11 +3198,11 @@ export async function registerRoutes(app: Express): Promise<void> {
       const pool = getPool();
 
       const { rows: jaExiste } = await pool.query(
-        "SELECT id, numero FROM varricao_ordens WHERE mes_referencia=$1", [mesReferencia]
+        "SELECT id, numero FROM varricao_ordens WHERE mes_referencia=$1 AND categoria=$2", [mesReferencia, categoria]
       );
       if (jaExiste.length) {
         return res.status(409).json({
-          error: `Já existe a OS ${jaExiste[0].numero} para este mês. Edite-a em vez de criar outra.`,
+          error: `Já existe a OS ${jaExiste[0].numero} para este mês/categoria. Edite-a em vez de criar outra.`,
           ordemExistenteId: jaExiste[0].id,
         });
       }
@@ -3082,6 +3211,7 @@ export async function registerRoutes(app: Express): Promise<void> {
       // remanejar entre locais fixos e variáveis, respeitar teto de metragem
       // etc.) — mas o servidor sempre recalcula a metragem a partir dos dados
       // atuais do local, nunca confiando em números vindos do cliente.
+      const secoesPermitidas = new Set(SECOES_POR_CATEGORIA[categoria as "varricao" | "lavacao"]);
       const idsUnicos = Array.from(new Set(locaisEscolhidos.map((l: any) => Number(l.localId))));
       const { rows: locaisRaw } = await pool.query(
         "SELECT * FROM varricao_locais WHERE id = ANY($1::int[])", [idsUnicos]
@@ -3091,7 +3221,8 @@ export async function registerRoutes(app: Express): Promise<void> {
       const locais: LocalComputado[] = [];
       for (const item of locaisEscolhidos) {
         const local = porId.get(Number(item.localId));
-        if (!local) continue;
+        // Não deixa entrar local de outra categoria (ex.: lavação numa OS de varrição)
+        if (!local || !secoesPermitidas.has(local.secao)) continue;
         const dias: number[] = Array.isArray(item.dias)
           ? item.dias.filter((d: any) => Number.isInteger(d) && d >= 1 && d <= 31).sort((a: number, b: number) => a - b)
           : [];
@@ -3119,9 +3250,9 @@ export async function registerRoutes(app: Express): Promise<void> {
       }
 
       const { rows: ordemRows } = await pool.query(
-        `INSERT INTO varricao_ordens (numero, mes_referencia, data_emissao, emitido_por, observacao, status)
-         VALUES ($1,$2,$3,$4,$5,'rascunho') RETURNING *`,
-        [numero, mesReferencia, dataEmissao, req.session.userName ?? null, observacao || null]
+        `INSERT INTO varricao_ordens (numero, mes_referencia, categoria, data_emissao, emitido_por, observacao, status)
+         VALUES ($1,$2,$3,$4,$5,$6,'rascunho') RETURNING *`,
+        [numero, mesReferencia, categoria, dataEmissao, req.session.userName ?? null, observacao || null]
       );
       const ordem = ordemRows[0];
 
@@ -3163,6 +3294,8 @@ export async function registerRoutes(app: Express): Promise<void> {
         });
       }
       const mesReferencia = existentes[0].mes_referencia;
+      const categoriaDaOrdem = existentes[0].categoria as "varricao" | "lavacao";
+      const secoesPermitidas = new Set(SECOES_POR_CATEGORIA[categoriaDaOrdem]);
 
       const mMes = String(mesReferencia).match(/^(\d{4})-(\d{2})$/);
       const diasUteisDoMes = diasDoMesParaLocal(
@@ -3178,7 +3311,8 @@ export async function registerRoutes(app: Express): Promise<void> {
       const locais: LocalComputado[] = [];
       for (const item of locaisEscolhidos) {
         const local = porId.get(Number(item.localId));
-        if (!local) continue;
+        // Não deixa entrar local de outra categoria (ex.: lavação numa OS de varrição)
+        if (!local || !secoesPermitidas.has(local.secao)) continue;
         const dias: number[] = Array.isArray(item.dias)
           ? item.dias.filter((d: any) => Number.isInteger(d) && d >= 1 && d <= 31).sort((a: number, b: number) => a - b)
           : [];

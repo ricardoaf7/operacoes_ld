@@ -8,10 +8,13 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { ChevronLeft, Plus, FileText, Trash2, MapPin, Settings } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { ChevronLeft, Plus, FileText, Trash2, MapPin, Settings, FileStack } from "lucide-react";
 import { Link } from "wouter";
 import { formatMesReferencia, formatMetragem, type VarricaoOrdemRegistro } from "@/lib/varricao-ordens-types";
 import { VarricaoStatusBadge } from "@/components/VarricaoStatusBadge";
+import { CATEGORIA_LABELS } from "@/lib/varricao-utils";
+import { VarricaoDocumentoCombinadoDialog } from "@/components/VarricaoDocumentoCombinadoDialog";
 
 function formatDataBR(iso: string): string {
   const [y, m, d] = iso.slice(0, 10).split("-");
@@ -25,6 +28,7 @@ export default function VarricaoOrdensPage() {
   const podeExcluir = user?.role === "admin" || user?.role === "gestor" || user?.role === "fiscal";
   const podeConfigurar = user?.role === "admin" || user?.role === "gestor";
   const [paraExcluir, setParaExcluir] = useState<VarricaoOrdemRegistro | null>(null);
+  const [mostrarCombinado, setMostrarCombinado] = useState(false);
 
   const { data: ordens = [], isLoading } = useQuery<VarricaoOrdemRegistro[]>({
     queryKey: ["/api/varricao/ordens"],
@@ -61,7 +65,7 @@ export default function VarricaoOrdensPage() {
               </p>
             </div>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
             {podeConfigurar && (
               <Link href="/varricao/configuracoes">
                 <Button variant="outline">
@@ -69,6 +73,9 @@ export default function VarricaoOrdensPage() {
                 </Button>
               </Link>
             )}
+            <Button variant="outline" onClick={() => setMostrarCombinado(true)}>
+              <FileStack className="h-4 w-4 mr-2" /> Documento Combinado
+            </Button>
             {podeEmitir && (
               <Link href="/varricao/ordens/nova">
                 <Button>
@@ -94,6 +101,12 @@ export default function VarricaoOrdensPage() {
               <Link href={`/varricao/ordens/${o.id}`} className="flex-1 min-w-0">
                 <p className="font-medium flex items-center gap-2 flex-wrap">
                   OS {o.numero} <span className="text-muted-foreground font-normal">— {formatMesReferencia(o.mes_referencia)}</span>
+                  <Badge
+                    variant="outline"
+                    className={o.categoria === "lavacao" ? "border-blue-400 text-blue-700 dark:text-blue-400" : "border-emerald-400 text-emerald-700 dark:text-emerald-400"}
+                  >
+                    {CATEGORIA_LABELS[o.categoria]}
+                  </Badge>
                   <VarricaoStatusBadge status={o.status} />
                 </p>
                 <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-3 flex-wrap">
@@ -139,6 +152,8 @@ export default function VarricaoOrdensPage() {
           </div>
         </AlertDialogContent>
       </AlertDialog>
+
+      <VarricaoDocumentoCombinadoDialog open={mostrarCombinado} onOpenChange={setMostrarCombinado} />
     </div>
   );
 }

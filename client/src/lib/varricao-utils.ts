@@ -10,6 +10,30 @@ export const SECAO_LABELS: Record<string, string> = {
   lavagem_pracas_diurna: "Lavagem de praças (diurna)",
 };
 
+// Os 3 serviços do contrato: Varrição e Lavação são cobradas em unidades
+// diferentes (metro linear × metro quadrado) e por isso têm Ordens de
+// Serviço e tetos de metragem separados; Sanitário é simples (1 local,
+// diário) e não passa por rascunho/finalização própria.
+export type VarricaoCategoria = "varricao" | "lavacao" | "sanitario";
+
+export const CATEGORIA_LABELS: Record<VarricaoCategoria, string> = {
+  varricao: "Varrição",
+  lavacao: "Lavação",
+  sanitario: "Sanitário",
+};
+
+export const SECOES_POR_CATEGORIA: Record<VarricaoCategoria, string[]> = {
+  varricao: ["varricao", "varricao_2turno"],
+  lavacao: ["lavagem_vias_noturna", "lavagem_pracas_noturna", "lavagem_vias_diurna", "lavagem_pracas_diurna"],
+  sanitario: ["sanitarios"],
+};
+
+export function categoriaDaSecao(secao: string): VarricaoCategoria {
+  if (secao.startsWith("lavagem")) return "lavacao";
+  if (secao === "sanitarios") return "sanitario";
+  return "varricao";
+}
+
 export interface VarricaoLocalAgenda {
   frequencia: string;
   dias_semana: number[] | null;

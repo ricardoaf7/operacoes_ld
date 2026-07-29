@@ -64,12 +64,17 @@ export async function exportarOrdemExcel(payload: VarricaoOrdemPayload): Promise
     { wch: 14 }, { wch: 34 }, { wch: 8 }, { wch: 16 },
   ];
   const wb = XLSX.utils.book_new();
-  const nomeAba = payload.ordem ? `OS ${payload.ordem.numero}` : formatMesReferencia(payload.mesReferencia);
+  const ehCombinadaAba = payload.ordem?.numero.includes(" · ");
+  const nomeAba = ehCombinadaAba
+    ? "OS Combinada"
+    : payload.ordem ? `OS ${payload.ordem.numero}` : formatMesReferencia(payload.mesReferencia);
   XLSX.utils.book_append_sheet(wb, ws, nomeAba.slice(0, 31));
 
-  const nomeArquivo = payload.ordem
-    ? `OS_Varricao_${payload.ordem.numero.replace(/[^\w-]/g, "_")}.xlsx`
-    : `Previa_Varricao_${payload.mesReferencia}.xlsx`;
+  const nomeArquivo = ehCombinadaAba
+    ? `OS_Combinada_Varricao_${payload.mesReferencia}.xlsx`
+    : payload.ordem
+      ? `OS_Varricao_${payload.ordem.numero.replace(/[^\w-]/g, "_")}.xlsx`
+      : `Previa_Varricao_${payload.mesReferencia}.xlsx`;
   XLSX.writeFile(wb, nomeArquivo);
 }
 
@@ -89,10 +94,15 @@ export async function exportarOrdemPdf(payload: VarricaoOrdemPayload): Promise<v
     loadImg("/logos/operacoes.png"),
   ]);
 
-  const titulo = payload.ordem
-    ? `ORDEM DE SERVIÇO Nº ${payload.ordem.numero}`
-    : `PRÉVIA — ORDEM DE SERVIÇO`;
-  const subtitulo = `VARRIÇÃO E LAVAÇÃO — ${formatMesReferencia(payload.mesReferencia).toUpperCase()}`;
+  const ehCombinada = payload.ordem?.numero.includes(" · ");
+  const titulo = ehCombinada
+    ? "ORDEM DE SERVIÇO COMBINADA"
+    : payload.ordem
+      ? `ORDEM DE SERVIÇO Nº ${payload.ordem.numero}`
+      : `PRÉVIA — ORDEM DE SERVIÇO`;
+  const subtitulo = ehCombinada
+    ? `${payload.ordem!.numero.toUpperCase()} — ${formatMesReferencia(payload.mesReferencia).toUpperCase()}`
+    : `VARRIÇÃO E LAVAÇÃO — ${formatMesReferencia(payload.mesReferencia).toUpperCase()}`;
 
   // ── PÁGINA 1: CAPA / RESUMO ─────────────────────────────────────────
   const headerBottom = addPdfHeader(doc, londrina, cmtu, operacoes, titulo, subtitulo, mx);
@@ -215,8 +225,10 @@ export async function exportarOrdemPdf(payload: VarricaoOrdemPayload): Promise<v
     addPdfFooter(doc, p, totalPaginas, mx);
   }
 
-  const nomeArquivo = payload.ordem
-    ? `OS_Varricao_${payload.ordem.numero.replace(/[^\w-]/g, "_")}.pdf`
-    : `Previa_Varricao_${payload.mesReferencia}.pdf`;
+  const nomeArquivo = ehCombinada
+    ? `OS_Combinada_Varricao_${payload.mesReferencia}.pdf`
+    : payload.ordem
+      ? `OS_Varricao_${payload.ordem.numero.replace(/[^\w-]/g, "_")}.pdf`
+      : `Previa_Varricao_${payload.mesReferencia}.pdf`;
   doc.save(nomeArquivo);
 }

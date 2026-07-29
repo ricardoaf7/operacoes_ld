@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogHeader, AlertDialogTitle,
@@ -21,6 +22,7 @@ import {
   formatMesReferencia,
   type VarricaoOrdemPayload, type VarricaoOrdemLocal, type VarricaoConfig,
 } from "@/lib/varricao-ordens-types";
+import { CATEGORIA_LABELS, categoriaDaSecao } from "@/lib/varricao-utils";
 
 interface VarricaoLocalCompleto {
   id: number;
@@ -64,11 +66,15 @@ export default function VarricaoOrdemDetalhePage() {
     queryFn: async () => (await apiRequest("GET", "/api/varricao/config")).json(),
   });
 
-  const { data: todosLocais = [] } = useQuery<VarricaoLocalCompleto[]>({
+  const { data: todosLocaisBrutos = [] } = useQuery<VarricaoLocalCompleto[]>({
     queryKey: ["/api/varricao/locais"],
     queryFn: async () => (await apiRequest("GET", "/api/varricao/locais")).json(),
     enabled: editando,
   });
+  // Só locais da mesma categoria da OS podem ser incluídos
+  const todosLocais = payload?.ordem
+    ? todosLocaisBrutos.filter((l) => categoriaDaSecao(l.secao) === payload.ordem!.categoria)
+    : [];
 
   function iniciarEdicao() {
     if (!payload?.ordem) return;
@@ -131,6 +137,12 @@ export default function VarricaoOrdemDetalhePage() {
                 <>
                   <h1 className="text-xl font-bold flex items-center gap-2 flex-wrap">
                     OS {payload.ordem.numero}
+                    <Badge
+                      variant="outline"
+                      className={payload.ordem.categoria === "lavacao" ? "border-blue-400 text-blue-700 dark:text-blue-400" : "border-emerald-400 text-emerald-700 dark:text-emerald-400"}
+                    >
+                      {CATEGORIA_LABELS[payload.ordem.categoria]}
+                    </Badge>
                     <VarricaoStatusBadge status={payload.ordem.status} />
                   </h1>
                   <p className="text-sm text-muted-foreground">
