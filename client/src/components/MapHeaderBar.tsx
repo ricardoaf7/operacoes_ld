@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { useQuery } from '@tanstack/react-query';
 import type { TimeRangeFilter } from './MapLegend';
 import type { ServiceArea } from '@shared/schema';
+import { rankearBusca } from '@/lib/search-utils';
 
 export interface GeocodedResult {
   display_name: string;
@@ -172,7 +173,17 @@ export function MapHeaderBar({
     staleTime: 60000,
   });
 
-  const suggestions = searchResults.slice(0, 6);
+  // A busca no servidor já filtra por endereço/bairro/lote (tolerante a acento),
+  // mas devolve num só bloco sem prioridade — sem isso, um endereço com dezenas
+  // de outras áreas no mesmo bairro citando ele por acaso ficava enterrado fora
+  // do top 6. Aqui rankeamos: nome batendo primeiro, bairro/lote depois.
+  const suggestions = rankearBusca(
+    searchResults,
+    deferredSearchQuery,
+    (area) => area.endereco || '',
+    (area) => `${area.bairro ?? ''} ${area.lote ?? ''}`,
+    6
+  );
   const geocodeSuggestions = geocodeResults.slice(0, 4);
 
   const totalSuggestions = suggestions.length + geocodeSuggestions.length;
