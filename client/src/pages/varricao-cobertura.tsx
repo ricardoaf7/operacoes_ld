@@ -15,11 +15,12 @@ import {
 } from "@/components/ui/alert-dialog";
 import {
   ChevronLeft, ChevronDown, ChevronRight, CheckCircle2, AlertTriangle,
-  ImageIcon, CalendarDays,
+  ImageIcon, CalendarDays, FileText,
 } from "lucide-react";
 import { Link } from "wouter";
 import { VarricaoFotoThumb, type VarricaoFoto } from "@/components/VarricaoFotoThumb";
 import { SECAO_LABELS, dataLocalISO, programadoNaData } from "@/lib/varricao-utils";
+import { formatMesReferencia, type VarricaoOrdemRegistro } from "@/lib/varricao-ordens-types";
 
 interface VarricaoLocal {
   id: number;
@@ -64,6 +65,15 @@ export default function VarricaoCoberturaPage() {
     queryKey: ["/api/varricao/fotos", "cobertura", data],
     queryFn: async () => (await apiRequest("GET", `/api/varricao/fotos?data=${data}`)).json(),
   });
+
+  // OS vigente para o mês da data selecionada (rastreabilidade: o que deveria
+  // acontecer segundo a OS emitida × o que aconteceu de fato nesta cobertura)
+  const { data: ordens = [] } = useQuery<VarricaoOrdemRegistro[]>({
+    queryKey: ["/api/varricao/ordens"],
+    queryFn: async () => (await apiRequest("GET", "/api/varricao/ordens")).json(),
+  });
+  const mesDaData = data.slice(0, 7);
+  const osVigente = ordens.find((o) => o.mes_referencia === mesDaData);
 
   const excluirMutation = useMutation({
     mutationFn: async (id: number) => {
@@ -249,7 +259,24 @@ export default function VarricaoCoberturaPage() {
           </Select>
         </div>
 
-        <p className="text-sm text-muted-foreground capitalize">{formatDataExtenso(data)}</p>
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <p className="text-sm text-muted-foreground capitalize">{formatDataExtenso(data)}</p>
+          {osVigente ? (
+            <Link href={`/varricao/ordens/${osVigente.id}`}>
+              <span className="text-xs flex items-center gap-1.5 text-emerald-700 dark:text-emerald-400 hover:underline">
+                <FileText className="h-3.5 w-3.5" />
+                OS {osVigente.numero} vigente para {formatMesReferencia(mesDaData)}
+              </span>
+            </Link>
+          ) : (
+            <Link href="/varricao/ordens/nova">
+              <span className="text-xs flex items-center gap-1.5 text-amber-600 dark:text-amber-400 hover:underline">
+                <AlertTriangle className="h-3.5 w-3.5" />
+                Nenhuma OS emitida para {formatMesReferencia(mesDaData)} — emitir agora
+              </span>
+            </Link>
+          )}
+        </div>
 
         {/* Cards resumo */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">

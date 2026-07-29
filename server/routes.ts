@@ -291,6 +291,162 @@ async function ensureVarricaoLocaisTable() {
   }
 }
 
+async function ensureVarricaoOrdensTable() {
+  try {
+    const pool = getPool();
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS varricao_ordens (
+        id SERIAL PRIMARY KEY,
+        numero VARCHAR(50) NOT NULL,
+        mes_referencia VARCHAR(7) NOT NULL,
+        data_emissao DATE NOT NULL,
+        emitido_por VARCHAR(150),
+        observacao TEXT,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS varricao_ordens_locais (
+        id SERIAL PRIMARY KEY,
+        ordem_id INTEGER NOT NULL REFERENCES varricao_ordens(id) ON DELETE CASCADE,
+        local_id INTEGER REFERENCES varricao_locais(id) ON DELETE SET NULL,
+        nome TEXT NOT NULL,
+        complemento TEXT,
+        regiao VARCHAR(100),
+        tipo VARCHAR(50),
+        secao VARCHAR(50) NOT NULL,
+        metragem_unica NUMERIC,
+        dias JSONB NOT NULL,
+        dias_texto VARCHAR(400),
+        metragem_total NUMERIC
+      );
+      CREATE INDEX IF NOT EXISTS idx_varricao_ordens_mes ON varricao_ordens (mes_referencia);
+      CREATE INDEX IF NOT EXISTS idx_varricao_ordens_locais_ordem ON varricao_ordens_locais (ordem_id);
+    `);
+  } catch (e) {
+    console.warn("varricao_ordens table check:", e);
+  }
+}
+
+// Dias do mês (1..N) em que um local é atendido, dado sua frequência
+function diasDoMesParaLocal(
+  local: { frequencia: string; dias_semana: number[] | null },
+  ano: number,
+  mes: number // 1-12
+): number[] {
+  const ultimoDia = new Date(ano, mes, 0).getDate();
+  const dias: number[] = [];
+  for (let d = 1; d <= ultimoDia; d++) {
+    const diaSemana = new Date(ano, mes - 1, d).getDay();
+    const programado = local.frequencia === "diario"
+      ? diaSemana >= 1 && diaSemana <= 6
+      : (local.dias_semana ?? []).includes(diaSemana);
+    if (programado) dias.push(d);
+  }
+  return dias;
+}
+
+function formatarDiasTexto(dias: number[], frequencia: string): string {
+  if (frequencia === "diario") return "Diário (seg. a sáb.)";
+  if (dias.length === 0) return "—";
+  const strs = dias.map((d) => String(d).padStart(2, "0"));
+  if (strs.length === 1) return strs[0];
+  return strs.slice(0, -1).join(", ") + " e " + strs[strs.length - 1];
+}
+
+// Distância de edição entre duas strings — usada para avisar sobre possíveis
+// nomes duplicados/digitados diferente (ex.: "Tomy" vs "Tomi" Nakagawa)
+function levenshtein(a: string, b: string): number {
+  const m = a.length, n = b.length;
+  if (m === 0) return n;
+  if (n === 0) return m;
+  const dp: number[][] = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+  for (let i = 0; i <= m; i++) dp[i][0] = i;
+  for (let j = 0; j <= n; j++) dp[0][j] = j;
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      dp[i][j] = a[i - 1] === b[j - 1]
+        ? dp[i - 1][j - 1]
+        : 1 + Math.min(dp[i - 1][j - 1], dp[i - 1][j], dp[i][j - 1]);
+    }
+  }
+  return dp[m][n];
+}
+
+function normalizarNome(s: string): string {
+  return s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
+}
+
+interface LocalComputado {
+  localId: number;
+  nome: string;
+  complemento: string | null;
+  regiao: string | null;
+  tipo: string | null;
+  secao: string;
+  metragemUnica: number | null;
+  dias: number[];
+  diasTexto: string;
+  metragemTotal: number;
+}
+
+function calcularLocaisDoMes(locais: any[], ano: number, mes: number): LocalComputado[] {
+  return locais.map((l) => {
+    const dias = diasDoMesParaLocal(l, ano, mes);
+    const metragemUnica = l.metragem_unica != null ? Number(l.metragem_unica) : null;
+    return {
+      localId: l.id,
+      nome: l.nome,
+      complemento: l.complemento,
+      regiao: l.regiao,
+      tipo: l.tipo,
+      secao: l.secao,
+      metragemUnica,
+      dias,
+      diasTexto: formatarDiasTexto(dias, l.frequencia),
+      metragemTotal: metragemUnica != null ? metragemUnica * dias.length : 0,
+    };
+  }).filter((l) => l.dias.length > 0);
+}
+
+// Identidade completa (nome + complemento) para detectar duplicidade real,
+// já que o mesmo nome de rua se repete legitimamente com complementos diferentes
+function detectarDuplicatas(locais: LocalComputado[]) {
+  const duplicatas: { nomeA: string; nomeB: string; localIdA: number; localIdB: number; distancia: number }[] = [];
+  const identidades = locais.map((l) => ({
+    id: l.localId,
+    label: `${l.nome}${l.complemento ? ` (${l.complemento})` : ""}`,
+    norm: normalizarNome(`${l.nome} ${l.complemento ?? ""}`),
+  }));
+  for (let i = 0; i < identidades.length; i++) {
+    for (let j = i + 1; j < identidades.length; j++) {
+      const dist = levenshtein(identidades[i].norm, identidades[j].norm);
+      if (dist <= 2) {
+        duplicatas.push({
+          nomeA: identidades[i].label,
+          nomeB: identidades[j].label,
+          localIdA: identidades[i].id,
+          localIdB: identidades[j].id,
+          distancia: dist,
+        });
+      }
+    }
+  }
+  return duplicatas;
+}
+
+function subtotais(locais: LocalComputado[], campo: "regiao" | "secao") {
+  const m = new Map<string, { quantidade: number; metragemTotal: number }>();
+  locais.forEach((l) => {
+    const chave = (l[campo] ?? "Sem definição") as string;
+    if (!m.has(chave)) m.set(chave, { quantidade: 0, metragemTotal: 0 });
+    const acc = m.get(chave)!;
+    acc.quantidade++;
+    acc.metragemTotal += l.metragemTotal;
+  });
+  return Array.from(m.entries())
+    .map(([chave, v]) => ({ chave, ...v }))
+    .sort((a, b) => b.metragemTotal - a.metragemTotal);
+}
+
 async function ensureVarricaoFotosTable() {
   try {
     const pool = getPool();
@@ -446,6 +602,7 @@ export async function registerRoutes(app: Express): Promise<void> {
   await ensureContratoConfigTable();
   await ensureVarricaoLocaisTable();
   await ensureVarricaoFotosTable();
+  await ensureVarricaoOrdensTable();
 
   // Middleware: encarregado (terceirizada) só acessa o universo do contrato dele
   app.use((req, res, next) => {
@@ -2662,6 +2819,151 @@ export async function registerRoutes(app: Express): Promise<void> {
       res.json({ success: true });
     } catch (error) {
       res.status(500).json({ error: "Erro ao excluir local" });
+    }
+  });
+
+  // ===================== VARRIÇÃO — ORDENS DE SERVIÇO =====================
+
+  // Prévia (não salva): calcula os dias do mês para cada local ativo
+  app.get("/api/varricao/ordens/preview", requireAuth, async (req, res) => {
+    try {
+      const mes = String(req.query.mes ?? ""); // "YYYY-MM"
+      const m = mes.match(/^(\d{4})-(\d{2})$/);
+      if (!m) return res.status(400).json({ error: "Informe o mês no formato YYYY-MM" });
+      const ano = parseInt(m[1]), mesNum = parseInt(m[2]);
+
+      const pool = getPool();
+      const { rows: locaisRaw } = await pool.query(
+        "SELECT * FROM varricao_locais WHERE ativo IS NOT FALSE ORDER BY regiao, nome"
+      );
+
+      const locais = calcularLocaisDoMes(locaisRaw, ano, mesNum);
+      const duplicatas = detectarDuplicatas(locais);
+      const totalMetragem = locais.reduce((s, l) => s + l.metragemTotal, 0);
+
+      res.json({
+        mesReferencia: mes,
+        locais,
+        duplicatas,
+        subtotaisRegiao: subtotais(locais, "regiao"),
+        subtotaisSecao: subtotais(locais, "secao"),
+        totalLocais: locais.length,
+        totalMetragem,
+      });
+    } catch (error) {
+      console.error("Erro ao gerar prévia da OS de varrição:", error);
+      res.status(500).json({ error: "Erro ao calcular a prévia" });
+    }
+  });
+
+  app.get("/api/varricao/ordens", requireAuth, async (req, res) => {
+    try {
+      const pool = getPool();
+      const { rows } = await pool.query(`
+        SELECT o.*, COUNT(l.id)::int AS total_locais, COALESCE(SUM(l.metragem_total), 0) AS total_metragem
+        FROM varricao_ordens o
+        LEFT JOIN varricao_ordens_locais l ON l.ordem_id = o.id
+        GROUP BY o.id
+        ORDER BY o.mes_referencia DESC, o.created_at DESC
+      `);
+      res.json(rows);
+    } catch (error) {
+      res.status(500).json({ error: "Erro ao buscar ordens de serviço" });
+    }
+  });
+
+  app.get("/api/varricao/ordens/:id", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const pool = getPool();
+      const { rows: ordens } = await pool.query("SELECT * FROM varricao_ordens WHERE id=$1", [id]);
+      if (!ordens.length) return res.status(404).json({ error: "Ordem de serviço não encontrada" });
+
+      const { rows: locaisRaw } = await pool.query(
+        "SELECT * FROM varricao_ordens_locais WHERE ordem_id=$1 ORDER BY regiao, nome", [id]
+      );
+      const locais: LocalComputado[] = locaisRaw.map((l) => ({
+        localId: l.local_id,
+        nome: l.nome,
+        complemento: l.complemento,
+        regiao: l.regiao,
+        tipo: l.tipo,
+        secao: l.secao,
+        metragemUnica: l.metragem_unica != null ? Number(l.metragem_unica) : null,
+        dias: l.dias,
+        diasTexto: l.dias_texto,
+        metragemTotal: l.metragem_total != null ? Number(l.metragem_total) : 0,
+      }));
+      const totalMetragem = locais.reduce((s, l) => s + l.metragemTotal, 0);
+
+      res.json({
+        ordem: ordens[0],
+        locais,
+        subtotaisRegiao: subtotais(locais, "regiao"),
+        subtotaisSecao: subtotais(locais, "secao"),
+        totalLocais: locais.length,
+        totalMetragem,
+      });
+    } catch (error) {
+      res.status(500).json({ error: "Erro ao buscar ordem de serviço" });
+    }
+  });
+
+  app.post("/api/varricao/ordens", requireRole("admin", "fiscal"), async (req, res) => {
+    try {
+      const { numero, mesReferencia, dataEmissao, observacao } = req.body;
+      if (!numero || !mesReferencia || !dataEmissao) {
+        return res.status(400).json({ error: "Número, mês de referência e data de emissão são obrigatórios" });
+      }
+      const m = String(mesReferencia).match(/^(\d{4})-(\d{2})$/);
+      if (!m) return res.status(400).json({ error: "Mês de referência inválido" });
+      const ano = parseInt(m[1]), mesNum = parseInt(m[2]);
+
+      const pool = getPool();
+      // Recalcula no servidor (não confia em dados computados enviados pelo cliente)
+      const { rows: locaisRaw } = await pool.query(
+        "SELECT * FROM varricao_locais WHERE ativo IS NOT FALSE ORDER BY regiao, nome"
+      );
+      const locais = calcularLocaisDoMes(locaisRaw, ano, mesNum);
+      if (locais.length === 0) {
+        return res.status(400).json({ error: "Nenhum local programado para este mês" });
+      }
+
+      const { rows: ordemRows } = await pool.query(
+        `INSERT INTO varricao_ordens (numero, mes_referencia, data_emissao, emitido_por, observacao)
+         VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+        [numero, mesReferencia, dataEmissao, req.session.userName ?? null, observacao || null]
+      );
+      const ordem = ordemRows[0];
+
+      for (const l of locais) {
+        await pool.query(
+          `INSERT INTO varricao_ordens_locais
+             (ordem_id, local_id, nome, complemento, regiao, tipo, secao, metragem_unica, dias, dias_texto, metragem_total)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+          [
+            ordem.id, l.localId, l.nome, l.complemento, l.regiao, l.tipo, l.secao,
+            l.metragemUnica, JSON.stringify(l.dias), l.diasTexto, l.metragemTotal,
+          ]
+        );
+      }
+
+      res.status(201).json(ordem);
+    } catch (error) {
+      console.error("Erro ao emitir ordem de serviço de varrição:", error);
+      res.status(500).json({ error: "Erro ao emitir a ordem de serviço" });
+    }
+  });
+
+  app.delete("/api/varricao/ordens/:id", requireRole("admin", "gestor", "fiscal"), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const pool = getPool();
+      const { rowCount } = await pool.query("DELETE FROM varricao_ordens WHERE id=$1", [id]);
+      if (!rowCount) return res.status(404).json({ error: "Ordem de serviço não encontrada" });
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Erro ao excluir ordem de serviço" });
     }
   });
 

@@ -334,6 +334,15 @@ export function AppSidebar({
                           <span>Cobertura do Dia</span>
                         </button>
                       </Link>
+                      <Link href="/varricao/ordens">
+                        <button
+                          className="w-full flex items-center gap-2.5 pl-9 pr-3 py-1.5 rounded-md text-xs transition-colors text-foreground/60 hover:text-foreground hover:bg-muted/50"
+                          data-testid="button-varricao-ordens"
+                        >
+                          <ClipboardList className="h-3.5 w-3.5 text-foreground/40 flex-shrink-0" />
+                          <span>Ordens de Serviço</span>
+                        </button>
+                      </Link>
                     </motion.div>
                   )}
                 </AnimatePresence>
