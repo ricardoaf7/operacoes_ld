@@ -683,6 +683,19 @@ function requireAuth(req: Request, res: Response, next: NextFunction) {
   next();
 }
 
+// Se o requisitante é um encarregado vinculado a um lote específico da
+// Roçagem, devolve esse lote (1 ou 2) para restringir o que ele enxerga.
+// Para todo o resto (admin, gestor, fiscal, demo, público) devolve null —
+// a visão total/agregada continua livre, só o encarregado é escopado ao
+// próprio lote (antes vazava para o lote do colega).
+function loteRestritoDoEncarregado(req: Request): 1 | 2 | null {
+  if (req.session?.userRole !== "encarregado") return null;
+  const contrato = req.session.userContrato || "";
+  if (contrato === "rocagem_lote1") return 1;
+  if (contrato === "rocagem_lote2") return 2;
+  return null;
+}
+
 function requireRole(...roles: string[]) {
   return (req: Request, res: Response, next: NextFunction) => {
     if (!req.session.userId) {
@@ -1114,7 +1127,9 @@ export async function registerRoutes(app: Express): Promise<void> {
 
   app.get("/api/areas/rocagem", requireAuth, async (req, res) => {
     try {
-      const areas = await storage.getAllAreas("rocagem");
+      let areas = await storage.getAllAreas("rocagem");
+      const loteRestrito = loteRestritoDoEncarregado(req);
+      if (loteRestrito) areas = areas.filter((a) => a.lote === loteRestrito);
       res.json(areas);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch roçagem areas" });
@@ -1125,9 +1140,14 @@ export async function registerRoutes(app: Express): Promise<void> {
   app.get("/api/areas/light", async (req, res) => {
     try {
       const boundsParam = req.query.bounds as string;
-      
+
       let areas = await storage.getAllAreas("rocagem");
-      
+
+      // Encarregado de um lote específico só enxerga o próprio lote — o
+      // resto (admin, gestor, público) continua vendo tudo normalmente
+      const loteRestrito = loteRestritoDoEncarregado(req);
+      if (loteRestrito) areas = areas.filter((a) => a.lote === loteRestrito);
+
       // Filtrar por bounds se fornecido (viewport do mapa)
       if (boundsParam) {
         try {
@@ -1187,8 +1207,10 @@ export async function registerRoutes(app: Express): Promise<void> {
       }
       
       // Usar método otimizado do storage que filtra direto no banco
-      const results = await storage.searchAreas(query, "rocagem", 50);
-      
+      let results = await storage.searchAreas(query, "rocagem", 50);
+      const loteRestrito = loteRestritoDoEncarregado(req);
+      if (loteRestrito) results = results.filter((a) => a.lote === loteRestrito);
+
       res.json(results);
     } catch (error) {
       console.error("Error searching areas:", error);
@@ -1207,12 +1229,14 @@ export async function registerRoutes(app: Express): Promise<void> {
       const allAreas = await storage.getAllAreas('rocagem');
       const fromDate = new Date(from + 'T00:00:00');
       const toDate = new Date(to + 'T23:59:59');
+      const loteRestrito = loteRestritoDoEncarregado(req);
 
       const matchingAreas = allAreas
         .filter(area => {
           if (!area.ultimaRocagem) return false;
           const mowDate = new Date(area.ultimaRocagem);
           if (mowDate < fromDate || mowDate > toDate) return false;
+          if (loteRestrito && area.lote !== loteRestrito) return false;
           if (lote && typeof lote === 'string' && lote !== 'all') {
             if (area.lote !== parseInt(lote)) return false;
           }
@@ -1265,12 +1289,18 @@ export async function registerRoutes(app: Express): Promise<void> {
     try {
       const areaId = parseInt(req.params.id);
       const area = await storage.getAreaById(areaId);
-      
+
       if (!area) {
         res.status(404).json({ error: "Area not found" });
         return;
       }
-      
+
+      const loteRestrito = loteRestritoDoEncarregado(req);
+      if (loteRestrito && area.lote !== loteRestrito) {
+        res.status(404).json({ error: "Area not found" });
+        return;
+      }
+
       res.json(area);
     } catch (error) {
       console.error("Error fetching area details:", error);
@@ -2176,10 +2206,13 @@ export async function registerRoutes(app: Express): Promise<void> {
   app.get("/api/ordens", requireAuth, async (req, res) => {
     try {
       const sb = getSupabase();
-      const { data, error } = await sb
+      let query = sb
         .from("ordens_servico")
         .select("*")
         .order("created_at", { ascending: false });
+      const loteRestrito = loteRestritoDoEncarregado(req);
+      if (loteRestrito) query = query.eq("lote", loteRestrito);
+      const { data, error } = await query;
       if (error) throw error;
       res.json(data);
     } catch (error: any) {
@@ -2198,6 +2231,12 @@ export async function registerRoutes(app: Express): Promise<void> {
         .eq("id", id)
         .single();
       if (e1) throw e1;
+
+      const loteRestrito = loteRestritoDoEncarregado(req);
+      if (loteRestrito && ordem.lote !== loteRestrito) {
+        res.status(404).json({ error: "Ordem não encontrada" });
+        return;
+      }
 
       const { data: areaLinks, error: e2 } = await sb
         .from("ordens_servico_areas")
