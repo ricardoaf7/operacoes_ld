@@ -755,9 +755,11 @@ export async function registerRoutes(app: Express): Promise<void> {
 
       if (!permitido && contrato.startsWith("rocagem")) {
         // Roçagem: áreas e OS do contrato (leitura) + envio de fotos das áreas
+        // + marcar a área como roçada hoje (rota restrita, não o PATCH genérico)
         permitido =
           (req.method === "GET" && (req.path.startsWith("/api/areas") || req.path.startsWith("/api/ordens"))) ||
-          (req.method === "POST" && /^\/api\/areas\/\d+\/photos$/.test(req.path));
+          (req.method === "POST" && /^\/api\/areas\/\d+\/photos$/.test(req.path)) ||
+          (req.method === "POST" && /^\/api\/areas\/\d+\/registrar-rocagem$/.test(req.path));
       }
 
       if (!permitido) {
@@ -1886,6 +1888,55 @@ export async function registerRoutes(app: Express): Promise<void> {
       res.json(updated);
     } catch (error) {
       res.status(500).json({ error: "Erro ao excluir foto" });
+    }
+  });
+
+  // Endpoint restrito para o encarregado marcar uma área como roçada hoje pelo
+  // celular — só aceita a data do serviço, ao contrário do PATCH /api/areas/:id
+  // (que também edita endereço, lote, metragem etc. e não deve ficar aberto
+  // para o encarregado terceirizado)
+  app.post("/api/areas/:id/registrar-rocagem", requireAuth, async (req, res) => {
+    try {
+      const areaId = parseInt(req.params.id);
+      const area = await storage.getAreaById(areaId);
+      if (!area) { res.status(404).json({ error: "Area not found" }); return; }
+
+      const loteRestrito = loteRestritoDoEncarregado(req);
+      if (loteRestrito && area.lote !== loteRestrito) {
+        res.status(404).json({ error: "Area not found" });
+        return;
+      }
+
+      const schema = z.object({ data: z.string().min(1).optional() });
+      const { data } = schema.parse(req.body ?? {});
+      const dataServico = data || new Date().toISOString().split("T")[0];
+      const registradoPor = req.session.userName || undefined;
+
+      await storage.updateArea(areaId, {
+        status: "Concluído" as const,
+        dataRegistro: new Date().toISOString(),
+        manualSchedule: false,
+        ...(registradoPor ? { registradoPor } : {}),
+      } as any);
+
+      await storage.addHistoryEntry(areaId, {
+        date: dataServico,
+        type: "completed",
+        status: "Concluído",
+        observation: registradoPor ? `Roçagem concluída por ${registradoPor}` : "Roçagem concluída",
+      });
+
+      const areaAtualizada = await storage.getAreaById(areaId);
+      const sync = syncFromHistory(areaAtualizada?.history ?? []);
+      const final = await storage.updateArea(areaId, sync as any);
+      res.json(final);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        res.status(400).json({ error: "Dados inválidos", details: error.errors });
+      } else {
+        console.error("Error registering rocagem:", error);
+        res.status(500).json({ error: "Falha ao registrar roçagem" });
+      }
     }
   });
 

@@ -19,6 +19,8 @@ const CONTRATO_LABELS: Record<string, string> = {
   varricao: "Varrição e Lavação",
 };
 
+type Modo = "varricao" | "rocagem";
+
 interface VarricaoLocal {
   id: number;
   nome: string;
@@ -32,6 +34,20 @@ interface VarricaoLocal {
   lng: number | null;
 }
 
+interface AreaRocagem {
+  id: number;
+  endereco: string;
+  bairro?: string;
+  tipo: string;
+  metragem_m2?: number;
+  lat: number;
+  lng: number;
+  lote?: number;
+  ultimaRocagem?: string | null;
+  proximaPrevisao?: string | null;
+  fotos: { url: string; data: string }[];
+}
+
 interface FotoEnviada {
   id: number;
   local_id: number;
@@ -39,6 +55,24 @@ interface FotoEnviada {
   created_at: string;
   local_nome: string;
   local_complemento: string | null;
+}
+
+// Item normalizado usado para exibir a lista, independente do contrato
+// (Varrição usa locais com agenda semanal; Roçagem usa áreas com previsão de 60 dias)
+interface ItemLista {
+  id: number;
+  titulo: string;
+  subtitulo: string | null;
+  infoLinha: string;
+  lat: number | null;
+  lng: number | null;
+  destaque: boolean;
+}
+
+interface FotoGrupo {
+  titulo: string;
+  subtitulo: string | null;
+  fotos: { key: string; url: string }[];
 }
 
 // Descobre as dimensões do arquivo sem decodificar a imagem inteira na memória
@@ -123,6 +157,7 @@ const hojeLocal = () => dataLocalISOUtil(0);
 // ---------- Fila offline (IndexedDB): fotos guardadas no aparelho até ter internet ----------
 interface FilaItem {
   id?: number;
+  modo?: Modo; // itens gravados antes desta coluna existir são sempre de Varrição
   localId: number;
   localNome: string;
   blob: Blob;
@@ -190,6 +225,28 @@ async function uploadFotoVarricao(item: Omit<FilaItem, "id">): Promise<void> {
   if (!res.ok) throw new Error((await res.json()).error ?? "Erro ao enviar");
 }
 
+async function uploadFotoArea(item: Omit<FilaItem, "id">): Promise<void> {
+  const form = new FormData();
+  form.append("photo", item.blob, "foto.jpg");
+  form.append("date", item.dataServico);
+  const res = await fetch(`/api/areas/${item.localId}/photos`, {
+    method: "POST",
+    body: form,
+    credentials: "include",
+  });
+  if (!res.ok) throw new Error((await res.json()).error ?? "Erro ao enviar");
+}
+
+async function registrarRocagem(areaId: number, dataServico: string): Promise<void> {
+  const res = await fetch(`/api/areas/${areaId}/registrar-rocagem`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ data: dataServico }),
+    credentials: "include",
+  });
+  if (!res.ok) throw new Error((await res.json()).error ?? "Erro ao registrar roçagem");
+}
+
 function erroDeRede(e: unknown): boolean {
   return !navigator.onLine || e instanceof TypeError || /fetch|network/i.test(String((e as Error)?.message));
 }
@@ -199,10 +256,15 @@ export default function EncarregadoPage() {
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const modo: Modo | null =
+    user?.contrato === "varricao" ? "varricao" :
+    user?.contrato?.startsWith("rocagem") ? "rocagem" :
+    null;
+
   const [gps, setGps] = useState<{ lat: number; lng: number } | null>(null);
   const [gpsErro, setGpsErro] = useState(false);
   const [busca, setBusca] = useState("");
-  const [localSelecionado, setLocalSelecionado] = useState<VarricaoLocal | null>(null);
+  const [localSelecionado, setLocalSelecionado] = useState<ItemLista | null>(null);
   const [preview, setPreview] = useState<{ url: string; blob: Blob } | null>(null);
   const [processando, setProcessando] = useState(false);
 
@@ -219,53 +281,129 @@ export default function EncarregadoPage() {
     return () => navigator.geolocation.clearWatch(watchId);
   }, []);
 
-  const { data: locais = [], isLoading: carregandoLocais } = useQuery<VarricaoLocal[]>({
+  const { data: locaisVarricao = [], isLoading: carregandoVarricao } = useQuery<VarricaoLocal[]>({
     queryKey: ["/api/varricao/locais"],
     queryFn: async () => (await apiRequest("GET", "/api/varricao/locais")).json(),
+    enabled: modo === "varricao",
+  });
+
+  const { data: areasRocagem = [], isLoading: carregandoRocagem } = useQuery<AreaRocagem[]>({
+    queryKey: ["/api/areas/rocagem"],
+    queryFn: async () => (await apiRequest("GET", "/api/areas/rocagem")).json(),
+    enabled: modo === "rocagem",
+    refetchInterval: modo === "rocagem" ? 60000 : false,
   });
 
   const { data: fotosHoje = [] } = useQuery<FotoEnviada[]>({
     queryKey: ["/api/varricao/fotos", hojeLocal()],
     queryFn: async () =>
       (await apiRequest("GET", `/api/varricao/fotos?data=${hojeLocal()}&minhas=1`)).json(),
+    enabled: modo === "varricao",
     refetchInterval: 60000,
   });
 
+  const carregandoLocais = modo === "varricao" ? carregandoVarricao : carregandoRocagem;
+
+  // Áreas de Roçagem já marcadas como concluídas hoje (por qualquer origem) — usado
+  // para não repetir o registro de conclusão a cada nova foto do mesmo local
+  const confirmadasHojeRef = useRef<Set<number>>(new Set());
+  useEffect(() => {
+    if (modo !== "rocagem") return;
+    const hoje = hojeLocal();
+    areasRocagem.forEach((a) => { if (a.ultimaRocagem === hoje) confirmadasHojeRef.current.add(a.id); });
+  }, [modo, areasRocagem]);
+
+  const itensBase: ItemLista[] = useMemo(() => {
+    if (modo === "varricao") {
+      const hoje = hojeLocal();
+      return locaisVarricao.map((l) => ({
+        id: l.id,
+        titulo: l.nome,
+        subtitulo: l.complemento,
+        infoLinha: `${SECAO_LABELS[l.secao] ?? l.secao}${l.regiao ? ` · ${l.regiao}` : ""}`,
+        lat: l.lat,
+        lng: l.lng,
+        destaque: programadoNaData(l, hoje),
+      }));
+    }
+    if (modo === "rocagem") {
+      const hoje = hojeLocal();
+      return areasRocagem.map((a) => ({
+        id: a.id,
+        titulo: a.endereco,
+        subtitulo: a.bairro ?? null,
+        infoLinha: `${a.tipo}${a.metragem_m2 ? ` · ${Math.round(a.metragem_m2)} m²` : ""}`,
+        lat: a.lat,
+        lng: a.lng,
+        destaque: !!a.proximaPrevisao && a.proximaPrevisao <= hoje,
+      }));
+    }
+    return [];
+  }, [modo, locaisVarricao, areasRocagem]);
+
+  const labelDestaque = modo === "varricao" ? "Programados para hoje" : "Atrasadas (prazo vencido)";
+  const labelResto = modo === "varricao" ? "Outros locais" : "Dentro do prazo";
+
+  // Fotos enviadas hoje por local/área — usado para o selo "X fotos" na lista
   const fotosPorLocal = useMemo(() => {
     const m = new Map<number, number>();
-    fotosHoje.forEach((f) => m.set(f.local_id, (m.get(f.local_id) ?? 0) + 1));
+    if (modo === "varricao") {
+      fotosHoje.forEach((f) => m.set(f.local_id, (m.get(f.local_id) ?? 0) + 1));
+    } else if (modo === "rocagem") {
+      const hoje = hojeLocal();
+      areasRocagem.forEach((a) => {
+        const n = (a.fotos ?? []).filter((f) => f.data.slice(0, 10) === hoje).length;
+        if (n > 0) m.set(a.id, n);
+      });
+    }
     return m;
-  }, [fotosHoje]);
+  }, [modo, fotosHoje, areasRocagem]);
+
+  const totalFotosHoje = modo === "varricao"
+    ? fotosHoje.length
+    : Array.from(fotosPorLocal.values()).reduce((a, b) => a + b, 0);
 
   // Fotos do dia agrupadas por local, para o painel "minhas fotos de hoje"
-  const gruposFotosHoje = useMemo(() => {
-    const grupos = new Map<number, { nome: string; complemento: string | null; fotos: FotoEnviada[] }>();
-    fotosHoje.forEach((f) => {
-      if (!grupos.has(f.local_id)) {
-        grupos.set(f.local_id, { nome: f.local_nome, complemento: f.local_complemento, fotos: [] });
-      }
-      grupos.get(f.local_id)!.fotos.push(f);
-    });
-    return Array.from(grupos.values()).sort(
-      (a, b) => b.fotos[0].created_at.localeCompare(a.fotos[0].created_at)
-    );
-  }, [fotosHoje]);
+  const gruposFotosHoje: FotoGrupo[] = useMemo(() => {
+    if (modo === "varricao") {
+      const grupos = new Map<number, FotoGrupo>();
+      fotosHoje.forEach((f) => {
+        if (!grupos.has(f.local_id)) {
+          grupos.set(f.local_id, { titulo: f.local_nome, subtitulo: f.local_complemento, fotos: [] });
+        }
+        grupos.get(f.local_id)!.fotos.push({ key: String(f.id), url: f.url });
+      });
+      return Array.from(grupos.values());
+    }
+    if (modo === "rocagem") {
+      const hoje = hojeLocal();
+      return areasRocagem
+        .map((a) => ({
+          titulo: a.endereco,
+          subtitulo: a.bairro ?? null,
+          fotos: (a.fotos ?? [])
+            .filter((f) => f.data.slice(0, 10) === hoje)
+            .map((f, i) => ({ key: `${a.id}-${i}`, url: f.url })),
+        }))
+        .filter((g) => g.fotos.length > 0);
+    }
+    return [];
+  }, [modo, fotosHoje, areasRocagem]);
 
   const [mostrarMinhasFotos, setMostrarMinhasFotos] = useState(false);
 
-  // Ordenação: buscando → relevância (nome primeiro); sem busca → programados
+  // Ordenação: buscando → relevância (nome primeiro); sem busca → atrasados/programados
   // para hoje primeiro, depois por distância do GPS
   const listaOrdenada = useMemo(() => {
     const q = busca.trim();
     const filtrados = q
-      ? rankearBusca(locais, q, (l) => l.nome, (l) => `${l.complemento ?? ""} ${l.regiao ?? ""}`)
-      : locais;
+      ? rankearBusca(itensBase, q, (i) => i.titulo, (i) => `${i.subtitulo ?? ""} ${i.infoLinha}`)
+      : itensBase;
 
-    const comDist = filtrados.map((l) => ({
-      local: l,
-      hoje: programadoNaData(l, hojeLocal()),
-      dist: gps && l.lat != null && l.lng != null
-        ? distanciaMetros(gps.lat, gps.lng, l.lat, l.lng)
+    const comDist = filtrados.map((item) => ({
+      item,
+      dist: gps && item.lat != null && item.lng != null
+        ? distanciaMetros(gps.lat, gps.lng, item.lat, item.lng)
         : null,
     }));
 
@@ -273,14 +411,14 @@ export default function EncarregadoPage() {
     if (q) return comDist;
 
     comDist.sort((a, b) => {
-      if (a.hoje !== b.hoje) return a.hoje ? -1 : 1;
+      if (a.item.destaque !== b.item.destaque) return a.item.destaque ? -1 : 1;
       if (a.dist != null && b.dist != null) return a.dist - b.dist;
       if (a.dist != null) return -1;
       if (b.dist != null) return 1;
-      return a.local.nome.localeCompare(b.local.nome);
+      return a.item.titulo.localeCompare(b.item.titulo);
     });
     return comDist;
-  }, [locais, busca, gps]);
+  }, [itensBase, busca, gps]);
 
   // Fila offline
   const [fila, setFila] = useState<FilaItem[]>([]);
@@ -294,8 +432,9 @@ export default function EncarregadoPage() {
 
   function itemDaFoto(): Omit<FilaItem, "id"> {
     return {
+      modo: modo!,
       localId: localSelecionado!.id,
-      localNome: localSelecionado!.nome,
+      localNome: localSelecionado!.titulo,
       blob: preview!.blob,
       dataServico: hojeLocal(),
       lat: gps?.lat ?? null,
@@ -303,14 +442,39 @@ export default function EncarregadoPage() {
     };
   }
 
+  // Envia uma foto da fila (ou recém-tirada) de acordo com o contrato do encarregado.
+  // Para Roçagem, além do upload da foto, confirma a área como roçada hoje — mas só
+  // uma vez por área/dia, para não empilhar entradas repetidas no histórico da área.
+  async function enviarItem(item: Omit<FilaItem, "id">): Promise<void> {
+    const itemModo = item.modo ?? "varricao";
+    if (itemModo === "varricao") {
+      await uploadFotoVarricao(item);
+      return;
+    }
+    await uploadFotoArea(item);
+    if (!confirmadasHojeRef.current.has(item.localId)) {
+      try {
+        await registrarRocagem(item.localId, item.dataServico);
+        confirmadasHojeRef.current.add(item.localId);
+      } catch {
+        // A foto já foi enviada; se só a confirmação falhar, tenta de novo na próxima foto
+      }
+    }
+  }
+
+  function invalidarQueryDoModo(itemModo?: Modo) {
+    const m = itemModo ?? "varricao";
+    queryClient.invalidateQueries({ queryKey: m === "varricao" ? ["/api/varricao/fotos"] : ["/api/areas/rocagem"] });
+  }
+
   async function enviarAgora() {
     if (!preview || !localSelecionado) return;
     setEnviando(true);
     const item = itemDaFoto();
     try {
-      await uploadFotoVarricao(item);
-      toast({ title: "Foto enviada!", description: localSelecionado.nome });
-      queryClient.invalidateQueries({ queryKey: ["/api/varricao/fotos"] });
+      await enviarItem(item);
+      toast({ title: "Foto enviada!", description: localSelecionado.titulo });
+      invalidarQueryDoModo(item.modo);
       URL.revokeObjectURL(preview.url);
       setPreview(null);
     } catch (e) {
@@ -346,7 +510,7 @@ export default function EncarregadoPage() {
     let ok = 0, falhas = 0;
     for (const item of fila) {
       try {
-        await uploadFotoVarricao(item);
+        await enviarItem(item);
         if (item.id != null) await filaRemover(item.id);
         ok++;
       } catch (e) {
@@ -355,7 +519,7 @@ export default function EncarregadoPage() {
       }
     }
     await recarregarFila();
-    queryClient.invalidateQueries({ queryKey: ["/api/varricao/fotos"] });
+    invalidarQueryDoModo(modo ?? undefined);
     if (ok > 0 && falhas === 0) {
       toast({ title: `${ok} foto${ok > 1 ? "s" : ""} enviada${ok > 1 ? "s" : ""}!` });
     } else if (ok > 0) {
@@ -379,7 +543,7 @@ export default function EncarregadoPage() {
     try {
       const agora = new Date();
       const linhas = [
-        localSelecionado.nome + (localSelecionado.complemento ? ` (${localSelecionado.complemento})` : ""),
+        localSelecionado.titulo + (localSelecionado.subtitulo ? ` (${localSelecionado.subtitulo})` : ""),
         `${agora.toLocaleDateString("pt-BR")} ${agora.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}` +
           (gps ? `  ·  GPS ${gps.lat.toFixed(6)}, ${gps.lng.toFixed(6)}` : "  ·  GPS indisponível"),
       ];
@@ -396,9 +560,28 @@ export default function EncarregadoPage() {
     }
   }
 
+  // ---------- SEM CONTRATO RECONHECIDO ----------
+  if (!modo) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6 gap-4 text-center">
+        <p className="text-sm text-muted-foreground">
+          Este usuário não está vinculado a um contrato compatível com esta tela.
+        </p>
+        <Button variant="outline" onClick={() => logout()}>
+          <LogOut className="h-4 w-4 mr-2" /> Sair
+        </Button>
+      </div>
+    );
+  }
+
   // ---------- TELA DE UM LOCAL (câmera) ----------
   if (localSelecionado) {
-    const fotosDesteLocal = fotosHoje.filter((f) => f.local_id === localSelecionado.id);
+    const fotosDoLocal = modo === "rocagem"
+      ? (areasRocagem.find((a) => a.id === localSelecionado.id)?.fotos ?? [])
+          .filter((f) => f.data.slice(0, 10) === hojeLocal())
+          .map((f, i) => ({ key: `${localSelecionado.id}-${i}`, url: f.url }))
+      : fotosHoje.filter((f) => f.local_id === localSelecionado.id).map((f) => ({ key: String(f.id), url: f.url }));
+
     return (
       <div className="min-h-screen bg-background flex flex-col">
         <header className="px-3 py-3 flex items-center gap-2 text-white" style={{ background: "#1e5e38" }}>
@@ -413,9 +596,9 @@ export default function EncarregadoPage() {
             <ChevronLeft className="h-5 w-5" />
           </Button>
           <div className="min-w-0">
-            <h1 className="font-semibold leading-tight truncate">{localSelecionado.nome}</h1>
-            {localSelecionado.complemento && (
-              <p className="text-xs text-green-200 truncate">{localSelecionado.complemento}</p>
+            <h1 className="font-semibold leading-tight truncate">{localSelecionado.titulo}</h1>
+            {localSelecionado.subtitulo && (
+              <p className="text-xs text-green-200 truncate">{localSelecionado.subtitulo}</p>
             )}
           </div>
         </header>
@@ -476,15 +659,15 @@ export default function EncarregadoPage() {
             </button>
           )}
 
-          {fotosDesteLocal.length > 0 && !preview && (
+          {fotosDoLocal.length > 0 && !preview && (
             <div>
               <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
-                Enviadas hoje ({fotosDesteLocal.length})
+                Enviadas hoje ({fotosDoLocal.length})
               </p>
               <div className="grid grid-cols-3 gap-2">
-                {fotosDesteLocal.map((f) => (
+                {fotosDoLocal.map((f) => (
                   <img
-                    key={f.id}
+                    key={f.key}
                     src={f.url}
                     alt="Foto enviada"
                     className="aspect-square object-cover rounded-lg border border-border"
@@ -529,12 +712,12 @@ export default function EncarregadoPage() {
       {/* Resumo do dia */}
       <div className="px-4 py-2.5 bg-emerald-50 dark:bg-emerald-950 border-b border-emerald-100 dark:border-emerald-900 flex items-center gap-2">
         <ImageIcon className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-        {fotosHoje.length > 0 ? (
+        {totalFotosHoje > 0 ? (
           <button
             className="text-sm text-emerald-800 dark:text-emerald-300 underline decoration-dotted underline-offset-2"
             onClick={() => setMostrarMinhasFotos(true)}
           >
-            <b>{fotosHoje.length}</b> foto{fotosHoje.length === 1 ? "" : "s"} enviada{fotosHoje.length === 1 ? "" : "s"} hoje
+            <b>{totalFotosHoje}</b> foto{totalFotosHoje === 1 ? "" : "s"} enviada{totalFotosHoje === 1 ? "" : "s"} hoje
           </button>
         ) : (
           <p className="text-sm text-emerald-800 dark:text-emerald-300">Nenhuma foto enviada hoje ainda</p>
@@ -589,36 +772,33 @@ export default function EncarregadoPage() {
         {!carregandoLocais && listaOrdenada.length === 0 && (
           <p className="text-center text-sm text-muted-foreground py-16">Nenhum local encontrado.</p>
         )}
-        {listaOrdenada.map(({ local, hoje, dist }, idx) => {
+        {listaOrdenada.map(({ item, dist }, idx) => {
           const anterior = listaOrdenada[idx - 1];
-          const mostrarCabecalhoHoje = hoje && (!anterior || !anterior.hoje);
-          const mostrarCabecalhoOutros = !hoje && (!anterior || anterior.hoje);
-          const enviadas = fotosPorLocal.get(local.id) ?? 0;
+          const mostrarCabecalhoDestaque = item.destaque && (!anterior || !anterior.item.destaque);
+          const mostrarCabecalhoResto = !item.destaque && (!anterior || anterior.item.destaque);
+          const enviadas = fotosPorLocal.get(item.id) ?? 0;
           return (
-            <div key={local.id}>
-              {mostrarCabecalhoHoje && (
+            <div key={item.id}>
+              {mostrarCabecalhoDestaque && (
                 <p className="px-4 pt-3 pb-1 text-[11px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400">
-                  Programados para hoje
+                  {labelDestaque}
                 </p>
               )}
-              {mostrarCabecalhoOutros && (
+              {mostrarCabecalhoResto && (
                 <p className="px-4 pt-3 pb-1 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-                  Outros locais
+                  {labelResto}
                 </p>
               )}
               <button
                 className="w-full text-left px-4 py-3 border-b border-border/60 active:bg-muted/60 transition-colors flex items-center gap-3"
-                onClick={() => setLocalSelecionado(local)}
+                onClick={() => setLocalSelecionado(item)}
               >
                 <div className="flex-1 min-w-0">
-                  <p className="font-medium leading-tight truncate">{local.nome}</p>
-                  {local.complemento && (
-                    <p className="text-xs text-muted-foreground truncate">{local.complemento}</p>
+                  <p className="font-medium leading-tight truncate">{item.titulo}</p>
+                  {item.subtitulo && (
+                    <p className="text-xs text-muted-foreground truncate">{item.subtitulo}</p>
                   )}
-                  <p className="text-[11px] text-muted-foreground/80 mt-0.5">
-                    {SECAO_LABELS[local.secao] ?? local.secao}
-                    {local.regiao ? ` · ${local.regiao}` : ""}
-                  </p>
+                  <p className="text-[11px] text-muted-foreground/80 mt-0.5">{item.infoLinha}</p>
                 </div>
                 <div className="shrink-0 flex flex-col items-end gap-1">
                   {dist != null && (
@@ -647,17 +827,17 @@ export default function EncarregadoPage() {
           </DialogHeader>
           <div className="space-y-4">
             {gruposFotosHoje.map((grupo) => (
-              <div key={grupo.nome + (grupo.complemento ?? "")}>
-                <p className="text-sm font-medium leading-tight">{grupo.nome}</p>
-                {grupo.complemento && (
-                  <p className="text-xs text-muted-foreground mb-1.5">{grupo.complemento}</p>
+              <div key={grupo.titulo + (grupo.subtitulo ?? "")}>
+                <p className="text-sm font-medium leading-tight">{grupo.titulo}</p>
+                {grupo.subtitulo && (
+                  <p className="text-xs text-muted-foreground mb-1.5">{grupo.subtitulo}</p>
                 )}
                 <div className="grid grid-cols-4 gap-1.5 mt-1.5">
-                  {grupo.fotos.map((f: FotoEnviada) => (
-                    <a key={f.id} href={f.url} target="_blank" rel="noreferrer">
+                  {grupo.fotos.map((f) => (
+                    <a key={f.key} href={f.url} target="_blank" rel="noreferrer">
                       <img
                         src={f.url}
-                        alt={`Foto enviada em ${grupo.nome}`}
+                        alt={`Foto enviada em ${grupo.titulo}`}
                         className="aspect-square object-cover rounded-md border border-border"
                         loading="lazy"
                       />
