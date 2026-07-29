@@ -42,19 +42,23 @@ export async function registerRoutes(app: Express): Promise<void> {
         const contrato = req.session.userContrato || "";
 
         if (contrato === "varricao") {
-          // Varrição: locais (leitura) + fluxo de fotos
+          // Varrição: locais (leitura) + fluxo de fotos/vídeos
           permitido =
             (req.path === "/api/varricao/locais" && req.method === "GET") ||
-            req.path.startsWith("/api/varricao/fotos");
+            req.path.startsWith("/api/varricao/fotos") ||
+            (req.method === "POST" && /^\/api\/varricao\/locais\/\d+\/video-url$/.test(req.path));
         }
 
         if (!permitido && contrato.startsWith("rocagem")) {
-          // Roçagem: áreas e OS do contrato (leitura) + envio de fotos das áreas
-          // + marcar a área como roçada hoje (rota restrita, não o PATCH genérico)
+          // Roçagem: áreas e OS do contrato (leitura) + envio de fotos/vídeos
+          // das áreas + marcar a área como roçada hoje (rota restrita, não o
+          // PATCH genérico)
           permitido =
             (req.method === "GET" && (req.path.startsWith("/api/areas") || req.path.startsWith("/api/ordens"))) ||
             (req.method === "POST" && /^\/api\/areas\/\d+\/photos$/.test(req.path)) ||
-            (req.method === "POST" && /^\/api\/areas\/\d+\/registrar-rocagem$/.test(req.path));
+            (req.method === "POST" && /^\/api\/areas\/\d+\/registrar-rocagem$/.test(req.path)) ||
+            (req.method === "POST" && /^\/api\/areas\/\d+\/video-url$/.test(req.path)) ||
+            (req.method === "POST" && /^\/api\/areas\/\d+\/video-registrar$/.test(req.path));
         }
       }
 

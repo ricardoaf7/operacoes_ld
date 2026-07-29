@@ -1272,6 +1272,12 @@ function requireRole(...roles) {
 function nomeArquivoSeguro(s) {
   return s.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[\\/:*?"<>|]/g, "-").trim();
 }
+async function criarUrlUploadAssinada(path3) {
+  const supabase = getSupabase();
+  const { data, error } = await supabase.storage.from("fotos").createSignedUploadUrl(path3);
+  if (error) throw error;
+  return data;
+}
 
 // server/routes/auth-users.ts
 async function ensureUsersSetorColumn() {
@@ -3017,6 +3023,56 @@ function registerRocagemRoutes(app) {
       res.status(500).json({ error: "Erro ao fazer upload da foto" });
     }
   });
+  app.post("/api/areas/:id/video-url", requireAuth, async (req, res) => {
+    try {
+      const areaId = parseInt(req.params.id);
+      const area = await storage.getAreaById(areaId);
+      if (!area) {
+        res.status(404).json({ error: "Area not found" });
+        return;
+      }
+      const loteRestrito = loteRestritoDoEncarregado(req);
+      if (loteRestrito && area.lote !== loteRestrito) {
+        res.status(404).json({ error: "Area not found" });
+        return;
+      }
+      const ext = String(req.query.ext || "mp4").replace(/[^a-z0-9]/gi, "").toLowerCase() || "mp4";
+      const path3 = `areas/${areaId}/${Date.now()}.${ext}`;
+      const assinatura = await criarUrlUploadAssinada(path3);
+      res.json(assinatura);
+    } catch (error) {
+      console.error("Erro ao gerar URL de upload de v\xEDdeo (\xE1reas):", error);
+      res.status(500).json({ error: "Erro ao preparar upload do v\xEDdeo" });
+    }
+  });
+  app.post("/api/areas/:id/video-registrar", requireAuth, async (req, res) => {
+    try {
+      const areaId = parseInt(req.params.id);
+      const { path: path3, date } = req.body ?? {};
+      if (typeof path3 !== "string" || !path3.startsWith(`areas/${areaId}/`)) {
+        return res.status(400).json({ error: "Dados inv\xE1lidos" });
+      }
+      const area = await storage.getAreaById(areaId);
+      if (!area) {
+        res.status(404).json({ error: "Area not found" });
+        return;
+      }
+      const loteRestrito = loteRestritoDoEncarregado(req);
+      if (loteRestrito && area.lote !== loteRestrito) {
+        res.status(404).json({ error: "Area not found" });
+        return;
+      }
+      const supabase = getSupabase();
+      const { data: { publicUrl } } = supabase.storage.from("fotos").getPublicUrl(path3);
+      const dataRegistro = date || (/* @__PURE__ */ new Date()).toISOString().split("T")[0];
+      const fotos = [...area.fotos || [], { url: publicUrl, data: (/* @__PURE__ */ new Date(dataRegistro + "T12:00:00")).toISOString() }];
+      const updated = await storage.updateArea(areaId, { fotos });
+      res.status(201).json(updated);
+    } catch (error) {
+      console.error("Erro ao registrar v\xEDdeo de \xE1rea:", error);
+      res.status(500).json({ error: "Erro ao registrar o v\xEDdeo" });
+    }
+  });
   app.delete("/api/areas/:id/photos", requireAuth, async (req, res) => {
     try {
       const areaId = parseInt(req.params.id);
@@ -4520,6 +4576,52 @@ function registerVarricaoRoutes(app) {
       res.status(500).json({ error: "Erro ao enviar a foto" });
     }
   });
+  app.post("/api/varricao/locais/:id/video-url", requireAuth, async (req, res) => {
+    try {
+      const localId = parseInt(req.params.id);
+      const pool = getPool();
+      const { rows: locais } = await pool.query("SELECT id FROM varricao_locais WHERE id=$1", [localId]);
+      if (!locais.length) return res.status(404).json({ error: "Local n\xE3o encontrado" });
+      const ext = String(req.query.ext || "mp4").replace(/[^a-z0-9]/gi, "").toLowerCase() || "mp4";
+      const path3 = `varricao/${localId}/${Date.now()}.${ext}`;
+      const assinatura = await criarUrlUploadAssinada(path3);
+      res.json(assinatura);
+    } catch (error) {
+      console.error("Erro ao gerar URL de upload de v\xEDdeo (varri\xE7\xE3o):", error);
+      res.status(500).json({ error: "Erro ao preparar upload do v\xEDdeo" });
+    }
+  });
+  app.post("/api/varricao/fotos/registrar-video", requireAuth, async (req, res) => {
+    try {
+      const { localId, path: path3, dataServico, lat, lng } = req.body ?? {};
+      const localIdNum = parseInt(localId);
+      if (!localIdNum || typeof path3 !== "string" || !path3.startsWith(`varricao/${localIdNum}/`)) {
+        return res.status(400).json({ error: "Dados inv\xE1lidos" });
+      }
+      const pool = getPool();
+      const { rows: locais } = await pool.query("SELECT id FROM varricao_locais WHERE id=$1", [localIdNum]);
+      if (!locais.length) return res.status(404).json({ error: "Local n\xE3o encontrado" });
+      const supabase = getSupabase();
+      const { data: { publicUrl } } = supabase.storage.from("fotos").getPublicUrl(path3);
+      const { rows } = await pool.query(
+        `INSERT INTO varricao_fotos (local_id, url, data_servico, lat, lng, enviado_por_id, enviado_por_nome)
+         VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+        [
+          localIdNum,
+          publicUrl,
+          dataServico || (/* @__PURE__ */ new Date()).toISOString().split("T")[0],
+          lat != null ? Number(lat) : null,
+          lng != null ? Number(lng) : null,
+          req.session.userId ?? null,
+          req.session.userName ?? null
+        ]
+      );
+      res.status(201).json(rows[0]);
+    } catch (error) {
+      console.error("Erro ao registrar v\xEDdeo de varri\xE7\xE3o:", error);
+      res.status(500).json({ error: "Erro ao registrar o v\xEDdeo" });
+    }
+  });
   app.delete("/api/varricao/fotos/:id", requireRole("admin", "gestor", "fiscal"), async (req, res) => {
     try {
       const id = parseInt(req.params.id);
@@ -4643,10 +4745,10 @@ async function registerRoutes(app) {
       if (!permitido && role === "encarregado") {
         const contrato = req.session.userContrato || "";
         if (contrato === "varricao") {
-          permitido = req.path === "/api/varricao/locais" && req.method === "GET" || req.path.startsWith("/api/varricao/fotos");
+          permitido = req.path === "/api/varricao/locais" && req.method === "GET" || req.path.startsWith("/api/varricao/fotos") || req.method === "POST" && /^\/api\/varricao\/locais\/\d+\/video-url$/.test(req.path);
         }
         if (!permitido && contrato.startsWith("rocagem")) {
-          permitido = req.method === "GET" && (req.path.startsWith("/api/areas") || req.path.startsWith("/api/ordens")) || req.method === "POST" && /^\/api\/areas\/\d+\/photos$/.test(req.path) || req.method === "POST" && /^\/api\/areas\/\d+\/registrar-rocagem$/.test(req.path);
+          permitido = req.method === "GET" && (req.path.startsWith("/api/areas") || req.path.startsWith("/api/ordens")) || req.method === "POST" && /^\/api\/areas\/\d+\/photos$/.test(req.path) || req.method === "POST" && /^\/api\/areas\/\d+\/registrar-rocagem$/.test(req.path) || req.method === "POST" && /^\/api\/areas\/\d+\/video-url$/.test(req.path) || req.method === "POST" && /^\/api\/areas\/\d+\/video-registrar$/.test(req.path);
         }
       }
       if (!permitido && role === "transparencia") {

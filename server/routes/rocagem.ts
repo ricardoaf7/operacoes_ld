@@ -6,7 +6,7 @@ import { ZipArchive } from "archiver";
 import type { ServiceArea } from "@shared/schema";
 import { storage } from "../storage";
 import { getPool } from "../../db/client";
-import { getSupabase, upload, requireAuth, requireRole, loteRestritoDoEncarregado, nomeArquivoSeguro } from "../route-helpers";
+import { getSupabase, upload, requireAuth, requireRole, loteRestritoDoEncarregado, nomeArquivoSeguro, criarUrlUploadAssinada } from "../route-helpers";
 import { logAudit } from "./audit";
 import { fecharDemandasDeArea } from "./demandas";
 
@@ -1060,6 +1060,64 @@ export function registerRocagemRoutes(app: Express): void {
     } catch (error) {
       console.error("Photo upload error:", error);
       res.status(500).json({ error: "Erro ao fazer upload da foto" });
+    }
+  });
+
+  // Vídeo é grande demais pra passar pela função serverless (limite de
+  // payload da Vercel) — o celular do encarregado sobe o arquivo DIRETO pro
+  // Supabase Storage usando esta URL assinada, e só depois avisa o servidor
+  // (endpoint seguinte) que terminou, pra registrar na área.
+  app.post("/api/areas/:id/video-url", requireAuth, async (req, res) => {
+    try {
+      const areaId = parseInt(req.params.id);
+      const area = await storage.getAreaById(areaId);
+      if (!area) { res.status(404).json({ error: "Area not found" }); return; }
+
+      const loteRestrito = loteRestritoDoEncarregado(req);
+      if (loteRestrito && area.lote !== loteRestrito) {
+        res.status(404).json({ error: "Area not found" });
+        return;
+      }
+
+      const ext = String(req.query.ext || "mp4").replace(/[^a-z0-9]/gi, "").toLowerCase() || "mp4";
+      const path = `areas/${areaId}/${Date.now()}.${ext}`;
+      const assinatura = await criarUrlUploadAssinada(path);
+      res.json(assinatura);
+    } catch (error) {
+      console.error("Erro ao gerar URL de upload de vídeo (áreas):", error);
+      res.status(500).json({ error: "Erro ao preparar upload do vídeo" });
+    }
+  });
+
+  // Confirma um vídeo já enviado direto pro Storage (passo anterior) e
+  // acrescenta ao mesmo array `fotos` da área — a exibição já existente
+  // detecta pela extensão se é vídeo ou foto.
+  app.post("/api/areas/:id/video-registrar", requireAuth, async (req, res) => {
+    try {
+      const areaId = parseInt(req.params.id);
+      const { path, date } = req.body ?? {};
+      if (typeof path !== "string" || !path.startsWith(`areas/${areaId}/`)) {
+        return res.status(400).json({ error: "Dados inválidos" });
+      }
+
+      const area = await storage.getAreaById(areaId);
+      if (!area) { res.status(404).json({ error: "Area not found" }); return; }
+
+      const loteRestrito = loteRestritoDoEncarregado(req);
+      if (loteRestrito && area.lote !== loteRestrito) {
+        res.status(404).json({ error: "Area not found" });
+        return;
+      }
+
+      const supabase = getSupabase();
+      const { data: { publicUrl } } = supabase.storage.from("fotos").getPublicUrl(path);
+      const dataRegistro = date || new Date().toISOString().split("T")[0];
+      const fotos = [...(area.fotos || []), { url: publicUrl, data: new Date(dataRegistro + "T12:00:00").toISOString() }];
+      const updated = await storage.updateArea(areaId, { fotos } as any);
+      res.status(201).json(updated);
+    } catch (error) {
+      console.error("Erro ao registrar vídeo de área:", error);
+      res.status(500).json({ error: "Erro ao registrar o vídeo" });
     }
   });
 

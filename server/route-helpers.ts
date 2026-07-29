@@ -51,3 +51,14 @@ export function nomeArquivoSeguro(s: string): string {
     .replace(/[\\/:*?"<>|]/g, "-")
     .trim();
 }
+
+// URL assinada de upload — o celular do encarregado manda o arquivo DIRETO
+// pro Supabase Storage, sem passar pelo nosso servidor. Vídeo não cabe no
+// caminho normal (multer + função serverless) porque a Vercel tem um limite
+// de payload bem menor que um vídeo de celular.
+export async function criarUrlUploadAssinada(path: string): Promise<{ signedUrl: string; token: string; path: string }> {
+  const supabase = getSupabase();
+  const { data, error } = await supabase.storage.from("fotos").createSignedUploadUrl(path);
+  if (error) throw error;
+  return data;
+}

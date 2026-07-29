@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { ZipArchive } from "archiver";
 import { getPool } from "../../db/client";
-import { getSupabase, upload, requireAuth, requireRole, nomeArquivoSeguro } from "../route-helpers";
+import { getSupabase, upload, requireAuth, requireRole, nomeArquivoSeguro, criarUrlUploadAssinada } from "../route-helpers";
 
 export async function ensureVarricaoLocaisTable() {
   try {
@@ -937,6 +937,63 @@ export function registerVarricaoRoutes(app: Express): void {
     } catch (error) {
       console.error("Erro no upload de foto de varrição:", error);
       res.status(500).json({ error: "Erro ao enviar a foto" });
+    }
+  });
+
+  // Vídeo é grande demais pra passar pela função serverless (limite de payload
+  // da Vercel) — o celular do encarregado sobe o arquivo DIRETO pro Supabase
+  // Storage usando esta URL assinada, e só depois avisa o servidor (endpoint
+  // seguinte) que terminou, pra registrar na tabela.
+  app.post("/api/varricao/locais/:id/video-url", requireAuth, async (req, res) => {
+    try {
+      const localId = parseInt(req.params.id);
+      const pool = getPool();
+      const { rows: locais } = await pool.query("SELECT id FROM varricao_locais WHERE id=$1", [localId]);
+      if (!locais.length) return res.status(404).json({ error: "Local não encontrado" });
+
+      const ext = String(req.query.ext || "mp4").replace(/[^a-z0-9]/gi, "").toLowerCase() || "mp4";
+      const path = `varricao/${localId}/${Date.now()}.${ext}`;
+      const assinatura = await criarUrlUploadAssinada(path);
+      res.json(assinatura);
+    } catch (error) {
+      console.error("Erro ao gerar URL de upload de vídeo (varrição):", error);
+      res.status(500).json({ error: "Erro ao preparar upload do vídeo" });
+    }
+  });
+
+  // Confirma um vídeo já enviado direto pro Storage (passo anterior) e
+  // registra na mesma tabela usada pelas fotos — reaproveita a exibição
+  // já existente, que detecta pela extensão se é vídeo ou foto.
+  app.post("/api/varricao/fotos/registrar-video", requireAuth, async (req, res) => {
+    try {
+      const { localId, path, dataServico, lat, lng } = req.body ?? {};
+      const localIdNum = parseInt(localId);
+      if (!localIdNum || typeof path !== "string" || !path.startsWith(`varricao/${localIdNum}/`)) {
+        return res.status(400).json({ error: "Dados inválidos" });
+      }
+
+      const pool = getPool();
+      const { rows: locais } = await pool.query("SELECT id FROM varricao_locais WHERE id=$1", [localIdNum]);
+      if (!locais.length) return res.status(404).json({ error: "Local não encontrado" });
+
+      const supabase = getSupabase();
+      const { data: { publicUrl } } = supabase.storage.from("fotos").getPublicUrl(path);
+
+      const { rows } = await pool.query(
+        `INSERT INTO varricao_fotos (local_id, url, data_servico, lat, lng, enviado_por_id, enviado_por_nome)
+         VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+        [
+          localIdNum, publicUrl,
+          dataServico || new Date().toISOString().split("T")[0],
+          lat != null ? Number(lat) : null,
+          lng != null ? Number(lng) : null,
+          req.session.userId ?? null, req.session.userName ?? null,
+        ]
+      );
+      res.status(201).json(rows[0]);
+    } catch (error) {
+      console.error("Erro ao registrar vídeo de varrição:", error);
+      res.status(500).json({ error: "Erro ao registrar o vídeo" });
     }
   });
 
