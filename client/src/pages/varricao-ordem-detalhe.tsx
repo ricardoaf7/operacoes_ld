@@ -1,11 +1,33 @@
-import { useQuery } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
+import { useState } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/use-auth";
 import { useRoute, Link } from "wouter";
 import { Button } from "@/components/ui/button";
-import { ChevronLeft, FileDown, FileSpreadsheet } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { ChevronLeft, FileDown, FileSpreadsheet, Pencil, X, Save } from "lucide-react";
 import { VarricaoOrdemConteudo } from "@/components/VarricaoOrdemConteudo";
+import { VarricaoOrdemRascunho } from "@/components/VarricaoOrdemRascunho";
 import { exportarOrdemExcel, exportarOrdemPdf } from "@/lib/varricao-ordens-export";
-import { formatMesReferencia, type VarricaoOrdemPayload, type VarricaoConfig } from "@/lib/varricao-ordens-types";
+import {
+  formatMesReferencia,
+  type VarricaoOrdemPayload, type VarricaoOrdemLocal, type VarricaoConfig,
+} from "@/lib/varricao-ordens-types";
+
+interface VarricaoLocalCompleto {
+  id: number;
+  nome: string;
+  complemento: string | null;
+  regiao: string | null;
+  tipo: string | null;
+  secao: string;
+  frequencia: string;
+  dias_semana: number[] | null;
+  metragem_unica: string | null;
+}
 
 function formatDataBR(iso: string): string {
   const [y, m, d] = iso.slice(0, 10).split("-");
@@ -13,8 +35,17 @@ function formatDataBR(iso: string): string {
 }
 
 export default function VarricaoOrdemDetalhePage() {
+  const { toast } = useToast();
+  const { user } = useAuth();
+  const podeEditar = user?.role === "admin" || user?.role === "fiscal";
   const [, params] = useRoute("/varricao/ordens/:id");
   const id = params?.id;
+
+  const [editando, setEditando] = useState(false);
+  const [rascunho, setRascunho] = useState<VarricaoOrdemLocal[] | null>(null);
+  const [numero, setNumero] = useState("");
+  const [dataEmissao, setDataEmissao] = useState("");
+  const [observacao, setObservacao] = useState("");
 
   const { data: payload, isLoading } = useQuery<VarricaoOrdemPayload>({
     queryKey: ["/api/varricao/ordens", id],
@@ -26,6 +57,42 @@ export default function VarricaoOrdemDetalhePage() {
     queryKey: ["/api/varricao/config"],
     queryFn: async () => (await apiRequest("GET", "/api/varricao/config")).json(),
   });
+
+  const { data: todosLocais = [] } = useQuery<VarricaoLocalCompleto[]>({
+    queryKey: ["/api/varricao/locais"],
+    queryFn: async () => (await apiRequest("GET", "/api/varricao/locais")).json(),
+    enabled: editando,
+  });
+
+  function iniciarEdicao() {
+    if (!payload?.ordem) return;
+    setRascunho(payload.locais);
+    setNumero(payload.ordem.numero);
+    setDataEmissao(payload.ordem.data_emissao.slice(0, 10));
+    setObservacao(payload.ordem.observacao ?? "");
+    setEditando(true);
+  }
+
+  const salvarMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("PATCH", `/api/varricao/ordens/${id}`, {
+        numero: numero.trim(),
+        dataEmissao,
+        observacao: observacao.trim() || null,
+        locais: (rascunho ?? []).map((l) => ({ localId: l.localId, dias: l.dias })),
+      });
+      if (!res.ok) throw new Error((await res.json()).error);
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Ordem de serviço atualizada!" });
+      queryClient.invalidateQueries({ queryKey: ["/api/varricao/ordens"] });
+      setEditando(false);
+    },
+    onError: (e: Error) => toast({ variant: "destructive", title: "Erro ao salvar", description: e.message }),
+  });
+
+  const podeSalvar = numero.trim().length > 0 && dataEmissao && (rascunho?.length ?? 0) > 0;
 
   return (
     <div className="min-h-screen bg-background p-4 md:p-6">
@@ -49,8 +116,13 @@ export default function VarricaoOrdemDetalhePage() {
               )}
             </div>
           </div>
-          {payload && (
+          {payload && !editando && (
             <div className="flex gap-2">
+              {podeEditar && (
+                <Button variant="outline" size="sm" onClick={iniciarEdicao}>
+                  <Pencil className="h-3.5 w-3.5 mr-1.5" /> Editar
+                </Button>
+              )}
               <Button variant="outline" size="sm" onClick={() => exportarOrdemExcel(payload)}>
                 <FileSpreadsheet className="h-3.5 w-3.5 mr-1.5" /> Excel
               </Button>
@@ -59,9 +131,24 @@ export default function VarricaoOrdemDetalhePage() {
               </Button>
             </div>
           )}
+          {editando && (
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={() => setEditando(false)}>
+                <X className="h-3.5 w-3.5 mr-1.5" /> Cancelar
+              </Button>
+              <Button
+                size="sm"
+                disabled={!podeSalvar || salvarMutation.isPending}
+                onClick={() => salvarMutation.mutate()}
+              >
+                <Save className="h-3.5 w-3.5 mr-1.5" />
+                {salvarMutation.isPending ? "Salvando..." : "Salvar Alterações"}
+              </Button>
+            </div>
+          )}
         </div>
 
-        {payload?.ordem?.observacao && (
+        {!editando && payload?.ordem?.observacao && (
           <div className="rounded-md bg-muted/50 border px-3 py-2 text-sm text-muted-foreground">
             {payload.ordem.observacao}
           </div>
@@ -69,7 +156,40 @@ export default function VarricaoOrdemDetalhePage() {
 
         {isLoading && <p className="text-center text-sm text-muted-foreground py-10">Carregando...</p>}
         {!isLoading && !payload && <p className="text-center text-sm text-muted-foreground py-10">Ordem de serviço não encontrada.</p>}
-        {payload && <VarricaoOrdemConteudo payload={payload} config={config} />}
+
+        {editando && rascunho && (
+          <>
+            <div className="border rounded-lg p-4 space-y-3 bg-card">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label className="text-xs">Número da OS *</Label>
+                  <Input className="mt-1" value={numero} onChange={(e) => setNumero(e.target.value)} />
+                </div>
+                <div>
+                  <Label className="text-xs">Data de Emissão *</Label>
+                  <Input type="date" className="mt-1" value={dataEmissao} onChange={(e) => setDataEmissao(e.target.value)} />
+                </div>
+              </div>
+              <div>
+                <Label className="text-xs">Observação (opcional)</Label>
+                <Textarea
+                  className="mt-1 h-16 resize-none"
+                  value={observacao}
+                  onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setObservacao(e.target.value)}
+                />
+              </div>
+            </div>
+            <VarricaoOrdemRascunho
+              mesReferencia={payload!.mesReferencia}
+              locais={rascunho}
+              todosLocais={todosLocais}
+              config={config}
+              onChange={setRascunho}
+            />
+          </>
+        )}
+
+        {!editando && payload && <VarricaoOrdemConteudo payload={payload} config={config} />}
       </div>
     </div>
   );

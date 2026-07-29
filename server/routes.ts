@@ -2964,6 +2964,7 @@ export async function registerRoutes(app: Express): Promise<void> {
 
       res.json({
         ordem: ordens[0],
+        mesReferencia: ordens[0].mes_referencia,
         locais,
         subtotaisRegiao: subtotais(locais, "regiao"),
         subtotaisSecao: subtotais(locais, "secao"),
@@ -3055,6 +3056,90 @@ export async function registerRoutes(app: Express): Promise<void> {
     } catch (error) {
       console.error("Erro ao emitir ordem de serviço de varrição:", error);
       res.status(500).json({ error: "Erro ao emitir a ordem de serviço" });
+    }
+  });
+
+  // Reabrir e ajustar uma OS já emitida (locais/dias podem mudar durante o
+  // mês por necessidade operacional — ex.: concentrar recursos numa região)
+  app.patch("/api/varricao/ordens/:id", requireRole("admin", "fiscal"), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { numero, dataEmissao, observacao, locais: locaisEscolhidos } = req.body;
+      if (!Array.isArray(locaisEscolhidos) || locaisEscolhidos.length === 0) {
+        return res.status(400).json({ error: "Selecione ao menos um local para esta ordem de serviço" });
+      }
+
+      const pool = getPool();
+      const { rows: existentes } = await pool.query("SELECT * FROM varricao_ordens WHERE id=$1", [id]);
+      if (!existentes.length) return res.status(404).json({ error: "Ordem de serviço não encontrada" });
+      const mesReferencia = existentes[0].mes_referencia;
+
+      const mMes = String(mesReferencia).match(/^(\d{4})-(\d{2})$/);
+      const diasUteisDoMes = diasDoMesParaLocal(
+        { frequencia: "diario", dias_semana: null }, parseInt(mMes![1]), parseInt(mMes![2])
+      );
+
+      const idsUnicos = Array.from(new Set(locaisEscolhidos.map((l: any) => Number(l.localId))));
+      const { rows: locaisRaw } = await pool.query(
+        "SELECT * FROM varricao_locais WHERE id = ANY($1::int[])", [idsUnicos]
+      );
+      const porId = new Map(locaisRaw.map((l) => [l.id, l]));
+
+      const locais: LocalComputado[] = [];
+      for (const item of locaisEscolhidos) {
+        const local = porId.get(Number(item.localId));
+        if (!local) continue;
+        const dias: number[] = Array.isArray(item.dias)
+          ? item.dias.filter((d: any) => Number.isInteger(d) && d >= 1 && d <= 31).sort((a: number, b: number) => a - b)
+          : [];
+        if (dias.length === 0) continue;
+        const metragemUnica = local.metragem_unica != null ? Number(local.metragem_unica) : null;
+        const ehDiarioCompleto =
+          dias.length === diasUteisDoMes.length && dias.every((d, i) => d === diasUteisDoMes[i]);
+        locais.push({
+          localId: local.id,
+          nome: local.nome,
+          complemento: local.complemento,
+          regiao: local.regiao,
+          tipo: local.tipo,
+          secao: local.secao,
+          metragemUnica,
+          dias,
+          diasTexto: formatarDiasTexto(dias, ehDiarioCompleto ? "diario" : "semanal"),
+          metragemTotal: metragemUnica != null ? metragemUnica * dias.length : 0,
+        });
+      }
+      if (locais.length === 0) {
+        return res.status(400).json({ error: "Nenhum local válido informado" });
+      }
+
+      const sets: string[] = [];
+      const vals: any[] = [];
+      if (numero !== undefined) { vals.push(numero); sets.push(`numero=$${vals.length}`); }
+      if (dataEmissao !== undefined) { vals.push(dataEmissao); sets.push(`data_emissao=$${vals.length}`); }
+      if (observacao !== undefined) { vals.push(observacao || null); sets.push(`observacao=$${vals.length}`); }
+      if (sets.length > 0) {
+        vals.push(id);
+        await pool.query(`UPDATE varricao_ordens SET ${sets.join(", ")} WHERE id=$${vals.length}`, vals);
+      }
+
+      await pool.query("DELETE FROM varricao_ordens_locais WHERE ordem_id=$1", [id]);
+      for (const l of locais) {
+        await pool.query(
+          `INSERT INTO varricao_ordens_locais
+             (ordem_id, local_id, nome, complemento, regiao, tipo, secao, metragem_unica, dias, dias_texto, metragem_total)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+          [
+            id, l.localId, l.nome, l.complemento, l.regiao, l.tipo, l.secao,
+            l.metragemUnica, JSON.stringify(l.dias), l.diasTexto, l.metragemTotal,
+          ]
+        );
+      }
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Erro ao atualizar ordem de serviço de varrição:", error);
+      res.status(500).json({ error: "Erro ao atualizar a ordem de serviço" });
     }
   });
 

@@ -27,6 +27,7 @@ import PublicCronogramaPage from "@/pages/public-cronograma";
 import AuditoriaPage from "@/pages/auditoria";
 import NotFound from "@/pages/not-found";
 import { DemoBanner } from "@/components/DemoBanner";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { Loader2 } from "lucide-react";
 
 function AuthenticatedRoutes() {
@@ -104,7 +105,9 @@ function App() {
         <TooltipProvider>
           <AuthProvider>
             <Toaster />
-            <Router />
+            <ErrorBoundary>
+              <Router />
+            </ErrorBoundary>
           </AuthProvider>
         </TooltipProvider>
       </ThemeProvider>
