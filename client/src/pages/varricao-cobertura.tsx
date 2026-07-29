@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import {
   ChevronLeft, ChevronDown, ChevronRight, CheckCircle2, AlertTriangle,
-  ImageIcon, CalendarDays, FileText,
+  ImageIcon, CalendarDays, FileText, FolderDown,
 } from "lucide-react";
 import { Link } from "wouter";
 import { VarricaoFotoThumb, type VarricaoFoto } from "@/components/VarricaoFotoThumb";
@@ -257,6 +257,13 @@ export default function VarricaoCoberturaPage() {
               ))}
             </SelectContent>
           </Select>
+          {fotosDoDia.length > 0 && (
+            <Button variant="outline" size="sm" className="h-9" asChild>
+              <a href={`/api/varricao/fotos/zip?data=${data}`}>
+                <FolderDown className="h-3.5 w-3.5 mr-1.5" /> Baixar fotos (.zip)
+              </a>
+            </Button>
+          )}
         </div>
 
         <div className="flex items-center justify-between flex-wrap gap-2">

@@ -1,6 +1,7 @@
 import type { Express } from "express";
+import { ZipArchive } from "archiver";
 import { getPool } from "../../db/client";
-import { getSupabase, upload, requireAuth, requireRole } from "../route-helpers";
+import { getSupabase, upload, requireAuth, requireRole, nomeArquivoSeguro } from "../route-helpers";
 
 export async function ensureVarricaoLocaisTable() {
   try {
@@ -997,6 +998,60 @@ export function registerVarricaoRoutes(app: Express): void {
       res.json(rows);
     } catch (error) {
       res.status(500).json({ error: "Erro ao buscar fotos" });
+    }
+  });
+
+  // Baixa em .zip todas as fotos de varrição/lavação de um dia — pro
+  // coordenador levar as fotos pra fora do sistema (backup próprio, envio
+  // por fora etc.), sem precisar salvar uma por uma manualmente.
+  app.get("/api/varricao/fotos/zip", requireAuth, async (req, res) => {
+    try {
+      const data = String(req.query.data ?? new Date().toISOString().split("T")[0]);
+      const pool = getPool();
+      const { rows } = await pool.query(
+        `SELECT f.url, f.created_at, l.nome AS local_nome, l.complemento AS local_complemento
+         FROM varricao_fotos f
+         JOIN varricao_locais l ON l.id = f.local_id
+         WHERE f.data_servico = $1
+         ORDER BY l.nome, f.created_at`,
+        [data]
+      );
+
+      if (rows.length === 0) {
+        res.status(404).json({ error: "Nenhuma foto encontrada para esta data" });
+        return;
+      }
+
+      res.setHeader("Content-Type", "application/zip");
+      res.setHeader("Content-Disposition", `attachment; filename="fotos_varricao_${data}.zip"`);
+
+      const archive = new ZipArchive({ zlib: { level: 6 } });
+      archive.on("error", (err: Error) => {
+        console.error("Erro ao montar zip de fotos de varrição:", err);
+        res.destroy(err);
+      });
+      archive.pipe(res);
+
+      const contadorPorNome = new Map<string, number>();
+      for (const row of rows) {
+        const resp = await fetch(row.url);
+        if (!resp.ok) continue;
+        const buffer = Buffer.from(await resp.arrayBuffer());
+        const base = nomeArquivoSeguro(
+          row.local_complemento ? `${row.local_nome} - ${row.local_complemento}` : row.local_nome
+        );
+        const n = (contadorPorNome.get(base) ?? 0) + 1;
+        contadorPorNome.set(base, n);
+        const ext = row.url.split(".").pop()?.split("?")[0] || "jpg";
+        archive.append(buffer, { name: `${base} (${n}).${ext}` });
+      }
+
+      await archive.finalize();
+    } catch (error) {
+      console.error("Erro ao gerar zip de fotos de varrição:", error);
+      if (!res.headersSent) {
+        res.status(500).json({ error: "Erro ao gerar arquivo zip" });
+      }
     }
   });
 

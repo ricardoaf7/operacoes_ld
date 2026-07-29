@@ -2,10 +2,11 @@ import type { Express } from "express";
 import { z } from "zod";
 import * as fs from "fs";
 import * as path from "path";
+import { ZipArchive } from "archiver";
 import type { ServiceArea } from "@shared/schema";
 import { storage } from "../storage";
 import { getPool } from "../../db/client";
-import { getSupabase, upload, requireAuth, requireRole, loteRestritoDoEncarregado } from "../route-helpers";
+import { getSupabase, upload, requireAuth, requireRole, loteRestritoDoEncarregado, nomeArquivoSeguro } from "../route-helpers";
 import { logAudit } from "./audit";
 import { fecharDemandasDeArea } from "./demandas";
 
@@ -1008,6 +1009,59 @@ export function registerRocagemRoutes(app: Express): void {
       res.json(updated);
     } catch (error) {
       res.status(500).json({ error: "Erro ao excluir foto" });
+    }
+  });
+
+  // Baixa em .zip todas as fotos de roçagem de um dia — mesma ideia da
+  // varrição, mas aqui as fotos ficam dentro do array `fotos` de cada área
+  // (sem tabela própria), então é preciso reunir de todas as áreas primeiro.
+  app.get("/api/areas/fotos/zip", requireAuth, async (req, res) => {
+    try {
+      const data = String(req.query.data ?? new Date().toISOString().split("T")[0]);
+      const areas = await storage.getAllAreas("rocagem");
+
+      const fotosDoDia: { url: string; endereco: string; bairro: string | null }[] = [];
+      for (const area of areas) {
+        for (const foto of area.fotos ?? []) {
+          if (foto.data.slice(0, 10) === data) {
+            fotosDoDia.push({ url: foto.url, endereco: area.endereco, bairro: area.bairro ?? null });
+          }
+        }
+      }
+
+      if (fotosDoDia.length === 0) {
+        res.status(404).json({ error: "Nenhuma foto encontrada para esta data" });
+        return;
+      }
+
+      res.setHeader("Content-Type", "application/zip");
+      res.setHeader("Content-Disposition", `attachment; filename="fotos_rocagem_${data}.zip"`);
+
+      const archive = new ZipArchive({ zlib: { level: 6 } });
+      archive.on("error", (err: Error) => {
+        console.error("Erro ao montar zip de fotos de roçagem:", err);
+        res.destroy(err);
+      });
+      archive.pipe(res);
+
+      const contadorPorNome = new Map<string, number>();
+      for (const foto of fotosDoDia) {
+        const resp = await fetch(foto.url);
+        if (!resp.ok) continue;
+        const buffer = Buffer.from(await resp.arrayBuffer());
+        const base = nomeArquivoSeguro(foto.bairro ? `${foto.endereco} - ${foto.bairro}` : foto.endereco);
+        const n = (contadorPorNome.get(base) ?? 0) + 1;
+        contadorPorNome.set(base, n);
+        const ext = foto.url.split(".").pop()?.split("?")[0] || "jpg";
+        archive.append(buffer, { name: `${base} (${n}).${ext}` });
+      }
+
+      await archive.finalize();
+    } catch (error) {
+      console.error("Erro ao gerar zip de fotos de roçagem:", error);
+      if (!res.headersSent) {
+        res.status(500).json({ error: "Erro ao gerar arquivo zip" });
+      }
     }
   });
 

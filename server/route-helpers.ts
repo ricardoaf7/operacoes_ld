@@ -41,3 +41,13 @@ export function requireRole(...roles: string[]) {
     next();
   };
 }
+
+// Nome de arquivo seguro pra dentro de um .zip — sem acento (alguns
+// descompactadores no Windows corrompem nomes com acento), sem caracteres
+// reservados do sistema de arquivos.
+export function nomeArquivoSeguro(s: string): string {
+  return s
+    .normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .replace(/[\\/:*?"<>|]/g, "-")
+    .trim();
+}

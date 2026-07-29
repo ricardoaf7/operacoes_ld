@@ -1269,6 +1269,9 @@ function requireRole(...roles) {
     next();
   };
 }
+function nomeArquivoSeguro(s) {
+  return s.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[\\/:*?"<>|]/g, "-").trim();
+}
 
 // server/routes/auth-users.ts
 async function ensureUsersSetorColumn() {
@@ -2137,6 +2140,7 @@ function registerDemandasRoutes(app) {
 import { z as z2 } from "zod";
 import * as fs from "fs";
 import * as path from "path";
+import { ZipArchive } from "archiver";
 async function ensureContratoConfigTable() {
   try {
     const pool = getPool();
@@ -2982,6 +2986,49 @@ function registerRocagemRoutes(app) {
       res.status(500).json({ error: "Erro ao excluir foto" });
     }
   });
+  app.get("/api/areas/fotos/zip", requireAuth, async (req, res) => {
+    try {
+      const data = String(req.query.data ?? (/* @__PURE__ */ new Date()).toISOString().split("T")[0]);
+      const areas = await storage.getAllAreas("rocagem");
+      const fotosDoDia = [];
+      for (const area of areas) {
+        for (const foto of area.fotos ?? []) {
+          if (foto.data.slice(0, 10) === data) {
+            fotosDoDia.push({ url: foto.url, endereco: area.endereco, bairro: area.bairro ?? null });
+          }
+        }
+      }
+      if (fotosDoDia.length === 0) {
+        res.status(404).json({ error: "Nenhuma foto encontrada para esta data" });
+        return;
+      }
+      res.setHeader("Content-Type", "application/zip");
+      res.setHeader("Content-Disposition", `attachment; filename="fotos_rocagem_${data}.zip"`);
+      const archive = new ZipArchive({ zlib: { level: 6 } });
+      archive.on("error", (err) => {
+        console.error("Erro ao montar zip de fotos de ro\xE7agem:", err);
+        res.destroy(err);
+      });
+      archive.pipe(res);
+      const contadorPorNome = /* @__PURE__ */ new Map();
+      for (const foto of fotosDoDia) {
+        const resp = await fetch(foto.url);
+        if (!resp.ok) continue;
+        const buffer = Buffer.from(await resp.arrayBuffer());
+        const base = nomeArquivoSeguro(foto.bairro ? `${foto.endereco} - ${foto.bairro}` : foto.endereco);
+        const n = (contadorPorNome.get(base) ?? 0) + 1;
+        contadorPorNome.set(base, n);
+        const ext = foto.url.split(".").pop()?.split("?")[0] || "jpg";
+        archive.append(buffer, { name: `${base} (${n}).${ext}` });
+      }
+      await archive.finalize();
+    } catch (error) {
+      console.error("Erro ao gerar zip de fotos de ro\xE7agem:", error);
+      if (!res.headersSent) {
+        res.status(500).json({ error: "Erro ao gerar arquivo zip" });
+      }
+    }
+  });
   app.post("/api/areas/:id/registrar-rocagem", requireAuth, async (req, res) => {
     try {
       const areaId = parseInt(req.params.id);
@@ -3637,6 +3684,7 @@ function registerRocagemRoutes(app) {
 }
 
 // server/routes/varricao.ts
+import { ZipArchive as ZipArchive2 } from "archiver";
 async function ensureVarricaoLocaisTable() {
   try {
     const pool = getPool();
@@ -4510,6 +4558,51 @@ function registerVarricaoRoutes(app) {
       res.json(rows);
     } catch (error) {
       res.status(500).json({ error: "Erro ao buscar fotos" });
+    }
+  });
+  app.get("/api/varricao/fotos/zip", requireAuth, async (req, res) => {
+    try {
+      const data = String(req.query.data ?? (/* @__PURE__ */ new Date()).toISOString().split("T")[0]);
+      const pool = getPool();
+      const { rows } = await pool.query(
+        `SELECT f.url, f.created_at, l.nome AS local_nome, l.complemento AS local_complemento
+         FROM varricao_fotos f
+         JOIN varricao_locais l ON l.id = f.local_id
+         WHERE f.data_servico = $1
+         ORDER BY l.nome, f.created_at`,
+        [data]
+      );
+      if (rows.length === 0) {
+        res.status(404).json({ error: "Nenhuma foto encontrada para esta data" });
+        return;
+      }
+      res.setHeader("Content-Type", "application/zip");
+      res.setHeader("Content-Disposition", `attachment; filename="fotos_varricao_${data}.zip"`);
+      const archive = new ZipArchive2({ zlib: { level: 6 } });
+      archive.on("error", (err) => {
+        console.error("Erro ao montar zip de fotos de varri\xE7\xE3o:", err);
+        res.destroy(err);
+      });
+      archive.pipe(res);
+      const contadorPorNome = /* @__PURE__ */ new Map();
+      for (const row of rows) {
+        const resp = await fetch(row.url);
+        if (!resp.ok) continue;
+        const buffer = Buffer.from(await resp.arrayBuffer());
+        const base = nomeArquivoSeguro(
+          row.local_complemento ? `${row.local_nome} - ${row.local_complemento}` : row.local_nome
+        );
+        const n = (contadorPorNome.get(base) ?? 0) + 1;
+        contadorPorNome.set(base, n);
+        const ext = row.url.split(".").pop()?.split("?")[0] || "jpg";
+        archive.append(buffer, { name: `${base} (${n}).${ext}` });
+      }
+      await archive.finalize();
+    } catch (error) {
+      console.error("Erro ao gerar zip de fotos de varri\xE7\xE3o:", error);
+      if (!res.headersSent) {
+        res.status(500).json({ error: "Erro ao gerar arquivo zip" });
+      }
     }
   });
 }

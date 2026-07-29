@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Calendar, Filter, FileText } from "lucide-react";
+import { Calendar, Filter, FileText, FolderDown } from "lucide-react";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import type { ServiceArea } from "@shared/schema";
@@ -20,6 +20,7 @@ export default function RelatorioRocagensPage() {
     dateTo: "",
     lote: "",
   });
+  const [dataFotos, setDataFotos] = useState<string>(() => new Date().toLocaleDateString("en-CA"));
 
   const { data: areas = [] } = useQuery<ServiceArea[]>({
     queryKey: ["/api/areas/light"],
@@ -250,6 +251,33 @@ export default function RelatorioRocagensPage() {
                   PDF
                 </Button>
               </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Fotos do dia */}
+        <Card className="mb-8">
+          <CardHeader>
+            <CardTitle>Fotos do Dia</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-col md:flex-row md:items-end gap-4">
+              <div className="flex-1 max-w-xs">
+                <label className="text-sm font-medium text-muted-foreground">Data</label>
+                <Input
+                  type="date"
+                  value={dataFotos}
+                  onChange={(e) => setDataFotos(e.target.value)}
+                  className="mt-2"
+                  data-testid="input-date-fotos"
+                />
+              </div>
+              <Button variant="outline" className="gap-2" asChild data-testid="button-download-fotos-zip">
+                <a href={`/api/areas/fotos/zip?data=${dataFotos}`}>
+                  <FolderDown className="h-4 w-4" />
+                  Baixar fotos (.zip)
+                </a>
+              </Button>
             </div>
           </CardContent>
         </Card>
