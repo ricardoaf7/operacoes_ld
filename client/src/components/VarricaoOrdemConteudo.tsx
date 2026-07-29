@@ -2,21 +2,32 @@ import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { List, CalendarDays, AlertTriangle } from "lucide-react";
 import { VarricaoOrdemCalendario } from "./VarricaoOrdemCalendario";
+import { VarricaoBarraProgresso } from "./VarricaoBarraProgresso";
 import { SECAO_LABELS } from "@/lib/varricao-utils";
-import { formatMetragem, type VarricaoOrdemPayload } from "@/lib/varricao-ordens-types";
+import { formatMetragem, type VarricaoOrdemPayload, type VarricaoConfig } from "@/lib/varricao-ordens-types";
 
 interface VarricaoOrdemConteudoProps {
   payload: VarricaoOrdemPayload;
+  config?: VarricaoConfig;
 }
 
-export function VarricaoOrdemConteudo({ payload }: VarricaoOrdemConteudoProps) {
+export function VarricaoOrdemConteudo({ payload, config }: VarricaoOrdemConteudoProps) {
   const [visao, setVisao] = useState<"lista" | "calendario">("lista");
-  const { locais, duplicatas = [], subtotaisRegiao, subtotaisSecao, totalLocais, totalMetragem } = payload;
+  const { locais, duplicatas = [], subtotaisRegiao, subtotaisSecao, totaisPorCategoria, totalLocais, totalMetragem } = payload;
 
   const secoesPresentes = Object.keys(SECAO_LABELS).filter((s) => locais.some((l) => l.secao === s));
+  const maxVarricao = config?.metragem_maxima_varricao != null ? Number(config.metragem_maxima_varricao) : null;
+  const maxLavacao = config?.metragem_maxima_lavacao != null ? Number(config.metragem_maxima_lavacao) : null;
 
   return (
     <div className="space-y-4">
+      {totaisPorCategoria && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <VarricaoBarraProgresso label="Varrição" atual={totaisPorCategoria.varricao} maximo={maxVarricao} />
+          <VarricaoBarraProgresso label="Lavação" atual={totaisPorCategoria.lavacao} maximo={maxLavacao} />
+        </div>
+      )}
+
       {/* Resumo */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <div className="bg-card border rounded-xl p-4">

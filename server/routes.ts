@@ -291,6 +291,31 @@ async function ensureVarricaoLocaisTable() {
   }
 }
 
+async function ensureVarricaoConfigTable() {
+  try {
+    const pool = getPool();
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS varricao_config (
+        id INTEGER PRIMARY KEY DEFAULT 1,
+        metragem_maxima_varricao NUMERIC,
+        metragem_maxima_lavacao NUMERIC,
+        updated_at TIMESTAMPTZ DEFAULT NOW(),
+        CONSTRAINT varricao_config_singleton CHECK (id = 1)
+      );
+    `);
+  } catch (e) {
+    console.warn("varricao_config table check:", e);
+  }
+}
+
+// Categoria orçamentária de uma seção — usada para conferir o teto de metragem
+// contratual de Varrição e de Lavação (Sanitários não tem teto definido)
+function secaoCategoria(secao: string): "varricao" | "lavacao" | "outros" {
+  if (secao.startsWith("lavagem")) return "lavacao";
+  if (secao.startsWith("varricao")) return "varricao";
+  return "outros";
+}
+
 async function ensureVarricaoOrdensTable() {
   try {
     const pool = getPool();
@@ -445,6 +470,14 @@ function subtotais(locais: LocalComputado[], campo: "regiao" | "secao") {
   return Array.from(m.entries())
     .map(([chave, v]) => ({ chave, ...v }))
     .sort((a, b) => b.metragemTotal - a.metragemTotal);
+}
+
+function totaisPorCategoria(locais: LocalComputado[]) {
+  const totais: Record<"varricao" | "lavacao" | "outros", number> = { varricao: 0, lavacao: 0, outros: 0 };
+  locais.forEach((l) => {
+    totais[secaoCategoria(l.secao)] += l.metragemTotal;
+  });
+  return totais;
 }
 
 async function ensureVarricaoFotosTable() {
@@ -603,6 +636,7 @@ export async function registerRoutes(app: Express): Promise<void> {
   await ensureVarricaoLocaisTable();
   await ensureVarricaoFotosTable();
   await ensureVarricaoOrdensTable();
+  await ensureVarricaoConfigTable();
 
   // Middleware: encarregado (terceirizada) só acessa o universo do contrato dele
   app.use((req, res, next) => {
@@ -2847,12 +2881,44 @@ export async function registerRoutes(app: Express): Promise<void> {
         duplicatas,
         subtotaisRegiao: subtotais(locais, "regiao"),
         subtotaisSecao: subtotais(locais, "secao"),
+        totaisPorCategoria: totaisPorCategoria(locais),
         totalLocais: locais.length,
         totalMetragem,
       });
     } catch (error) {
       console.error("Erro ao gerar prévia da OS de varrição:", error);
       res.status(500).json({ error: "Erro ao calcular a prévia" });
+    }
+  });
+
+  // Config: teto contratual de metragem para Varrição e Lavação
+  app.get("/api/varricao/config", requireAuth, async (req, res) => {
+    try {
+      const pool = getPool();
+      const { rows } = await pool.query("SELECT * FROM varricao_config WHERE id=1");
+      res.json(rows[0] ?? { metragem_maxima_varricao: null, metragem_maxima_lavacao: null });
+    } catch (error) {
+      res.status(500).json({ error: "Erro ao buscar configuração" });
+    }
+  });
+
+  app.put("/api/varricao/config", requireRole("admin", "gestor"), async (req, res) => {
+    try {
+      const { metragemMaximaVarricao, metragemMaximaLavacao } = req.body;
+      const pool = getPool();
+      const { rows } = await pool.query(
+        `INSERT INTO varricao_config (id, metragem_maxima_varricao, metragem_maxima_lavacao, updated_at)
+         VALUES (1, $1, $2, NOW())
+         ON CONFLICT (id) DO UPDATE SET
+           metragem_maxima_varricao = EXCLUDED.metragem_maxima_varricao,
+           metragem_maxima_lavacao = EXCLUDED.metragem_maxima_lavacao,
+           updated_at = NOW()
+         RETURNING *`,
+        [metragemMaximaVarricao ?? null, metragemMaximaLavacao ?? null]
+      );
+      res.json(rows[0]);
+    } catch (error) {
+      res.status(500).json({ error: "Erro ao salvar configuração" });
     }
   });
 
@@ -2901,6 +2967,7 @@ export async function registerRoutes(app: Express): Promise<void> {
         locais,
         subtotaisRegiao: subtotais(locais, "regiao"),
         subtotaisSecao: subtotais(locais, "secao"),
+        totaisPorCategoria: totaisPorCategoria(locais),
         totalLocais: locais.length,
         totalMetragem,
       });
@@ -2911,22 +2978,58 @@ export async function registerRoutes(app: Express): Promise<void> {
 
   app.post("/api/varricao/ordens", requireRole("admin", "fiscal"), async (req, res) => {
     try {
-      const { numero, mesReferencia, dataEmissao, observacao } = req.body;
+      const { numero, mesReferencia, dataEmissao, observacao, locais: locaisEscolhidos } = req.body;
       if (!numero || !mesReferencia || !dataEmissao) {
         return res.status(400).json({ error: "Número, mês de referência e data de emissão são obrigatórios" });
       }
-      const m = String(mesReferencia).match(/^(\d{4})-(\d{2})$/);
-      if (!m) return res.status(400).json({ error: "Mês de referência inválido" });
-      const ano = parseInt(m[1]), mesNum = parseInt(m[2]);
+      if (!Array.isArray(locaisEscolhidos) || locaisEscolhidos.length === 0) {
+        return res.status(400).json({ error: "Selecione ao menos um local para esta ordem de serviço" });
+      }
+      const mMes = String(mesReferencia).match(/^(\d{4})-(\d{2})$/);
+      if (!mMes) return res.status(400).json({ error: "Mês de referência inválido" });
+      const diasUteisDoMes = diasDoMesParaLocal(
+        { frequencia: "diario", dias_semana: null }, parseInt(mMes[1]), parseInt(mMes[2])
+      );
 
       const pool = getPool();
-      // Recalcula no servidor (não confia em dados computados enviados pelo cliente)
+      // O cliente decide QUAIS locais e QUAIS dias entram (mobilidade para
+      // remanejar entre locais fixos e variáveis, respeitar teto de metragem
+      // etc.) — mas o servidor sempre recalcula a metragem a partir dos dados
+      // atuais do local, nunca confiando em números vindos do cliente.
+      const idsUnicos = Array.from(new Set(locaisEscolhidos.map((l: any) => Number(l.localId))));
       const { rows: locaisRaw } = await pool.query(
-        "SELECT * FROM varricao_locais WHERE ativo IS NOT FALSE ORDER BY regiao, nome"
+        "SELECT * FROM varricao_locais WHERE id = ANY($1::int[])", [idsUnicos]
       );
-      const locais = calcularLocaisDoMes(locaisRaw, ano, mesNum);
+      const porId = new Map(locaisRaw.map((l) => [l.id, l]));
+
+      const locais: LocalComputado[] = [];
+      for (const item of locaisEscolhidos) {
+        const local = porId.get(Number(item.localId));
+        if (!local) continue;
+        const dias: number[] = Array.isArray(item.dias)
+          ? item.dias.filter((d: any) => Number.isInteger(d) && d >= 1 && d <= 31).sort((a: number, b: number) => a - b)
+          : [];
+        if (dias.length === 0) continue;
+        const metragemUnica = local.metragem_unica != null ? Number(local.metragem_unica) : null;
+        // "Diário" só se os dias baterem exatamente com todos os dias úteis do
+        // mês (seg-sáb) — se o usuário editou/removeu algum dia, mostra a lista real
+        const ehDiarioCompleto =
+          dias.length === diasUteisDoMes.length && dias.every((d, i) => d === diasUteisDoMes[i]);
+        locais.push({
+          localId: local.id,
+          nome: local.nome,
+          complemento: local.complemento,
+          regiao: local.regiao,
+          tipo: local.tipo,
+          secao: local.secao,
+          metragemUnica,
+          dias,
+          diasTexto: formatarDiasTexto(dias, ehDiarioCompleto ? "diario" : "semanal"),
+          metragemTotal: metragemUnica != null ? metragemUnica * dias.length : 0,
+        });
+      }
       if (locais.length === 0) {
-        return res.status(400).json({ error: "Nenhum local programado para este mês" });
+        return res.status(400).json({ error: "Nenhum local válido informado" });
       }
 
       const { rows: ordemRows } = await pool.query(

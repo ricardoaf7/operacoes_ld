@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { ChevronLeft, FileDown, FileSpreadsheet } from "lucide-react";
 import { VarricaoOrdemConteudo } from "@/components/VarricaoOrdemConteudo";
 import { exportarOrdemExcel, exportarOrdemPdf } from "@/lib/varricao-ordens-export";
-import { formatMesReferencia, type VarricaoOrdemPayload } from "@/lib/varricao-ordens-types";
+import { formatMesReferencia, type VarricaoOrdemPayload, type VarricaoConfig } from "@/lib/varricao-ordens-types";
 
 function formatDataBR(iso: string): string {
   const [y, m, d] = iso.slice(0, 10).split("-");
@@ -20,6 +20,11 @@ export default function VarricaoOrdemDetalhePage() {
     queryKey: ["/api/varricao/ordens", id],
     queryFn: async () => (await apiRequest("GET", `/api/varricao/ordens/${id}`)).json(),
     enabled: !!id,
+  });
+
+  const { data: config } = useQuery<VarricaoConfig>({
+    queryKey: ["/api/varricao/config"],
+    queryFn: async () => (await apiRequest("GET", "/api/varricao/config")).json(),
   });
 
   return (
@@ -64,7 +69,7 @@ export default function VarricaoOrdemDetalhePage() {
 
         {isLoading && <p className="text-center text-sm text-muted-foreground py-10">Carregando...</p>}
         {!isLoading && !payload && <p className="text-center text-sm text-muted-foreground py-10">Ordem de serviço não encontrada.</p>}
-        {payload && <VarricaoOrdemConteudo payload={payload} />}
+        {payload && <VarricaoOrdemConteudo payload={payload} config={config} />}
       </div>
     </div>
   );

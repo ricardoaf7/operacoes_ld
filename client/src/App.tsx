@@ -19,6 +19,7 @@ import VarricaoCoberturaPage from "@/pages/varricao-cobertura";
 import VarricaoOrdensPage from "@/pages/varricao-ordens";
 import VarricaoOrdemNovaPage from "@/pages/varricao-ordem-nova";
 import VarricaoOrdemDetalhePage from "@/pages/varricao-ordem-detalhe";
+import VarricaoConfiguracoesPage from "@/pages/varricao-configuracoes";
 import EncarregadoPage from "@/pages/encarregado";
 import OrdemServicoPage from "@/pages/ordem-servico";
 import CronogramaPage from "@/pages/cronograma";
@@ -62,6 +63,7 @@ function AuthenticatedRoutes() {
           <Route path="/varricao/locais" component={VarricaoLocaisPage} />
           <Route path="/varricao/cobertura" component={VarricaoCoberturaPage} />
           <Route path="/varricao/ordens/nova" component={VarricaoOrdemNovaPage} />
+          <Route path="/varricao/configuracoes" component={VarricaoConfiguracoesPage} />
           <Route path="/varricao/ordens/:id" component={VarricaoOrdemDetalhePage} />
           <Route path="/varricao/ordens" component={VarricaoOrdensPage} />
           {(user.role === "admin" || user.role === "gestor") && (

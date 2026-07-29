@@ -8,7 +8,7 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { ChevronLeft, Plus, FileText, Trash2, MapPin } from "lucide-react";
+import { ChevronLeft, Plus, FileText, Trash2, MapPin, Settings } from "lucide-react";
 import { Link } from "wouter";
 import { formatMesReferencia, formatMetragem, type VarricaoOrdemRegistro } from "@/lib/varricao-ordens-types";
 
@@ -22,6 +22,7 @@ export default function VarricaoOrdensPage() {
   const { user } = useAuth();
   const podeEmitir = user?.role === "admin" || user?.role === "fiscal";
   const podeExcluir = user?.role === "admin" || user?.role === "gestor" || user?.role === "fiscal";
+  const podeConfigurar = user?.role === "admin" || user?.role === "gestor";
   const [paraExcluir, setParaExcluir] = useState<VarricaoOrdemRegistro | null>(null);
 
   const { data: ordens = [], isLoading } = useQuery<VarricaoOrdemRegistro[]>({
@@ -59,13 +60,22 @@ export default function VarricaoOrdensPage() {
               </p>
             </div>
           </div>
-          {podeEmitir && (
-            <Link href="/varricao/ordens/nova">
-              <Button>
-                <Plus className="h-4 w-4 mr-2" /> Nova OS
-              </Button>
-            </Link>
-          )}
+          <div className="flex gap-2">
+            {podeConfigurar && (
+              <Link href="/varricao/configuracoes">
+                <Button variant="outline">
+                  <Settings className="h-4 w-4 mr-2" /> Teto de Metragem
+                </Button>
+              </Link>
+            )}
+            {podeEmitir && (
+              <Link href="/varricao/ordens/nova">
+                <Button>
+                  <Plus className="h-4 w-4 mr-2" /> Nova OS
+                </Button>
+              </Link>
+            )}
+          </div>
         </div>
 
         {isLoading && <p className="text-center text-sm text-muted-foreground py-10">Carregando...</p>}

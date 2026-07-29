@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -7,18 +7,27 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { ChevronLeft, FileDown, FileSpreadsheet, CheckCircle2 } from "lucide-react";
-import { VarricaoOrdemConteudo } from "@/components/VarricaoOrdemConteudo";
+import { ChevronLeft, FileDown, FileSpreadsheet, CheckCircle2, AlertTriangle, Settings } from "lucide-react";
+import { VarricaoOrdemRascunho } from "@/components/VarricaoOrdemRascunho";
 import { exportarOrdemExcel, exportarOrdemPdf } from "@/lib/varricao-ordens-export";
-import { formatMesReferencia, type VarricaoOrdemPayload } from "@/lib/varricao-ordens-types";
+import {
+  formatMesReferencia,
+  type VarricaoOrdemPayload, type VarricaoOrdemLocal, type VarricaoConfig,
+} from "@/lib/varricao-ordens-types";
+import { calcularSubtotais } from "@/lib/varricao-ordens-utils";
 
-function mesAtualISO(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+interface VarricaoLocalCompleto {
+  id: number;
+  nome: string;
+  complemento: string | null;
+  regiao: string | null;
+  tipo: string | null;
+  secao: string;
+  frequencia: string;
+  dias_semana: number[] | null;
+  metragem_unica: string | null;
 }
 
-// Sugere o próximo mês como padrão — é assim que a OS costuma ser preparada,
-// com antecedência para o mês seguinte
 function proximoMesISO(): string {
   const d = new Date();
   d.setMonth(d.getMonth() + 1);
@@ -32,11 +41,31 @@ export default function VarricaoOrdemNovaPage() {
   const [numero, setNumero] = useState("");
   const [dataEmissao, setDataEmissao] = useState(() => new Date().toLocaleDateString("en-CA"));
   const [observacao, setObservacao] = useState("");
+  const [rascunho, setRascunho] = useState<VarricaoOrdemLocal[] | null>(null);
+  const [mesCarregado, setMesCarregado] = useState<string | null>(null);
 
   const { data: preview, isLoading } = useQuery<VarricaoOrdemPayload>({
     queryKey: ["/api/varricao/ordens/preview", mes],
     queryFn: async () => (await apiRequest("GET", `/api/varricao/ordens/preview?mes=${mes}`)).json(),
   });
+
+  const { data: todosLocais = [] } = useQuery<VarricaoLocalCompleto[]>({
+    queryKey: ["/api/varricao/locais"],
+    queryFn: async () => (await apiRequest("GET", "/api/varricao/locais")).json(),
+  });
+
+  const { data: config } = useQuery<VarricaoConfig>({
+    queryKey: ["/api/varricao/config"],
+    queryFn: async () => (await apiRequest("GET", "/api/varricao/config")).json(),
+  });
+
+  // Inicializa (ou reinicializa, se o mês mudar) o rascunho a partir da prévia calculada
+  useEffect(() => {
+    if (preview && mesCarregado !== mes) {
+      setRascunho(preview.locais);
+      setMesCarregado(mes);
+    }
+  }, [preview, mes, mesCarregado]);
 
   const emitirMutation = useMutation({
     mutationFn: async () => {
@@ -45,6 +74,7 @@ export default function VarricaoOrdemNovaPage() {
         mesReferencia: mes,
         dataEmissao,
         observacao: observacao.trim() || undefined,
+        locais: (rascunho ?? []).map((l) => ({ localId: l.localId, dias: l.dias })),
       });
       if (!res.ok) throw new Error((await res.json()).error);
       return res.json();
@@ -57,23 +87,43 @@ export default function VarricaoOrdemNovaPage() {
     onError: (e: Error) => toast({ variant: "destructive", title: "Erro ao emitir", description: e.message }),
   });
 
-  const podeEmitir = numero.trim().length > 0 && dataEmissao && (preview?.totalLocais ?? 0) > 0;
+  const totalLocais = rascunho?.length ?? 0;
+  const totalMetragem = (rascunho ?? []).reduce((s, l) => s + l.metragemTotal, 0);
+  const podeEmitir = numero.trim().length > 0 && dataEmissao && totalLocais > 0;
+
+  const payloadParaExportar: VarricaoOrdemPayload | null = rascunho
+    ? {
+        mesReferencia: mes,
+        locais: rascunho,
+        subtotaisRegiao: calcularSubtotais(rascunho, "regiao"),
+        subtotaisSecao: calcularSubtotais(rascunho, "secao"),
+        totalLocais,
+        totalMetragem,
+      }
+    : null;
 
   return (
     <div className="min-h-screen bg-background p-4 md:p-6">
       <div className="max-w-4xl mx-auto space-y-4">
-        <div className="flex items-center gap-3">
-          <Link href="/varricao/ordens">
-            <Button variant="ghost" size="icon">
-              <ChevronLeft className="h-5 w-5" />
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div className="flex items-center gap-3">
+            <Link href="/varricao/ordens">
+              <Button variant="ghost" size="icon">
+                <ChevronLeft className="h-5 w-5" />
+              </Button>
+            </Link>
+            <div>
+              <h1 className="text-xl font-bold">Nova Ordem de Serviço</h1>
+              <p className="text-sm text-muted-foreground">
+                Ponto de partida calculado automaticamente — ajuste locais e dias antes de emitir
+              </p>
+            </div>
+          </div>
+          <Link href="/varricao/configuracoes">
+            <Button variant="ghost" size="sm">
+              <Settings className="h-3.5 w-3.5 mr-1.5" /> Teto de metragem
             </Button>
           </Link>
-          <div>
-            <h1 className="text-xl font-bold">Nova Ordem de Serviço</h1>
-            <p className="text-sm text-muted-foreground">
-              Escolha o mês — os dias de cada local são calculados automaticamente
-            </p>
-          </div>
         </div>
 
         {/* Formulário de emissão */}
@@ -128,24 +178,48 @@ export default function VarricaoOrdemNovaPage() {
           </div>
         </div>
 
-        {isLoading && <p className="text-center text-sm text-muted-foreground py-10">Calculando...</p>}
+        {preview && preview.duplicatas && preview.duplicatas.length > 0 && (
+          <div className="rounded-lg border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950 p-3">
+            <div className="flex items-center gap-2 mb-1.5">
+              <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+              <h3 className="text-sm font-semibold text-amber-800 dark:text-amber-300">
+                {preview.duplicatas.length} possível{preview.duplicatas.length > 1 ? "eis" : ""} duplicidade{preview.duplicatas.length > 1 ? "s" : ""} no cadastro
+              </h3>
+            </div>
+            {preview.duplicatas.map((d, i) => (
+              <p key={i} className="text-xs text-amber-700 dark:text-amber-300">
+                "{d.nomeA}" e "{d.nomeB}"
+              </p>
+            ))}
+          </div>
+        )}
 
-        {!isLoading && preview && (
+        {isLoading && <p className="text-center text-sm text-muted-foreground py-10">Calculando ponto de partida...</p>}
+
+        {!isLoading && rascunho && (
           <>
             <div className="flex items-center justify-between flex-wrap gap-2">
               <p className="text-sm text-muted-foreground">
-                Prévia para <b className="text-foreground">{formatMesReferencia(mes)}</b> — ainda não emitida
+                Rascunho para <b className="text-foreground">{formatMesReferencia(mes)}</b> — {totalLocais} locais, ainda não emitida
               </p>
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm" onClick={() => exportarOrdemExcel(preview)}>
-                  <FileSpreadsheet className="h-3.5 w-3.5 mr-1.5" /> Excel
-                </Button>
-                <Button variant="outline" size="sm" onClick={() => exportarOrdemPdf(preview)}>
-                  <FileDown className="h-3.5 w-3.5 mr-1.5" /> PDF
-                </Button>
-              </div>
+              {payloadParaExportar && (
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" onClick={() => exportarOrdemExcel(payloadParaExportar)}>
+                    <FileSpreadsheet className="h-3.5 w-3.5 mr-1.5" /> Excel
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => exportarOrdemPdf(payloadParaExportar)}>
+                    <FileDown className="h-3.5 w-3.5 mr-1.5" /> PDF
+                  </Button>
+                </div>
+              )}
             </div>
-            <VarricaoOrdemConteudo payload={preview} />
+            <VarricaoOrdemRascunho
+              mesReferencia={mes}
+              locais={rascunho}
+              todosLocais={todosLocais}
+              config={config}
+              onChange={setRascunho}
+            />
           </>
         )}
       </div>

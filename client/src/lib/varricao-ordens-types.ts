@@ -37,6 +37,12 @@ export interface VarricaoOrdemRegistro {
   total_metragem?: number | string;
 }
 
+export interface VarricaoTotaisPorCategoria {
+  varricao: number;
+  lavacao: number;
+  outros: number;
+}
+
 export interface VarricaoOrdemPayload {
   ordem?: VarricaoOrdemRegistro;
   mesReferencia: string;
@@ -44,8 +50,14 @@ export interface VarricaoOrdemPayload {
   duplicatas?: VarricaoOrdemDuplicata[];
   subtotaisRegiao: VarricaoOrdemSubtotal[];
   subtotaisSecao: VarricaoOrdemSubtotal[];
+  totaisPorCategoria?: VarricaoTotaisPorCategoria;
   totalLocais: number;
   totalMetragem: number;
+}
+
+export interface VarricaoConfig {
+  metragem_maxima_varricao: number | string | null;
+  metragem_maxima_lavacao: number | string | null;
 }
 
 export function formatMesReferencia(mes: string): string {
