@@ -11,6 +11,7 @@ import {
 import { ChevronLeft, Plus, FileText, Trash2, MapPin, Settings } from "lucide-react";
 import { Link } from "wouter";
 import { formatMesReferencia, formatMetragem, type VarricaoOrdemRegistro } from "@/lib/varricao-ordens-types";
+import { VarricaoStatusBadge } from "@/components/VarricaoStatusBadge";
 
 function formatDataBR(iso: string): string {
   const [y, m, d] = iso.slice(0, 10).split("-");
@@ -91,8 +92,9 @@ export default function VarricaoOrdensPage() {
           {ordens.map((o) => (
             <div key={o.id} className="border rounded-lg p-4 flex items-center gap-3 hover:bg-muted/30 transition-colors">
               <Link href={`/varricao/ordens/${o.id}`} className="flex-1 min-w-0">
-                <p className="font-medium">
+                <p className="font-medium flex items-center gap-2 flex-wrap">
                   OS {o.numero} <span className="text-muted-foreground font-normal">— {formatMesReferencia(o.mes_referencia)}</span>
+                  <VarricaoStatusBadge status={o.status} />
                 </p>
                 <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-3 flex-wrap">
                   <span>Emitida em {formatDataBR(o.data_emissao)}</span>

@@ -7,7 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { ChevronLeft, FileDown, FileSpreadsheet, CheckCircle2, AlertTriangle, Settings } from "lucide-react";
+import { ChevronLeft, FileDown, FileSpreadsheet, CheckCircle2, AlertTriangle, Settings, FileText } from "lucide-react";
+import { VarricaoStatusBadge } from "@/components/VarricaoStatusBadge";
 import { VarricaoOrdemRascunho } from "@/components/VarricaoOrdemRascunho";
 import { exportarOrdemExcel, exportarOrdemPdf } from "@/lib/varricao-ordens-export";
 import {
@@ -76,11 +77,18 @@ export default function VarricaoOrdemNovaPage() {
         observacao: observacao.trim() || undefined,
         locais: (rascunho ?? []).map((l) => ({ localId: l.localId, dias: l.dias })),
       });
-      if (!res.ok) throw new Error((await res.json()).error);
+      if (!res.ok) {
+        const err = await res.json();
+        if (res.status === 409 && err.ordemExistenteId) {
+          navigate(`/varricao/ordens/${err.ordemExistenteId}`);
+          throw new Error(err.error);
+        }
+        throw new Error(err.error);
+      }
       return res.json();
     },
     onSuccess: (ordem) => {
-      toast({ title: "Ordem de serviço emitida!" });
+      toast({ title: "Ordem de serviço criada como rascunho!" });
       queryClient.invalidateQueries({ queryKey: ["/api/varricao/ordens"] });
       navigate(`/varricao/ordens/${ordem.id}`);
     },
@@ -89,7 +97,7 @@ export default function VarricaoOrdemNovaPage() {
 
   const totalLocais = rascunho?.length ?? 0;
   const totalMetragem = (rascunho ?? []).reduce((s, l) => s + l.metragemTotal, 0);
-  const podeEmitir = numero.trim().length > 0 && dataEmissao && totalLocais > 0;
+  const podeEmitir = numero.trim().length > 0 && dataEmissao && totalLocais > 0 && !preview?.ordemExistente;
 
   const payloadParaExportar: VarricaoOrdemPayload | null = rascunho
     ? {
@@ -115,7 +123,7 @@ export default function VarricaoOrdemNovaPage() {
             <div>
               <h1 className="text-xl font-bold">Nova Ordem de Serviço</h1>
               <p className="text-sm text-muted-foreground">
-                Ponto de partida calculado automaticamente — ajuste locais e dias antes de emitir
+                Ponto de partida calculado com base na última OS finalizada — ajuste antes de finalizar
               </p>
             </div>
           </div>
@@ -177,6 +185,22 @@ export default function VarricaoOrdemNovaPage() {
             />
           </div>
         </div>
+
+        {preview?.ordemExistente && (
+          <div className="rounded-lg border border-blue-300 dark:border-blue-800 bg-blue-50 dark:bg-blue-950 p-3 flex items-center gap-3 flex-wrap">
+            <FileText className="h-4 w-4 text-blue-600 dark:text-blue-400 shrink-0" />
+            <p className="text-sm text-blue-800 dark:text-blue-300 flex-1">
+              Já existe a <b>OS {preview.ordemExistente.numero}</b> para {formatMesReferencia(mes)}{" "}
+              <VarricaoStatusBadge status={preview.ordemExistente.status} />
+              {preview.ordemExistente.status === "rascunho"
+                ? " — edite-a em vez de criar outra."
+                : " — já finalizada. Ajustes precisam de outro processo."}
+            </p>
+            <Link href={`/varricao/ordens/${preview.ordemExistente.id}`}>
+              <Button size="sm" variant="outline">Abrir OS {preview.ordemExistente.numero}</Button>
+            </Link>
+          </div>
+        )}
 
         {preview && preview.duplicatas && preview.duplicatas.length > 0 && (
           <div className="rounded-lg border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950 p-3">

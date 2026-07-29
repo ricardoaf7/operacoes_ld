@@ -25,6 +25,8 @@ export interface VarricaoOrdemDuplicata {
   distancia: number;
 }
 
+export type VarricaoOrdemStatus = "rascunho" | "finalizada";
+
 export interface VarricaoOrdemRegistro {
   id: number;
   numero: string;
@@ -32,6 +34,9 @@ export interface VarricaoOrdemRegistro {
   data_emissao: string;
   emitido_por: string | null;
   observacao: string | null;
+  status: VarricaoOrdemStatus;
+  finalizado_por: string | null;
+  finalizado_em: string | null;
   created_at: string;
   total_locais?: number;
   total_metragem?: number | string;
@@ -53,6 +58,7 @@ export interface VarricaoOrdemPayload {
   totaisPorCategoria?: VarricaoTotaisPorCategoria;
   totalLocais: number;
   totalMetragem: number;
+  ordemExistente?: { id: number; numero: string; status: VarricaoOrdemStatus } | null;
 }
 
 export interface VarricaoConfig {

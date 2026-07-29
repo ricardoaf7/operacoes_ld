@@ -8,9 +8,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { ChevronLeft, FileDown, FileSpreadsheet, Pencil, X, Save } from "lucide-react";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { ChevronLeft, FileDown, FileSpreadsheet, Pencil, X, Save, Lock } from "lucide-react";
 import { VarricaoOrdemConteudo } from "@/components/VarricaoOrdemConteudo";
 import { VarricaoOrdemRascunho } from "@/components/VarricaoOrdemRascunho";
+import { VarricaoStatusBadge } from "@/components/VarricaoStatusBadge";
 import { exportarOrdemExcel, exportarOrdemPdf } from "@/lib/varricao-ordens-export";
 import {
   formatMesReferencia,
@@ -46,6 +51,7 @@ export default function VarricaoOrdemDetalhePage() {
   const [numero, setNumero] = useState("");
   const [dataEmissao, setDataEmissao] = useState("");
   const [observacao, setObservacao] = useState("");
+  const [confirmandoFinalizar, setConfirmandoFinalizar] = useState(false);
 
   const { data: payload, isLoading } = useQuery<VarricaoOrdemPayload>({
     queryKey: ["/api/varricao/ordens", id],
@@ -92,7 +98,23 @@ export default function VarricaoOrdemDetalhePage() {
     onError: (e: Error) => toast({ variant: "destructive", title: "Erro ao salvar", description: e.message }),
   });
 
+  const finalizarMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/varricao/ordens/${id}/finalizar`, {});
+      if (!res.ok) throw new Error((await res.json()).error);
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "OS finalizada!", description: "Esta é a versão que vai para a contratada." });
+      queryClient.invalidateQueries({ queryKey: ["/api/varricao/ordens", id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/varricao/ordens"] });
+      setConfirmandoFinalizar(false);
+    },
+    onError: (e: Error) => toast({ variant: "destructive", title: "Erro ao finalizar", description: e.message }),
+  });
+
   const podeSalvar = numero.trim().length > 0 && dataEmissao && (rascunho?.length ?? 0) > 0;
+  const ehRascunho = payload?.ordem?.status === "rascunho";
 
   return (
     <div className="min-h-screen bg-background p-4 md:p-6">
@@ -107,10 +129,15 @@ export default function VarricaoOrdemDetalhePage() {
             <div>
               {payload?.ordem && (
                 <>
-                  <h1 className="text-xl font-bold">OS {payload.ordem.numero}</h1>
+                  <h1 className="text-xl font-bold flex items-center gap-2 flex-wrap">
+                    OS {payload.ordem.numero}
+                    <VarricaoStatusBadge status={payload.ordem.status} />
+                  </h1>
                   <p className="text-sm text-muted-foreground">
                     {formatMesReferencia(payload.ordem.mes_referencia)} · Emitida em {formatDataBR(payload.ordem.data_emissao)}
                     {payload.ordem.emitido_por && ` por ${payload.ordem.emitido_por}`}
+                    {payload.ordem.status === "finalizada" && payload.ordem.finalizado_em &&
+                      ` · Finalizada em ${formatDataBR(payload.ordem.finalizado_em)}${payload.ordem.finalizado_por ? ` por ${payload.ordem.finalizado_por}` : ""}`}
                   </p>
                 </>
               )}
@@ -118,10 +145,15 @@ export default function VarricaoOrdemDetalhePage() {
           </div>
           {payload && !editando && (
             <div className="flex gap-2">
-              {podeEditar && (
-                <Button variant="outline" size="sm" onClick={iniciarEdicao}>
-                  <Pencil className="h-3.5 w-3.5 mr-1.5" /> Editar
-                </Button>
+              {podeEditar && ehRascunho && (
+                <>
+                  <Button variant="outline" size="sm" onClick={iniciarEdicao}>
+                    <Pencil className="h-3.5 w-3.5 mr-1.5" /> Editar
+                  </Button>
+                  <Button size="sm" onClick={() => setConfirmandoFinalizar(true)}>
+                    <Lock className="h-3.5 w-3.5 mr-1.5" /> Finalizar
+                  </Button>
+                </>
               )}
               <Button variant="outline" size="sm" onClick={() => exportarOrdemExcel(payload)}>
                 <FileSpreadsheet className="h-3.5 w-3.5 mr-1.5" /> Excel
@@ -151,6 +183,14 @@ export default function VarricaoOrdemDetalhePage() {
         {!editando && payload?.ordem?.observacao && (
           <div className="rounded-md bg-muted/50 border px-3 py-2 text-sm text-muted-foreground">
             {payload.ordem.observacao}
+          </div>
+        )}
+
+        {!editando && payload?.ordem?.status === "finalizada" && (
+          <div className="rounded-md bg-emerald-50 dark:bg-emerald-950 border border-emerald-200 dark:border-emerald-800 px-3 py-2 text-sm text-emerald-800 dark:text-emerald-300 flex items-center gap-2">
+            <Lock className="h-4 w-4 shrink-0" />
+            Esta OS está finalizada e não pode mais ser editada diretamente — é a versão enviada à contratada.
+            Ajustes durante o mês precisam de outro processo.
           </div>
         )}
 
@@ -191,6 +231,27 @@ export default function VarricaoOrdemDetalhePage() {
 
         {!editando && payload && <VarricaoOrdemConteudo payload={payload} config={config} />}
       </div>
+
+      <AlertDialog open={confirmandoFinalizar} onOpenChange={setConfirmandoFinalizar}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Finalizar esta OS?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Depois de finalizada, esta OS não poderá mais ser editada diretamente — é a versão que será
+              enviada à contratada. Se precisar de ajustes durante o mês, será necessário outro processo.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="flex gap-2 justify-end">
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={finalizarMutation.isPending}
+              onClick={() => finalizarMutation.mutate()}
+            >
+              {finalizarMutation.isPending ? "Finalizando..." : "Finalizar"}
+            </AlertDialogAction>
+          </div>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

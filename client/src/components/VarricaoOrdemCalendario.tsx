@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { SECAO_LABELS } from "@/lib/varricao-utils";
 import type { VarricaoOrdemLocal } from "@/lib/varricao-ordens-types";
 
@@ -43,6 +44,23 @@ export function VarricaoOrdemCalendario({ mesReferencia, locais }: VarricaoOrdem
 
   const locaisDoDia = diaSelecionado != null ? locaisPorDia.get(diaSelecionado) ?? [] : [];
 
+  const gruposPorRegiao = useMemo(() => {
+    const m = new Map<string, VarricaoOrdemLocal[]>();
+    locaisDoDia.forEach((l) => {
+      const chave = l.regiao ?? "Sem região";
+      if (!m.has(chave)) m.set(chave, []);
+      m.get(chave)!.push(l);
+    });
+    return Array.from(m.entries())
+      .map(([regiao, itens]) => ({
+        regiao,
+        itens: [...itens].sort((a, b) => a.nome.localeCompare(b.nome)),
+      }))
+      .sort((a, b) => b.itens.length - a.itens.length);
+  }, [locaisDoDia]);
+
+  const [regiaoExpandida, setRegiaoExpandida] = useState<string | null>(null);
+
   return (
     <div>
       <div className="grid grid-cols-7 gap-1.5 mb-1.5">
@@ -60,7 +78,7 @@ export function VarricaoOrdemCalendario({ mesReferencia, locais }: VarricaoOrdem
             <button
               key={dia}
               disabled={qtd === 0}
-              onClick={() => setDiaSelecionado(dia)}
+              onClick={() => { setDiaSelecionado(dia); setRegiaoExpandida(null); }}
               className={`aspect-square rounded-md border border-border flex flex-col items-center justify-center transition-colors ${
                 qtd > 0 ? "hover:ring-2 hover:ring-emerald-500 cursor-pointer" : "opacity-40 cursor-default"
               } ${corIntensidade(qtd)}`}
@@ -79,16 +97,35 @@ export function VarricaoOrdemCalendario({ mesReferencia, locais }: VarricaoOrdem
               Dia {diaSelecionado} — {locaisDoDia.length} local{locaisDoDia.length !== 1 ? "is" : ""}
             </DialogTitle>
           </DialogHeader>
-          <div className="space-y-1.5">
-            {locaisDoDia.map((l) => (
-              <div key={l.localId} className="text-sm border-b border-border/60 pb-1.5 last:border-0">
-                <p className="font-medium leading-tight">{l.nome}</p>
-                {l.complemento && <p className="text-xs text-muted-foreground">{l.complemento}</p>}
-                <p className="text-[11px] text-muted-foreground mt-0.5">
-                  {SECAO_LABELS[l.secao] ?? l.secao}{l.regiao ? ` · ${l.regiao}` : ""}
-                </p>
-              </div>
-            ))}
+          <div className="space-y-1">
+            {gruposPorRegiao.map(({ regiao, itens }) => {
+              const aberto = regiaoExpandida === regiao;
+              return (
+                <div key={regiao} className="border border-border/60 rounded-md overflow-hidden">
+                  <button
+                    className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-muted/40 transition-colors"
+                    onClick={() => setRegiaoExpandida(aberto ? null : regiao)}
+                  >
+                    {aberto ? <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" /> : <ChevronRight className="h-3.5 w-3.5 text-muted-foreground shrink-0" />}
+                    <span className="text-sm font-medium flex-1">{regiao}</span>
+                    <span className="text-xs text-muted-foreground">{itens.length} local{itens.length !== 1 ? "is" : ""}</span>
+                  </button>
+                  {aberto && (
+                    <div className="px-3 pb-2 space-y-1.5 bg-muted/20">
+                      {itens.map((l) => (
+                        <div key={l.localId} className="text-sm border-t border-border/40 pt-1.5 first:border-0 first:pt-0">
+                          <p className="font-medium leading-tight">{l.nome}</p>
+                          {l.complemento && <p className="text-xs text-muted-foreground">{l.complemento}</p>}
+                          <p className="text-[11px] text-muted-foreground mt-0.5">
+                            {SECAO_LABELS[l.secao] ?? l.secao}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </DialogContent>
       </Dialog>

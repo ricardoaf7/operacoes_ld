@@ -327,8 +327,14 @@ async function ensureVarricaoOrdensTable() {
         data_emissao DATE NOT NULL,
         emitido_por VARCHAR(150),
         observacao TEXT,
+        status VARCHAR(20) NOT NULL DEFAULT 'rascunho',
+        finalizado_por VARCHAR(150),
+        finalizado_em TIMESTAMPTZ,
         created_at TIMESTAMPTZ DEFAULT NOW()
       );
+      ALTER TABLE varricao_ordens ADD COLUMN IF NOT EXISTS status VARCHAR(20) NOT NULL DEFAULT 'rascunho';
+      ALTER TABLE varricao_ordens ADD COLUMN IF NOT EXISTS finalizado_por VARCHAR(150);
+      ALTER TABLE varricao_ordens ADD COLUMN IF NOT EXISTS finalizado_em TIMESTAMPTZ;
       CREATE TABLE IF NOT EXISTS varricao_ordens_locais (
         id SERIAL PRIMARY KEY,
         ordem_id INTEGER NOT NULL REFERENCES varricao_ordens(id) ON DELETE CASCADE,
@@ -470,6 +476,36 @@ function subtotais(locais: LocalComputado[], campo: "regiao" | "secao") {
   return Array.from(m.entries())
     .map(([chave, v]) => ({ chave, ...v }))
     .sort((a, b) => b.metragemTotal - a.metragemTotal);
+}
+
+// Conjunto de locais que serve de ponto de partida para uma nova OS: respeita
+// a decisão de inclusão/exclusão da última OS FINALIZADA (uma exclusão feita
+// pelo fiscal continua valendo até ele decidir o contrário), mas locais que
+// nunca apareceram em nenhuma OS finalizada entram automaticamente (recém-
+// cadastrados). Se nunca houve OS finalizada, começa com todos os ativos.
+async function idsBaseParaNovaOrdem(pool: any): Promise<number[] | null> {
+  const { rows: ultima } = await pool.query(
+    `SELECT id FROM varricao_ordens WHERE status='finalizada' ORDER BY mes_referencia DESC, created_at DESC LIMIT 1`
+  );
+  if (!ultima.length) return null; // sinaliza "usar todos os ativos"
+
+  const { rows: daUltima } = await pool.query(
+    `SELECT local_id FROM varricao_ordens_locais WHERE ordem_id=$1 AND local_id IS NOT NULL`,
+    [ultima[0].id]
+  );
+  const ids = new Set<number>(daUltima.map((r: any) => r.local_id));
+
+  const { rows: jaFinalizadosAlgumaVez } = await pool.query(`
+    SELECT DISTINCT l.local_id FROM varricao_ordens_locais l
+    JOIN varricao_ordens o ON o.id = l.ordem_id
+    WHERE o.status='finalizada' AND l.local_id IS NOT NULL
+  `);
+  const idsJaVistos = new Set<number>(jaFinalizadosAlgumaVez.map((r: any) => r.local_id));
+
+  const { rows: todosAtivos } = await pool.query(`SELECT id FROM varricao_locais WHERE ativo IS NOT FALSE`);
+  todosAtivos.forEach((l: any) => { if (!idsJaVistos.has(l.id)) ids.add(l.id); });
+
+  return Array.from(ids);
 }
 
 function totaisPorCategoria(locais: LocalComputado[]) {
@@ -2867,13 +2903,21 @@ export async function registerRoutes(app: Express): Promise<void> {
       const ano = parseInt(m[1]), mesNum = parseInt(m[2]);
 
       const pool = getPool();
-      const { rows: locaisRaw } = await pool.query(
-        "SELECT * FROM varricao_locais WHERE ativo IS NOT FALSE ORDER BY regiao, nome"
-      );
+      const idsBase = await idsBaseParaNovaOrdem(pool);
+      const { rows: locaisRaw } = idsBase
+        ? await pool.query(
+            "SELECT * FROM varricao_locais WHERE id = ANY($1::int[]) AND ativo IS NOT FALSE ORDER BY regiao, nome",
+            [idsBase]
+          )
+        : await pool.query("SELECT * FROM varricao_locais WHERE ativo IS NOT FALSE ORDER BY regiao, nome");
 
       const locais = calcularLocaisDoMes(locaisRaw, ano, mesNum);
       const duplicatas = detectarDuplicatas(locais);
       const totalMetragem = locais.reduce((s, l) => s + l.metragemTotal, 0);
+
+      const { rows: existente } = await pool.query(
+        "SELECT id, numero, status FROM varricao_ordens WHERE mes_referencia=$1", [mes]
+      );
 
       res.json({
         mesReferencia: mes,
@@ -2884,6 +2928,7 @@ export async function registerRoutes(app: Express): Promise<void> {
         totaisPorCategoria: totaisPorCategoria(locais),
         totalLocais: locais.length,
         totalMetragem,
+        ordemExistente: existente[0] ?? null,
       });
     } catch (error) {
       console.error("Erro ao gerar prévia da OS de varrição:", error);
@@ -2993,6 +3038,17 @@ export async function registerRoutes(app: Express): Promise<void> {
       );
 
       const pool = getPool();
+
+      const { rows: jaExiste } = await pool.query(
+        "SELECT id, numero FROM varricao_ordens WHERE mes_referencia=$1", [mesReferencia]
+      );
+      if (jaExiste.length) {
+        return res.status(409).json({
+          error: `Já existe a OS ${jaExiste[0].numero} para este mês. Edite-a em vez de criar outra.`,
+          ordemExistenteId: jaExiste[0].id,
+        });
+      }
+
       // O cliente decide QUAIS locais e QUAIS dias entram (mobilidade para
       // remanejar entre locais fixos e variáveis, respeitar teto de metragem
       // etc.) — mas o servidor sempre recalcula a metragem a partir dos dados
@@ -3034,8 +3090,8 @@ export async function registerRoutes(app: Express): Promise<void> {
       }
 
       const { rows: ordemRows } = await pool.query(
-        `INSERT INTO varricao_ordens (numero, mes_referencia, data_emissao, emitido_por, observacao)
-         VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+        `INSERT INTO varricao_ordens (numero, mes_referencia, data_emissao, emitido_por, observacao, status)
+         VALUES ($1,$2,$3,$4,$5,'rascunho') RETURNING *`,
         [numero, mesReferencia, dataEmissao, req.session.userName ?? null, observacao || null]
       );
       const ordem = ordemRows[0];
@@ -3072,6 +3128,11 @@ export async function registerRoutes(app: Express): Promise<void> {
       const pool = getPool();
       const { rows: existentes } = await pool.query("SELECT * FROM varricao_ordens WHERE id=$1", [id]);
       if (!existentes.length) return res.status(404).json({ error: "Ordem de serviço não encontrada" });
+      if (existentes[0].status === "finalizada") {
+        return res.status(400).json({
+          error: "Esta OS já foi finalizada e não pode mais ser editada diretamente. Ajustes durante o mês precisam de outro processo.",
+        });
+      }
       const mesReferencia = existentes[0].mes_referencia;
 
       const mMes = String(mesReferencia).match(/^(\d{4})-(\d{2})$/);
@@ -3140,6 +3201,28 @@ export async function registerRoutes(app: Express): Promise<void> {
     } catch (error) {
       console.error("Erro ao atualizar ordem de serviço de varrição:", error);
       res.status(500).json({ error: "Erro ao atualizar a ordem de serviço" });
+    }
+  });
+
+  // Torna a OS imutável — é a versão que vai para a contratada. Ajustes após
+  // isso precisam de outro processo (ainda a definir), não edição direta.
+  app.post("/api/varricao/ordens/:id/finalizar", requireRole("admin", "fiscal"), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const pool = getPool();
+      const { rows } = await pool.query(
+        `UPDATE varricao_ordens
+         SET status='finalizada', finalizado_por=$1, finalizado_em=NOW()
+         WHERE id=$2 AND status='rascunho'
+         RETURNING *`,
+        [req.session.userName ?? null, id]
+      );
+      if (!rows.length) {
+        return res.status(400).json({ error: "OS não encontrada ou já finalizada" });
+      }
+      res.json(rows[0]);
+    } catch (error) {
+      res.status(500).json({ error: "Erro ao finalizar a ordem de serviço" });
     }
   });
 
