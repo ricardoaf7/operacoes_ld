@@ -84,15 +84,29 @@ export function VarricaoInfoCard({ local, onClose, onAdjustPosition, isRelocatin
               <p className="text-xs text-muted-foreground">{local.complemento}</p>
             )}
           </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={onClose}
-            className="h-6 w-6 -mt-1 -mr-1"
-            data-testid="button-close-varricao-card"
-          >
-            <X className="h-4 w-4" />
-          </Button>
+          <div className="flex items-center gap-0.5 -mt-1 -mr-1">
+            {hasCoords && !isRelocating && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={onAdjustPosition}
+                className="h-6 w-6 text-blue-600 dark:text-blue-400"
+                title="Ajustar Posição"
+                data-testid="button-adjust-varricao-position"
+              >
+                <Move className="h-4 w-4" />
+              </Button>
+            )}
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onClose}
+              className="h-6 w-6"
+              data-testid="button-close-varricao-card"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
 
         <div className="flex flex-wrap gap-1.5 mb-3">
@@ -176,29 +190,22 @@ export function VarricaoInfoCard({ local, onClose, onAdjustPosition, isRelocatin
           )}
         </div>
 
-        <Separator className="mb-3" />
-
-        {!hasCoords ? (
-          <div className="rounded-md bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 px-3 py-2.5 text-xs text-amber-700 dark:text-amber-300">
-            <MapPin className="h-3.5 w-3.5 inline mr-1.5" />
-            Este pino âmbar (!) está no grupo de pendentes no centro do mapa.
-            Arraste-o para o local correto — a posição é salva automaticamente.
-          </div>
-        ) : isRelocating ? (
-          <div className="rounded-md bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 px-3 py-2.5 text-xs text-blue-700 dark:text-blue-300">
-            <MapPin className="h-3.5 w-3.5 inline mr-1.5" />
-            Clique no mapa ou arraste o pino para reposicionar.
-          </div>
-        ) : (
-          <Button
-            onClick={onAdjustPosition}
-            variant="outline"
-            className="w-full h-9 text-blue-600 dark:text-blue-400 border-blue-300 dark:border-blue-700"
-            data-testid="button-adjust-varricao-position"
-          >
-            <Move className="h-3.5 w-3.5 mr-2" />
-            Ajustar Posição
-          </Button>
+        {(!hasCoords || isRelocating) && (
+          <>
+            <Separator className="mb-3" />
+            {!hasCoords ? (
+              <div className="rounded-md bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 px-3 py-2.5 text-xs text-amber-700 dark:text-amber-300">
+                <MapPin className="h-3.5 w-3.5 inline mr-1.5" />
+                Este pino âmbar (!) está no grupo de pendentes no centro do mapa.
+                Arraste-o para o local correto — a posição é salva automaticamente.
+              </div>
+            ) : (
+              <div className="rounded-md bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 px-3 py-2.5 text-xs text-blue-700 dark:text-blue-300">
+                <MapPin className="h-3.5 w-3.5 inline mr-1.5" />
+                Clique no mapa ou arraste o pino para reposicionar.
+              </div>
+            )}
+          </>
         )}
       </CardContent>
 
