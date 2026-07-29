@@ -21,7 +21,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, Plus, Pencil, Trash2, Users, Shield, Eye, Wrench, Loader2 } from "lucide-react";
+import { ArrowLeft, Plus, Pencil, Trash2, Users, Shield, Eye, Wrench, Loader2, KeyRound, Copy, Check } from "lucide-react";
 import { useLocation } from "wouter";
 import type { Setor } from "@shared/schema";
 
@@ -152,6 +152,36 @@ export default function UserManagement() {
     },
   });
 
+  const [resetAlvo, setResetAlvo] = useState<UserData | null>(null);
+  const [resetResultado, setResetResultado] = useState<{ nome: string; senha: string } | null>(null);
+  const [copiado, setCopiado] = useState(false);
+
+  const resetSenhaMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await apiRequest("POST", `/api/users/${id}/reset-senha`);
+      if (!res.ok) throw new Error("Erro ao resetar senha");
+      return res.json() as Promise<{ senha: string }>;
+    },
+    onSuccess: (data, id) => {
+      const u = users.find((x) => x.id === id);
+      setResetResultado({ nome: u?.nome ?? "", senha: data.senha });
+      setResetAlvo(null);
+      setCopiado(false);
+    },
+    onError: () => {
+      toast({ variant: "destructive", title: "Erro ao resetar senha" });
+      setResetAlvo(null);
+    },
+  });
+
+  function copiarSenha() {
+    if (!resetResultado) return;
+    navigator.clipboard.writeText(resetResultado.senha).then(() => {
+      setCopiado(true);
+      setTimeout(() => setCopiado(false), 2000);
+    });
+  }
+
   function openCreate() {
     setEditingUser(null);
     setNome(""); setEmail(""); setSenha(""); setRole("fiscal"); setSetorId(""); setContrato("");
@@ -246,6 +276,9 @@ export default function UserManagement() {
                   <div className="flex items-center gap-1">
                     <Button variant="ghost" size="icon" onClick={() => openEdit(u)} data-testid={`button-edit-user-${u.id}`}>
                       <Pencil className="h-4 w-4" />
+                    </Button>
+                    <Button variant="ghost" size="icon" onClick={() => setResetAlvo(u)} title="Resetar senha" data-testid={`button-reset-password-${u.id}`}>
+                      <KeyRound className="h-4 w-4" />
                     </Button>
                     <Button variant="ghost" size="icon" onClick={() => toggleActive(u)} data-testid={`button-toggle-user-${u.id}`}>
                       {u.ativo ? <Eye className="h-4 w-4" /> : <Eye className="h-4 w-4 opacity-30" />}
@@ -355,6 +388,50 @@ export default function UserManagement() {
               </Button>
             </div>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!resetAlvo} onOpenChange={(open) => !open && setResetAlvo(null)}>
+        <DialogContent data-testid="dialog-reset-confirm">
+          <DialogHeader>
+            <DialogTitle>Resetar senha de {resetAlvo?.nome}?</DialogTitle>
+            <DialogDescription>
+              Uma senha temporária nova será gerada e a atual deixa de funcionar imediatamente.
+              Você vai precisar copiar e passar a nova senha para o usuário.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setResetAlvo(null)}>Cancelar</Button>
+            <Button
+              disabled={resetSenhaMutation.isPending}
+              onClick={() => resetAlvo && resetSenhaMutation.mutate(resetAlvo.id)}
+              data-testid="button-confirm-reset-password"
+            >
+              {resetSenhaMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+              Resetar senha
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!resetResultado} onOpenChange={(open) => !open && setResetResultado(null)}>
+        <DialogContent data-testid="dialog-reset-result">
+          <DialogHeader>
+            <DialogTitle>Nova senha de {resetResultado?.nome}</DialogTitle>
+            <DialogDescription>
+              Copie e passe para o usuário agora — essa senha não fica salva em nenhum lugar,
+              só aparece aqui uma vez.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex items-center gap-2">
+            <Input value={resetResultado?.senha ?? ""} readOnly className="font-mono text-lg tracking-wider" data-testid="text-nova-senha" />
+            <Button type="button" variant="outline" size="icon" onClick={copiarSenha} data-testid="button-copiar-senha">
+              {copiado ? <Check className="h-4 w-4 text-emerald-600" /> : <Copy className="h-4 w-4" />}
+            </Button>
+          </div>
+          <div className="flex justify-end">
+            <Button onClick={() => setResetResultado(null)}>Concluído</Button>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

@@ -1556,6 +1556,25 @@ function registerUserRoutes(app) {
       res.status(500).json({ error: "Erro ao atualizar usu\xE1rio" });
     }
   });
+  app.post("/api/users/:id/reset-senha", requireRole("admin"), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const novaSenha = Array.from(
+        { length: 8 },
+        () => "abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789"[Math.floor(Math.random() * 55)]
+      ).join("");
+      const hashedPassword = await bcrypt.hash(novaSenha, 10);
+      const pool = getPool();
+      const { rows } = await pool.query(
+        `UPDATE users SET senha=$1, updated_at=NOW() WHERE id=$2 RETURNING id, nome`,
+        [hashedPassword, id]
+      );
+      if (!rows.length) return res.status(404).json({ error: "Usu\xE1rio n\xE3o encontrado" });
+      res.json({ senha: novaSenha });
+    } catch (error) {
+      res.status(500).json({ error: "Erro ao resetar senha" });
+    }
+  });
   app.delete("/api/users/:id", requireRole("admin"), async (req, res) => {
     try {
       const id = parseInt(req.params.id);
