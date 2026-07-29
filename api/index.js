@@ -2244,6 +2244,18 @@ function convertToSupabaseCSV(areas) {
   }
   return csv;
 }
+async function fotosDeAreasNaData(data) {
+  const areas = await storage.getAllAreas("rocagem");
+  const fotosDoDia = [];
+  for (const area of areas) {
+    for (const foto of area.fotos ?? []) {
+      if (foto.data.slice(0, 10) === data) {
+        fotosDoDia.push({ url: foto.url, endereco: area.endereco, bairro: area.bairro ?? null });
+      }
+    }
+  }
+  return fotosDoDia;
+}
 function registerRocagemRoutes(app) {
   app.delete("/api/areas/:id", requireAuth, async (req, res) => {
     try {
@@ -2463,6 +2475,51 @@ function registerRocagemRoutes(app) {
     } catch (error) {
       console.error("Error fetching areas by period:", error);
       res.status(500).json({ error: "Falha ao buscar \xE1reas por per\xEDodo" });
+    }
+  });
+  app.get("/api/areas/fotos", requireAuth, async (req, res) => {
+    try {
+      const data = String(req.query.data ?? (/* @__PURE__ */ new Date()).toISOString().split("T")[0]);
+      const fotosDoDia = await fotosDeAreasNaData(data);
+      res.json(fotosDoDia);
+    } catch (error) {
+      console.error("Erro ao buscar fotos de ro\xE7agem do dia:", error);
+      res.status(500).json({ error: "Erro ao buscar fotos" });
+    }
+  });
+  app.get("/api/areas/fotos/zip", requireAuth, async (req, res) => {
+    try {
+      const data = String(req.query.data ?? (/* @__PURE__ */ new Date()).toISOString().split("T")[0]);
+      const fotosDoDia = await fotosDeAreasNaData(data);
+      if (fotosDoDia.length === 0) {
+        res.status(404).json({ error: "Nenhuma foto encontrada para esta data" });
+        return;
+      }
+      res.setHeader("Content-Type", "application/zip");
+      res.setHeader("Content-Disposition", `attachment; filename="fotos_rocagem_${data}.zip"`);
+      const archive = new ZipArchive({ zlib: { level: 6 } });
+      archive.on("error", (err) => {
+        console.error("Erro ao montar zip de fotos de ro\xE7agem:", err);
+        res.destroy(err);
+      });
+      archive.pipe(res);
+      const contadorPorNome = /* @__PURE__ */ new Map();
+      for (const foto of fotosDoDia) {
+        const resp = await fetch(foto.url);
+        if (!resp.ok) continue;
+        const buffer = Buffer.from(await resp.arrayBuffer());
+        const base = nomeArquivoSeguro(foto.bairro ? `${foto.endereco} - ${foto.bairro}` : foto.endereco);
+        const n = (contadorPorNome.get(base) ?? 0) + 1;
+        contadorPorNome.set(base, n);
+        const ext = foto.url.split(".").pop()?.split("?")[0] || "jpg";
+        archive.append(buffer, { name: `${base} (${n}).${ext}` });
+      }
+      await archive.finalize();
+    } catch (error) {
+      console.error("Erro ao gerar zip de fotos de ro\xE7agem:", error);
+      if (!res.headersSent) {
+        res.status(500).json({ error: "Erro ao gerar arquivo zip" });
+      }
     }
   });
   app.get("/api/areas/:id", requireAuth, async (req, res) => {
@@ -2984,49 +3041,6 @@ function registerRocagemRoutes(app) {
       res.json(updated);
     } catch (error) {
       res.status(500).json({ error: "Erro ao excluir foto" });
-    }
-  });
-  app.get("/api/areas/fotos/zip", requireAuth, async (req, res) => {
-    try {
-      const data = String(req.query.data ?? (/* @__PURE__ */ new Date()).toISOString().split("T")[0]);
-      const areas = await storage.getAllAreas("rocagem");
-      const fotosDoDia = [];
-      for (const area of areas) {
-        for (const foto of area.fotos ?? []) {
-          if (foto.data.slice(0, 10) === data) {
-            fotosDoDia.push({ url: foto.url, endereco: area.endereco, bairro: area.bairro ?? null });
-          }
-        }
-      }
-      if (fotosDoDia.length === 0) {
-        res.status(404).json({ error: "Nenhuma foto encontrada para esta data" });
-        return;
-      }
-      res.setHeader("Content-Type", "application/zip");
-      res.setHeader("Content-Disposition", `attachment; filename="fotos_rocagem_${data}.zip"`);
-      const archive = new ZipArchive({ zlib: { level: 6 } });
-      archive.on("error", (err) => {
-        console.error("Erro ao montar zip de fotos de ro\xE7agem:", err);
-        res.destroy(err);
-      });
-      archive.pipe(res);
-      const contadorPorNome = /* @__PURE__ */ new Map();
-      for (const foto of fotosDoDia) {
-        const resp = await fetch(foto.url);
-        if (!resp.ok) continue;
-        const buffer = Buffer.from(await resp.arrayBuffer());
-        const base = nomeArquivoSeguro(foto.bairro ? `${foto.endereco} - ${foto.bairro}` : foto.endereco);
-        const n = (contadorPorNome.get(base) ?? 0) + 1;
-        contadorPorNome.set(base, n);
-        const ext = foto.url.split(".").pop()?.split("?")[0] || "jpg";
-        archive.append(buffer, { name: `${base} (${n}).${ext}` });
-      }
-      await archive.finalize();
-    } catch (error) {
-      console.error("Erro ao gerar zip de fotos de ro\xE7agem:", error);
-      if (!res.headersSent) {
-        res.status(500).json({ error: "Erro ao gerar arquivo zip" });
-      }
     }
   });
   app.post("/api/areas/:id/registrar-rocagem", requireAuth, async (req, res) => {
@@ -4623,17 +4637,23 @@ async function registerRoutes(app) {
   await ensureVarricaoOrdensTable();
   await ensureVarricaoConfigTable();
   app.use((req, res, next) => {
-    if (req.session?.userRole === "encarregado" && req.path.startsWith("/api/")) {
-      const contrato = req.session.userContrato || "";
+    const role = req.session?.userRole;
+    if ((role === "encarregado" || role === "transparencia") && req.path.startsWith("/api/")) {
       let permitido = req.path.startsWith("/api/auth/");
-      if (!permitido && contrato === "varricao") {
-        permitido = req.path === "/api/varricao/locais" && req.method === "GET" || req.path.startsWith("/api/varricao/fotos");
+      if (!permitido && role === "encarregado") {
+        const contrato = req.session.userContrato || "";
+        if (contrato === "varricao") {
+          permitido = req.path === "/api/varricao/locais" && req.method === "GET" || req.path.startsWith("/api/varricao/fotos");
+        }
+        if (!permitido && contrato.startsWith("rocagem")) {
+          permitido = req.method === "GET" && (req.path.startsWith("/api/areas") || req.path.startsWith("/api/ordens")) || req.method === "POST" && /^\/api\/areas\/\d+\/photos$/.test(req.path) || req.method === "POST" && /^\/api\/areas\/\d+\/registrar-rocagem$/.test(req.path);
+        }
       }
-      if (!permitido && contrato.startsWith("rocagem")) {
-        permitido = req.method === "GET" && (req.path.startsWith("/api/areas") || req.path.startsWith("/api/ordens")) || req.method === "POST" && /^\/api\/areas\/\d+\/photos$/.test(req.path) || req.method === "POST" && /^\/api\/areas\/\d+\/registrar-rocagem$/.test(req.path);
+      if (!permitido && role === "transparencia") {
+        permitido = req.method === "GET" && (req.path === "/api/varricao/fotos" || req.path === "/api/areas/fotos");
       }
       if (!permitido) {
-        return res.status(403).json({ error: "Acesso restrito ao contrato do encarregado" });
+        return res.status(403).json({ error: "Acesso restrito a este perfil" });
       }
     }
     next();

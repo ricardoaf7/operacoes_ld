@@ -30,30 +30,44 @@ export async function registerRoutes(app: Express): Promise<void> {
   await ensureVarricaoOrdensTable();
   await ensureVarricaoConfigTable();
 
-  // Middleware: encarregado (terceirizada) só acessa o universo do contrato dele
+  // Middleware: perfis restritos (encarregado da terceirizada, transparência
+  // pra prefeito/presidente) só acessam o próprio universo — nada de área,
+  // usuário, demanda ou configuração além do que cada um precisa enxergar.
   app.use((req, res, next) => {
-    if (req.session?.userRole === "encarregado" && req.path.startsWith("/api/")) {
-      const contrato = req.session.userContrato || "";
+    const role = req.session?.userRole;
+    if ((role === "encarregado" || role === "transparencia") && req.path.startsWith("/api/")) {
       let permitido = req.path.startsWith("/api/auth/");
 
-      if (!permitido && contrato === "varricao") {
-        // Varrição: locais (leitura) + fluxo de fotos
-        permitido =
-          (req.path === "/api/varricao/locais" && req.method === "GET") ||
-          req.path.startsWith("/api/varricao/fotos");
+      if (!permitido && role === "encarregado") {
+        const contrato = req.session.userContrato || "";
+
+        if (contrato === "varricao") {
+          // Varrição: locais (leitura) + fluxo de fotos
+          permitido =
+            (req.path === "/api/varricao/locais" && req.method === "GET") ||
+            req.path.startsWith("/api/varricao/fotos");
+        }
+
+        if (!permitido && contrato.startsWith("rocagem")) {
+          // Roçagem: áreas e OS do contrato (leitura) + envio de fotos das áreas
+          // + marcar a área como roçada hoje (rota restrita, não o PATCH genérico)
+          permitido =
+            (req.method === "GET" && (req.path.startsWith("/api/areas") || req.path.startsWith("/api/ordens"))) ||
+            (req.method === "POST" && /^\/api\/areas\/\d+\/photos$/.test(req.path)) ||
+            (req.method === "POST" && /^\/api\/areas\/\d+\/registrar-rocagem$/.test(req.path));
+        }
       }
 
-      if (!permitido && contrato.startsWith("rocagem")) {
-        // Roçagem: áreas e OS do contrato (leitura) + envio de fotos das áreas
-        // + marcar a área como roçada hoje (rota restrita, não o PATCH genérico)
+      if (!permitido && role === "transparencia") {
+        // Painel de transparência: só leitura da galeria de fotos por data —
+        // nada de área, local, OS ou qualquer outra tela/edição
         permitido =
-          (req.method === "GET" && (req.path.startsWith("/api/areas") || req.path.startsWith("/api/ordens"))) ||
-          (req.method === "POST" && /^\/api\/areas\/\d+\/photos$/.test(req.path)) ||
-          (req.method === "POST" && /^\/api\/areas\/\d+\/registrar-rocagem$/.test(req.path));
+          req.method === "GET" &&
+          (req.path === "/api/varricao/fotos" || req.path === "/api/areas/fotos");
       }
 
       if (!permitido) {
-        return res.status(403).json({ error: "Acesso restrito ao contrato do encarregado" });
+        return res.status(403).json({ error: "Acesso restrito a este perfil" });
       }
     }
     next();

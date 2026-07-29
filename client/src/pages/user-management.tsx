@@ -21,7 +21,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { ArrowLeft, Plus, Pencil, Trash2, Users, Shield, Eye, Wrench, Loader2, KeyRound, Copy, Check } from "lucide-react";
+import { ArrowLeft, Plus, Pencil, Trash2, Users, Shield, Eye, Wrench, Loader2, KeyRound, Copy, Check, Landmark } from "lucide-react";
 import { useLocation } from "wouter";
 import type { Setor } from "@shared/schema";
 
@@ -47,6 +47,7 @@ const ROLE_LABELS: Record<string, string> = {
   gestor: "Gestor",
   fiscal: "Fiscal",
   encarregado: "Encarregado",
+  transparencia: "Transparência",
   demo: "Demonstração",
 };
 
@@ -55,6 +56,7 @@ const ROLE_ICONS: Record<string, typeof Shield> = {
   gestor: Eye,
   fiscal: Wrench,
   encarregado: Wrench,
+  transparencia: Landmark,
   demo: Eye,
 };
 
@@ -330,6 +332,7 @@ export default function UserManagement() {
                   <SelectItem value="gestor">Gestor — Visualização completa + relatórios</SelectItem>
                   <SelectItem value="fiscal">Fiscal — Registrar serviços + upload de fotos</SelectItem>
                   <SelectItem value="encarregado">Encarregado — Áreas, fotos e OS do contrato dele</SelectItem>
+                  <SelectItem value="transparencia">Transparência — Só a galeria de fotos por serviço e data</SelectItem>
                   <SelectItem value="demo">Demonstração — Visualiza e simula, sem salvar</SelectItem>
                 </SelectContent>
               </Select>

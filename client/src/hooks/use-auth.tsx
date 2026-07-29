@@ -5,7 +5,7 @@ interface AuthUser {
   id: number;
   nome: string;
   email: string;
-  role: "admin" | "gestor" | "fiscal" | "encarregado" | "demo";
+  role: "admin" | "gestor" | "fiscal" | "encarregado" | "transparencia" | "demo";
   contrato?: string | null;
 }
 

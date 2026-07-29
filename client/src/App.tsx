@@ -21,6 +21,7 @@ import VarricaoOrdemNovaPage from "@/pages/varricao-ordem-nova";
 import VarricaoOrdemDetalhePage from "@/pages/varricao-ordem-detalhe";
 import VarricaoConfiguracoesPage from "@/pages/varricao-configuracoes";
 import EncarregadoPage from "@/pages/encarregado";
+import TransparenciaPage from "@/pages/transparencia";
 import OrdemServicoPage from "@/pages/ordem-servico";
 import CronogramaPage from "@/pages/cronograma";
 import PublicCronogramaPage from "@/pages/public-cronograma";
@@ -48,6 +49,11 @@ function AuthenticatedRoutes() {
   // Encarregado (terceirizada) vê apenas a tela de registro de fotos
   if (user.role === "encarregado") {
     return <EncarregadoPage />;
+  }
+
+  // Transparência (prefeito/presidente) vê apenas a galeria de fotos por serviço/data
+  if (user.role === "transparencia") {
+    return <TransparenciaPage />;
   }
 
   return (
