@@ -1771,6 +1771,20 @@ async function ensureDemandasTable() {
     console.warn("demandas table check:", e);
   }
 }
+async function fecharDemandasDeArea(areaId) {
+  try {
+    const pool = getPool();
+    const { rowCount } = await pool.query(
+      `UPDATE demandas SET status='concluida', data_conclusao=NOW(), updated_at=NOW()
+       WHERE area_id=$1 AND tipo='Capina e Ro\xE7agem' AND status != 'concluida'`,
+      [areaId]
+    );
+    return rowCount ?? 0;
+  } catch (e) {
+    console.warn("fecharDemandasDeArea error:", e);
+    return 0;
+  }
+}
 async function ensureNotificacoesTable() {
   try {
     const pool = getPool();
@@ -2809,6 +2823,7 @@ function registerRocagemRoutes(app) {
         const areaAtualizada = await storage.getAreaById(areaId);
         const sync = syncFromHistory(areaAtualizada?.history ?? []);
         const final = await storage.updateArea(areaId, sync);
+        await fecharDemandasDeArea(areaId);
         res.json(final);
         return;
       }
@@ -2999,6 +3014,7 @@ function registerRocagemRoutes(app) {
       const areaAtualizada = await storage.getAreaById(areaId);
       const sync = syncFromHistory(areaAtualizada?.history ?? []);
       const final = await storage.updateArea(areaId, sync);
+      await fecharDemandasDeArea(areaId);
       res.json(final);
     } catch (error) {
       if (error instanceof z2.ZodError) {
@@ -3018,6 +3034,9 @@ function registerRocagemRoutes(app) {
       });
       const { areaIds, date, type } = registerSchema.parse(req.body);
       await storage.registerDailyMowing(areaIds, date, type);
+      if (type === "completed") {
+        await Promise.all(areaIds.map((id) => fecharDemandasDeArea(id)));
+      }
       const typeLabel = type === "completed" ? "registrada" : "prevista";
       res.json({
         success: true,

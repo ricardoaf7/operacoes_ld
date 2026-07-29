@@ -7,6 +7,7 @@ import { storage } from "../storage";
 import { getPool } from "../../db/client";
 import { getSupabase, upload, requireAuth, requireRole, loteRestritoDoEncarregado } from "../route-helpers";
 import { logAudit } from "./audit";
+import { fecharDemandasDeArea } from "./demandas";
 
 export async function ensureContratoConfigTable() {
   try {
@@ -840,10 +841,12 @@ export function registerRocagemRoutes(app: Express): void {
         const sync = syncFromHistory(areaAtualizada?.history ?? []);
         const final = await storage.updateArea(areaId, sync as any);
 
+        await fecharDemandasDeArea(areaId);
+
         res.json(final);
         return;
       }
-      
+
       // Atualizações sem registro de roçagem
       const updatedArea = await storage.updateArea(areaId, data);
       
@@ -1046,6 +1049,9 @@ export function registerRocagemRoutes(app: Express): void {
       const areaAtualizada = await storage.getAreaById(areaId);
       const sync = syncFromHistory(areaAtualizada?.history ?? []);
       const final = await storage.updateArea(areaId, sync as any);
+
+      await fecharDemandasDeArea(areaId);
+
       res.json(final);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -1067,6 +1073,10 @@ export function registerRocagemRoutes(app: Express): void {
 
       const { areaIds, date, type } = registerSchema.parse(req.body);
       await storage.registerDailyMowing(areaIds, date, type);
+
+      if (type === 'completed') {
+        await Promise.all(areaIds.map((id) => fecharDemandasDeArea(id)));
+      }
 
       const typeLabel = type === 'completed' ? 'registrada' : 'prevista';
       res.json({ 

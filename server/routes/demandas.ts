@@ -37,6 +37,25 @@ export async function ensureDemandasTable() {
   }
 }
 
+// Fecha automaticamente as demandas de "Capina e Roçagem" em aberto vinculadas
+// a uma área, quando a roçagem dela é registrada — evita que o solicitante
+// original fique esperando resposta manual pra algo que já foi feito.
+// Chamado pelas rotas de registro de roçagem em server/routes/rocagem.ts.
+export async function fecharDemandasDeArea(areaId: number): Promise<number> {
+  try {
+    const pool = getPool();
+    const { rowCount } = await pool.query(
+      `UPDATE demandas SET status='concluida', data_conclusao=NOW(), updated_at=NOW()
+       WHERE area_id=$1 AND tipo='Capina e Roçagem' AND status != 'concluida'`,
+      [areaId]
+    );
+    return rowCount ?? 0;
+  } catch (e) {
+    console.warn("fecharDemandasDeArea error:", e);
+    return 0;
+  }
+}
+
 export async function ensureNotificacoesTable() {
   try {
     const pool = getPool();
