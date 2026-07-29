@@ -112,6 +112,9 @@ import express2 from "express";
 import session from "express-session";
 import connectPgSimple from "connect-pg-simple";
 
+// server/routes/auth-users.ts
+import bcrypt from "bcryptjs";
+
 // server/db-storage.ts
 import { eq, or, and, sql, gt, lt, desc } from "drizzle-orm";
 
@@ -248,6 +251,7 @@ var users = pgTable("users", {
   email: text("email").notNull(),
   senha: text("senha").notNull(),
   role: text("role").notNull().default("fiscal"),
+  contrato: text("contrato"),
   ativo: boolean("ativo").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow()
@@ -257,10 +261,156 @@ var userSchema = z.object({
   nome: z.string(),
   email: z.string().email(),
   senha: z.string(),
-  role: z.enum(["admin", "gestor", "fiscal"]),
+  role: z.enum(["admin", "gestor", "fiscal", "encarregado", "demo"]),
+  contrato: z.string().nullable().optional(),
   ativo: z.boolean().default(true)
 });
 var insertUserSchema = userSchema.omit({ id: true });
+var ordemServicoSchema = z.object({
+  id: z.number(),
+  numero: z.string(),
+  lote: z.number(),
+  mes_referencia: z.string(),
+  data_emissao: z.string(),
+  emitido_por: z.string().nullable().optional(),
+  observacao: z.string().nullable().optional(),
+  created_at: z.string().optional(),
+  areas: z.array(z.object({
+    id: z.number(),
+    tipo: z.string(),
+    endereco: z.string(),
+    bairro: z.string().nullable().optional(),
+    metragem_m2: z.number().nullable().optional()
+  })).optional()
+});
+var insertOrdemServicoSchema = z.object({
+  numero: z.string().min(1),
+  lote: z.number(),
+  mes_referencia: z.string().min(1),
+  data_emissao: z.string(),
+  emitido_por: z.string().optional(),
+  observacao: z.string().optional(),
+  area_ids: z.array(z.number()).min(1)
+});
+var contratoConfigSchema = z.object({
+  id: z.number().optional(),
+  lote: z.number(),
+  regiao: z.string().nullable().optional(),
+  processo_admin: z.string().nullable().optional(),
+  pregao_eletronico: z.string().nullable().optional(),
+  numero_contrato: z.string().nullable().optional(),
+  contratada_nome: z.string().nullable().optional(),
+  contratada_endereco: z.string().nullable().optional(),
+  diretor_nome: z.string().nullable().optional(),
+  gerente_nome: z.string().nullable().optional(),
+  fiscal_nome: z.string().nullable().optional()
+});
+var cronogramaSchema = z.object({
+  id: z.number(),
+  lote: z.number(),
+  semana_inicio: z.string(),
+  semana_fim: z.string(),
+  criado_por: z.string().nullable().optional(),
+  observacao: z.string().nullable().optional(),
+  created_at: z.string().optional(),
+  updated_at: z.string().optional(),
+  areas: z.array(z.object({
+    id: z.number(),
+    tipo: z.string(),
+    endereco: z.string(),
+    bairro: z.string().nullable().optional(),
+    metragem_m2: z.number().nullable().optional(),
+    lat: z.number().optional(),
+    lng: z.number().optional()
+  })).optional()
+});
+var insertCronogramaSchema = z.object({
+  lote: z.number(),
+  semana_inicio: z.string().min(1),
+  semana_fim: z.string().min(1),
+  observacao: z.string().optional(),
+  area_ids: z.array(z.number()).min(1)
+});
+var STATUS_DEMANDA = ["aberta", "em_andamento", "concluida"];
+var demandaSchema = z.object({
+  id: z.number(),
+  origem: z.string(),
+  numeroProcesso: z.string().nullable().optional(),
+  solicitanteNome: z.string(),
+  solicitanteWhatsapp: z.string().nullable().optional(),
+  solicitanteOrgao: z.string().nullable().optional(),
+  dataSolicitacao: z.string(),
+  tipo: z.string(),
+  status: z.enum(STATUS_DEMANDA).default("aberta"),
+  observacoes: z.string().nullable().optional(),
+  setorId: z.number().nullable().optional(),
+  setorNome: z.string().nullable().optional(),
+  responsavelId: z.number().nullable().optional(),
+  responsavelNome: z.string().nullable().optional(),
+  areaId: z.number().nullable().optional(),
+  areaEndereco: z.string().nullable().optional(),
+  dadosEspecificos: z.record(z.any()).nullable().optional(),
+  dataConclusao: z.string().nullable().optional(),
+  createdBy: z.number().nullable().optional(),
+  createdAt: z.string().optional(),
+  updatedAt: z.string().optional()
+});
+var insertDemandaSchema = z.object({
+  origem: z.string().min(1),
+  numeroProcesso: z.string().optional(),
+  solicitanteNome: z.string().min(1),
+  solicitanteWhatsapp: z.string().optional(),
+  solicitanteOrgao: z.string().optional(),
+  dataSolicitacao: z.string().min(1),
+  tipo: z.string().min(1),
+  status: z.enum(STATUS_DEMANDA).default("aberta"),
+  observacoes: z.string().optional(),
+  setorId: z.number().nullable().optional(),
+  responsavelId: z.number().nullable().optional(),
+  areaId: z.number().nullable().optional(),
+  dadosEspecificos: z.record(z.any()).optional()
+});
+var notificacoes = pgTable("notificacoes", {
+  id: serial("id").primaryKey(),
+  usuarioId: integer("usuario_id").notNull(),
+  titulo: text("titulo").notNull(),
+  mensagem: text("mensagem"),
+  tipo: text("tipo").notNull().default("demanda"),
+  referenciaId: integer("referencia_id"),
+  lida: boolean("lida").notNull().default(false),
+  createdAt: timestamp("created_at").defaultNow()
+});
+var notificacaoSchema = z.object({
+  id: z.number(),
+  usuarioId: z.number(),
+  titulo: z.string(),
+  mensagem: z.string().nullable().optional(),
+  tipo: z.string().default("demanda"),
+  referenciaId: z.number().nullable().optional(),
+  lida: z.boolean().default(false),
+  createdAt: z.string().optional()
+});
+var setores = pgTable("setores", {
+  id: serial("id").primaryKey(),
+  nome: text("nome").notNull(),
+  parentId: integer("parent_id"),
+  ativo: boolean("ativo").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow()
+});
+var setorSchema = z.object({
+  id: z.number(),
+  nome: z.string(),
+  parentId: z.number().nullable().optional(),
+  ativo: z.boolean().default(true),
+  createdAt: z.string().optional(),
+  updatedAt: z.string().optional()
+});
+var insertSetorSchema = z.object({
+  nome: z.string().min(1, "Nome \xE9 obrigat\xF3rio"),
+  parentId: z.number().nullable().optional(),
+  ativo: z.boolean().default(true)
+});
 var exportHistory = pgTable("export_history", {
   id: serial("id").primaryKey(),
   scope: text("scope").notNull(),
@@ -280,6 +430,20 @@ function requireDatabaseUrl() {
     throw new Error("DATABASE_URL n\xE3o est\xE1 definida");
   }
   return connectionString;
+}
+var _pool = null;
+function getPool() {
+  if (!_pool) {
+    const connectionString = requireDatabaseUrl();
+    _pool = new Pool({
+      connectionString,
+      ssl: connectionString.includes("supabase.co") ? { rejectUnauthorized: false } : void 0,
+      max: 10,
+      idleTimeoutMillis: 3e4,
+      connectionTimeoutMillis: 5e3
+    });
+  }
+  return _pool;
 }
 function createDbPool(connectionString = requireDatabaseUrl()) {
   return new Pool({
@@ -708,6 +872,7 @@ var DbStorage = class {
       email: dbUser.email,
       senha: dbUser.senha,
       role: dbUser.role,
+      contrato: dbUser.contrato ?? null,
       ativo: dbUser.ativo
     };
   }
@@ -790,11 +955,11 @@ var MemStorage = class {
   }
   initializeJardinsAreas() {
     return [
-      { id: 1001, tipo: "ROT", endereco: "Av. Henrique Mansano x Av. Lucia Helena Gon\xE7alves Vianna (Sanepar)", servico: "Manuten\xE7\xE3o", lat: -23.282252, lng: -51.15512, status: "Pendente", history: [], polygon: null, scheduledDate: null, manualSchedule: false },
-      { id: 1002, tipo: "ROT", endereco: "Av. Maring\xE1 x Rua Prof. Joaquim de Matos Barreto (Aterro Maior)", servico: "Irriga\xE7\xE3o", lat: -23.324934, lng: -51.176449, status: "Pendente", history: [], polygon: null, scheduledDate: null, manualSchedule: false },
-      { id: 1003, tipo: "ROT", endereco: "Pra\xE7a Rocha Pombo", servico: "Manuten\xE7\xE3o", lat: -23.3142, lng: -51.1578, status: "Pendente", history: [], polygon: null, scheduledDate: null, manualSchedule: false },
-      { id: 1004, tipo: "ROT", endereco: "Parque Arthur Thomas", servico: "Irriga\xE7\xE3o", lat: -23.3167, lng: -51.1789, status: "Pendente", history: [], polygon: null, scheduledDate: null, manualSchedule: false },
-      { id: 1005, tipo: "ROT", endereco: "Jardim Bot\xE2nico", servico: "Manuten\xE7\xE3o", lat: -23.3289, lng: -51.1567, status: "Pendente", history: [], polygon: null, scheduledDate: null, manualSchedule: false }
+      { id: 1001, fotos: [], executando: false, tipo: "ROT", endereco: "Av. Henrique Mansano x Av. Lucia Helena Gon\xE7alves Vianna (Sanepar)", servico: "Manuten\xE7\xE3o", lat: -23.282252, lng: -51.15512, status: "Pendente", history: [], polygon: null, scheduledDate: null, manualSchedule: false },
+      { id: 1002, fotos: [], executando: false, tipo: "ROT", endereco: "Av. Maring\xE1 x Rua Prof. Joaquim de Matos Barreto (Aterro Maior)", servico: "Irriga\xE7\xE3o", lat: -23.324934, lng: -51.176449, status: "Pendente", history: [], polygon: null, scheduledDate: null, manualSchedule: false },
+      { id: 1003, fotos: [], executando: false, tipo: "ROT", endereco: "Pra\xE7a Rocha Pombo", servico: "Manuten\xE7\xE3o", lat: -23.3142, lng: -51.1578, status: "Pendente", history: [], polygon: null, scheduledDate: null, manualSchedule: false },
+      { id: 1004, fotos: [], executando: false, tipo: "ROT", endereco: "Parque Arthur Thomas", servico: "Irriga\xE7\xE3o", lat: -23.3167, lng: -51.1789, status: "Pendente", history: [], polygon: null, scheduledDate: null, manualSchedule: false },
+      { id: 1005, fotos: [], executando: false, tipo: "ROT", endereco: "Jardim Bot\xE2nico", servico: "Manuten\xE7\xE3o", lat: -23.3289, lng: -51.1567, status: "Pendente", history: [], polygon: null, scheduledDate: null, manualSchedule: false }
     ];
   }
   initializeTeams() {
@@ -1071,11 +1236,7 @@ function initializeStorage() {
 }
 var storage = initializeStorage();
 
-// server/routes.ts
-import { z as z2 } from "zod";
-import * as fs from "fs";
-import * as path from "path";
-import bcrypt from "bcryptjs";
+// server/route-helpers.ts
 import multer from "multer";
 import { createClient } from "@supabase/supabase-js";
 var upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
@@ -1083,6 +1244,888 @@ function getSupabase() {
   const url = process.env.SUPABASE_URL ?? "";
   const key = process.env.SUPABASE_SERVICE_KEY ?? "";
   return createClient(url, key, { auth: { persistSession: false } });
+}
+function requireAuth(req, res, next) {
+  if (!req.session.userId) {
+    return res.status(401).json({ error: "N\xE3o autenticado" });
+  }
+  next();
+}
+function loteRestritoDoEncarregado(req) {
+  if (req.session?.userRole !== "encarregado") return null;
+  const contrato = req.session.userContrato || "";
+  if (contrato === "rocagem_lote1") return 1;
+  if (contrato === "rocagem_lote2") return 2;
+  return null;
+}
+function requireRole(...roles) {
+  return (req, res, next) => {
+    if (!req.session.userId) {
+      return res.status(401).json({ error: "N\xE3o autenticado" });
+    }
+    if (!roles.includes(req.session.userRole || "")) {
+      return res.status(403).json({ error: "Sem permiss\xE3o" });
+    }
+    next();
+  };
+}
+
+// server/routes/auth-users.ts
+async function ensureUsersSetorColumn() {
+  try {
+    const pool = getPool();
+    await pool.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS setor_id INTEGER REFERENCES setores(id)
+    `);
+  } catch (e) {
+    console.warn("users.setor_id column check:", e);
+  }
+}
+async function ensureUsersContratoColumn() {
+  try {
+    const pool = getPool();
+    await pool.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS contrato VARCHAR(50)
+    `);
+  } catch (e) {
+    console.warn("users.contrato column check:", e);
+  }
+}
+async function ensureSetoresTable() {
+  try {
+    const pool = getPool();
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS setores (
+        id SERIAL PRIMARY KEY,
+        nome VARCHAR(150) NOT NULL,
+        parent_id INTEGER REFERENCES setores(id),
+        ativo BOOLEAN NOT NULL DEFAULT true,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    const { rows } = await pool.query("SELECT COUNT(*) FROM setores");
+    if (parseInt(rows[0].count) === 0) {
+      await pool.query(`
+        INSERT INTO setores (nome, parent_id) VALUES
+          ('Capina e Ro\xE7agem 1', NULL),
+          ('Capina e Ro\xE7agem 2', NULL),
+          ('Varri\xE7\xE3o', NULL),
+          ('Lava\xE7\xE3o', NULL),
+          ('Jardins', NULL),
+          ('Lagos', NULL),
+          ('Limpeza de Boca de Lobo', NULL),
+          ('Coleta de Rejeitos e Org\xE2nicos', NULL),
+          ('Coleta de Recicl\xE1veis', NULL),
+          ('Cidade Limpa', NULL),
+          ('Fiscaliza\xE7\xE3o de Posturas', NULL),
+          ('Utiliza\xE7\xE3o Vias P\xFAblicas', NULL),
+          ('Feiras', NULL),
+          ('Ambulantes', NULL)
+      `);
+      const { rows: cr } = await pool.query("SELECT id FROM setores WHERE nome = 'Coleta de Recicl\xE1veis'");
+      if (cr.length > 0) {
+        await pool.query(`
+          INSERT INTO setores (nome, parent_id) VALUES
+            ('Cooper Regi\xE3o', $1),
+            ('Cooperoeste', $1),
+            ('Coocepeve', $1),
+            ('Ecorecin', $1),
+            ('Coopernorth', $1),
+            ('Refum', $1),
+            ('Coopermudan\xE7a', $1)
+        `, [cr[0].id]);
+      }
+    }
+  } catch (e) {
+    console.warn("setores table check:", e);
+  }
+}
+async function ensureAdminExists() {
+  const existing = await storage.getUserByEmail("admin@cmtu.londrina.pr.gov.br");
+  if (!existing) {
+    const hashedPassword = await bcrypt.hash("admin123", 10);
+    await storage.createUser({
+      nome: "Administrador",
+      email: "admin@cmtu.londrina.pr.gov.br",
+      senha: hashedPassword,
+      role: "admin",
+      ativo: true
+    });
+    console.log("\u{1F464} Usu\xE1rio admin padr\xE3o criado (admin@cmtu.londrina.pr.gov.br / admin123)");
+  }
+}
+function registerAuthRoutes(app) {
+  app.post("/api/auth/login", async (req, res) => {
+    try {
+      const { email, senha } = req.body;
+      if (!email || !senha) {
+        return res.status(400).json({ error: "Email e senha s\xE3o obrigat\xF3rios" });
+      }
+      const user = await storage.getUserByEmail(email);
+      if (!user || !user.ativo) {
+        return res.status(401).json({ error: "Email ou senha inv\xE1lidos" });
+      }
+      const valid = await bcrypt.compare(senha, user.senha);
+      if (!valid) {
+        return res.status(401).json({ error: "Email ou senha inv\xE1lidos" });
+      }
+      req.session.userId = user.id;
+      req.session.userRole = user.role;
+      req.session.userName = user.nome;
+      req.session.userContrato = user.contrato ?? void 0;
+      res.json({
+        id: user.id,
+        nome: user.nome,
+        email: user.email,
+        role: user.role,
+        contrato: user.contrato ?? null
+      });
+    } catch (error) {
+      console.error("Login error:", error);
+      res.status(500).json({ error: "Erro ao fazer login" });
+    }
+  });
+  app.post("/api/auth/logout", (req, res) => {
+    req.session.destroy((err) => {
+      if (err) {
+        return res.status(500).json({ error: "Erro ao fazer logout" });
+      }
+      res.json({ success: true });
+    });
+  });
+  app.get("/api/auth/me", async (req, res) => {
+    if (!req.session.userId) {
+      return res.status(401).json({ error: "N\xE3o autenticado" });
+    }
+    const user = await storage.getUserById(req.session.userId);
+    if (!user) {
+      return res.status(401).json({ error: "Usu\xE1rio n\xE3o encontrado" });
+    }
+    res.json({
+      id: user.id,
+      nome: user.nome,
+      email: user.email,
+      role: user.role,
+      contrato: user.contrato ?? null
+    });
+  });
+  app.post("/api/auth/change-password", requireAuth, async (req, res) => {
+    try {
+      const { senhaAtual, novaSenha } = req.body;
+      if (!senhaAtual || !novaSenha) {
+        return res.status(400).json({ error: "Senha atual e nova senha s\xE3o obrigat\xF3rias" });
+      }
+      if (novaSenha.length < 4) {
+        return res.status(400).json({ error: "A nova senha deve ter pelo menos 4 caracteres" });
+      }
+      const user = await storage.getUserById(req.session.userId);
+      if (!user) {
+        return res.status(404).json({ error: "Usu\xE1rio n\xE3o encontrado" });
+      }
+      const valid = await bcrypt.compare(senhaAtual, user.senha);
+      if (!valid) {
+        return res.status(401).json({ error: "Senha atual incorreta" });
+      }
+      const hashedPassword = await bcrypt.hash(novaSenha, 10);
+      await storage.updateUser(user.id, { senha: hashedPassword });
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Change password error:", error);
+      res.status(500).json({ error: "Erro ao alterar senha" });
+    }
+  });
+}
+function registerUserRoutes(app) {
+  app.get("/api/users/list", requireAuth, async (req, res) => {
+    try {
+      const pool = getPool();
+      const { rows } = await pool.query(`
+        SELECT u.id, u.nome, u.setor_id, s.nome AS setor_nome
+        FROM users u
+        LEFT JOIN setores s ON s.id = u.setor_id
+        WHERE u.ativo = true
+        ORDER BY u.nome
+      `);
+      res.json(rows.map((u) => ({
+        id: u.id,
+        nome: u.nome,
+        setorId: u.setor_id,
+        setorNome: u.setor_nome
+      })));
+    } catch (error) {
+      res.status(500).json({ error: "Erro ao buscar usu\xE1rios" });
+    }
+  });
+  app.get("/api/users", requireRole("admin"), async (req, res) => {
+    try {
+      const pool = getPool();
+      const { rows } = await pool.query(`
+        SELECT u.id, u.nome, u.email, u.role, u.contrato, u.ativo, u.setor_id,
+               s.nome AS setor_nome
+        FROM users u
+        LEFT JOIN setores s ON s.id = u.setor_id
+        ORDER BY u.nome
+      `);
+      res.json(rows.map((u) => ({
+        id: u.id,
+        nome: u.nome,
+        email: u.email,
+        role: u.role,
+        contrato: u.contrato,
+        ativo: u.ativo,
+        setorId: u.setor_id,
+        setorNome: u.setor_nome
+      })));
+    } catch (error) {
+      res.status(500).json({ error: "Erro ao buscar usu\xE1rios" });
+    }
+  });
+  app.post("/api/users", requireRole("admin"), async (req, res) => {
+    try {
+      const { nome, email, senha, role, setorId, contrato } = req.body;
+      if (!nome || !email || !senha || !role) {
+        return res.status(400).json({ error: "Todos os campos s\xE3o obrigat\xF3rios" });
+      }
+      if (role === "encarregado" && !contrato) {
+        return res.status(400).json({ error: "Informe o contrato do encarregado" });
+      }
+      const existing = await storage.getUserByEmail(email);
+      if (existing) {
+        return res.status(400).json({ error: "Email j\xE1 cadastrado" });
+      }
+      const hashedPassword = await bcrypt.hash(senha, 10);
+      const pool = getPool();
+      const { rows } = await pool.query(
+        `INSERT INTO users (nome, email, senha, role, ativo, setor_id, contrato)
+         VALUES ($1,$2,$3,$4,true,$5,$6) RETURNING id, nome, email, role, contrato, ativo, setor_id`,
+        [nome, email, hashedPassword, role, setorId ?? null, role === "encarregado" ? contrato : null]
+      );
+      const u = rows[0];
+      res.json({ id: u.id, nome: u.nome, email: u.email, role: u.role, contrato: u.contrato, ativo: u.ativo, setorId: u.setor_id });
+    } catch (error) {
+      res.status(500).json({ error: "Erro ao criar usu\xE1rio" });
+    }
+  });
+  app.patch("/api/users/:id", requireRole("admin"), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { nome, email, senha, role, ativo, setorId, contrato } = req.body;
+      const sets = [];
+      const vals = [];
+      let i = 1;
+      if (nome !== void 0) {
+        sets.push(`nome=$${i++}`);
+        vals.push(nome);
+      }
+      if (email !== void 0) {
+        sets.push(`email=$${i++}`);
+        vals.push(email);
+      }
+      if (role !== void 0) {
+        sets.push(`role=$${i++}`);
+        vals.push(role);
+      }
+      if (ativo !== void 0) {
+        sets.push(`ativo=$${i++}`);
+        vals.push(ativo);
+      }
+      if (setorId !== void 0) {
+        sets.push(`setor_id=$${i++}`);
+        vals.push(setorId ?? null);
+      }
+      if (contrato !== void 0) {
+        sets.push(`contrato=$${i++}`);
+        vals.push(contrato ?? null);
+      }
+      if (senha) {
+        sets.push(`senha=$${i++}`);
+        vals.push(await bcrypt.hash(senha, 10));
+      }
+      if (!sets.length) return res.status(400).json({ error: "Nenhum campo para atualizar" });
+      vals.push(id);
+      const pool = getPool();
+      const { rows } = await pool.query(
+        `UPDATE users SET ${sets.join(", ")}, updated_at=NOW() WHERE id=$${i} RETURNING id, nome, email, role, contrato, ativo, setor_id`,
+        vals
+      );
+      if (!rows.length) return res.status(404).json({ error: "Usu\xE1rio n\xE3o encontrado" });
+      const u = rows[0];
+      res.json({ id: u.id, nome: u.nome, email: u.email, role: u.role, contrato: u.contrato, ativo: u.ativo, setorId: u.setor_id });
+    } catch (error) {
+      res.status(500).json({ error: "Erro ao atualizar usu\xE1rio" });
+    }
+  });
+  app.delete("/api/users/:id", requireRole("admin"), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const deleted = await storage.deleteUser(id);
+      if (!deleted) {
+        return res.status(404).json({ error: "Usu\xE1rio n\xE3o encontrado" });
+      }
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Erro ao deletar usu\xE1rio" });
+    }
+  });
+}
+function registerSetoresRoutes(app) {
+  app.get("/api/setores", requireAuth, async (req, res) => {
+    try {
+      const pool = getPool();
+      const { rows } = await pool.query(
+        "SELECT * FROM setores ORDER BY parent_id NULLS FIRST, nome"
+      );
+      res.json(rows);
+    } catch (error) {
+      res.status(500).json({ error: "Erro ao buscar setores" });
+    }
+  });
+  app.post("/api/setores", requireRole("admin", "gestor"), async (req, res) => {
+    try {
+      const { nome, parentId, ativo = true } = req.body;
+      if (!nome?.trim()) return res.status(400).json({ error: "Nome \xE9 obrigat\xF3rio" });
+      const pool = getPool();
+      const { rows } = await pool.query(
+        "INSERT INTO setores (nome, parent_id, ativo) VALUES ($1, $2, $3) RETURNING *",
+        [nome.trim(), parentId ?? null, ativo]
+      );
+      res.json(rows[0]);
+    } catch (error) {
+      res.status(500).json({ error: "Erro ao criar setor" });
+    }
+  });
+  app.put("/api/setores/:id", requireRole("admin", "gestor"), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { nome, parentId, ativo } = req.body;
+      const pool = getPool();
+      const { rows } = await pool.query(
+        `UPDATE setores SET nome=$1, parent_id=$2, ativo=$3, updated_at=NOW()
+         WHERE id=$4 RETURNING *`,
+        [nome, parentId ?? null, ativo, id]
+      );
+      if (!rows.length) return res.status(404).json({ error: "Setor n\xE3o encontrado" });
+      res.json(rows[0]);
+    } catch (error) {
+      res.status(500).json({ error: "Erro ao atualizar setor" });
+    }
+  });
+  app.delete("/api/setores/:id", requireRole("admin"), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const pool = getPool();
+      const { rows: filhos } = await pool.query(
+        "SELECT id FROM setores WHERE parent_id=$1 LIMIT 1",
+        [id]
+      );
+      if (filhos.length > 0) {
+        return res.status(400).json({ error: "N\xE3o \xE9 poss\xEDvel excluir um setor com sub-setores" });
+      }
+      await pool.query("DELETE FROM setores WHERE id=$1", [id]);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Erro ao excluir setor" });
+    }
+  });
+}
+
+// server/routes/audit.ts
+async function ensureAuditLogTable() {
+  try {
+    const pool = getPool();
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS audit_log (
+        id SERIAL PRIMARY KEY,
+        usuario_id INTEGER,
+        usuario_nome TEXT NOT NULL,
+        acao TEXT NOT NULL,
+        tipo TEXT NOT NULL,
+        referencia_id INTEGER,
+        descricao TEXT,
+        dados_anteriores JSONB,
+        dados_novos JSONB,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_audit_log_created_at ON audit_log (created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_audit_log_tipo      ON audit_log (tipo);
+      CREATE INDEX IF NOT EXISTS idx_audit_log_usuario   ON audit_log (usuario_id);
+    `);
+  } catch (e) {
+    console.warn("audit_log table check:", e);
+  }
+}
+async function logAudit(usuarioId, usuarioNome, acao, tipo, referenciaId, descricao, dadosAnteriores, dadosNovos) {
+  try {
+    const pool = getPool();
+    await pool.query(
+      `INSERT INTO audit_log (usuario_id, usuario_nome, acao, tipo, referencia_id, descricao, dados_anteriores, dados_novos)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [
+        usuarioId ?? null,
+        usuarioNome,
+        acao,
+        tipo,
+        referenciaId ?? null,
+        descricao ?? null,
+        dadosAnteriores ? JSON.stringify(dadosAnteriores) : null,
+        dadosNovos ? JSON.stringify(dadosNovos) : null
+      ]
+    );
+  } catch (e) {
+    console.warn("audit_log insert error:", e);
+  }
+}
+function registerAuditRoutes(app) {
+  app.get("/api/audit-log", requireRole("admin", "gestor"), async (req, res) => {
+    try {
+      const { tipo, usuario_id, from, to, limit: lim } = req.query;
+      const pool = getPool();
+      const conditions = [];
+      const params = [];
+      let idx = 1;
+      if (tipo) {
+        conditions.push(`tipo = $${idx++}`);
+        params.push(tipo);
+      }
+      if (usuario_id) {
+        conditions.push(`usuario_id = $${idx++}`);
+        params.push(parseInt(usuario_id));
+      }
+      if (from) {
+        conditions.push(`created_at >= $${idx++}`);
+        params.push(from);
+      }
+      if (to) {
+        conditions.push(`created_at <= $${idx++}`);
+        params.push(to + "T23:59:59");
+      }
+      const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+      const limitVal = Math.min(parseInt(lim || "200"), 500);
+      const { rows } = await pool.query(
+        `SELECT id, usuario_id, usuario_nome, acao, tipo, referencia_id, descricao, dados_anteriores, dados_novos, created_at
+         FROM audit_log ${where}
+         ORDER BY created_at DESC
+         LIMIT ${limitVal}`,
+        params
+      );
+      res.json(rows);
+    } catch (error) {
+      console.error("Erro ao buscar audit log:", error);
+      res.status(500).json({ error: "Erro ao buscar hist\xF3rico" });
+    }
+  });
+}
+
+// server/routes/demandas.ts
+async function ensureDemandasTable() {
+  try {
+    const pool = getPool();
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS demandas (
+        id SERIAL PRIMARY KEY,
+        origem TEXT NOT NULL,
+        numero_processo TEXT,
+        solicitante_nome TEXT NOT NULL,
+        solicitante_whatsapp TEXT,
+        solicitante_orgao TEXT,
+        data_solicitacao DATE NOT NULL,
+        tipo TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'aberta',
+        observacoes TEXT,
+        setor_id INTEGER,
+        responsavel_id INTEGER,
+        area_id INTEGER,
+        dados_especificos JSONB,
+        data_conclusao TIMESTAMPTZ,
+        created_by INTEGER,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_demandas_status     ON demandas (status);
+      CREATE INDEX IF NOT EXISTS idx_demandas_tipo       ON demandas (tipo);
+      CREATE INDEX IF NOT EXISTS idx_demandas_created_at ON demandas (created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_demandas_setor      ON demandas (setor_id) WHERE setor_id IS NOT NULL;
+      CREATE INDEX IF NOT EXISTS idx_demandas_responsavel ON demandas (responsavel_id) WHERE responsavel_id IS NOT NULL;
+    `);
+  } catch (e) {
+    console.warn("demandas table check:", e);
+  }
+}
+async function ensureNotificacoesTable() {
+  try {
+    const pool = getPool();
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS notificacoes (
+        id SERIAL PRIMARY KEY,
+        usuario_id INTEGER NOT NULL,
+        titulo TEXT NOT NULL,
+        mensagem TEXT,
+        tipo TEXT NOT NULL DEFAULT 'demanda',
+        referencia_id INTEGER,
+        lida BOOLEAN NOT NULL DEFAULT false,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_notificacoes_usuario    ON notificacoes (usuario_id);
+      CREATE INDEX IF NOT EXISTS idx_notificacoes_nao_lidas  ON notificacoes (usuario_id) WHERE lida = false;
+    `);
+  } catch (e) {
+    console.warn("notificacoes table check:", e);
+  }
+}
+async function createNotificacao(usuarioId, titulo, mensagem, referenciaId) {
+  try {
+    const pool = getPool();
+    await pool.query(
+      `INSERT INTO notificacoes (usuario_id, titulo, mensagem, tipo, referencia_id)
+       VALUES ($1, $2, $3, 'demanda', $4)`,
+      [usuarioId, titulo, mensagem ?? null, referenciaId ?? null]
+    );
+  } catch (e) {
+    console.warn("createNotificacao error:", e);
+  }
+}
+async function ensureSolicitantesTable() {
+  try {
+    const pool = getPool();
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS solicitantes (
+        id SERIAL PRIMARY KEY,
+        nome TEXT NOT NULL,
+        whatsapp TEXT,
+        orgao TEXT,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_solicitantes_nome ON solicitantes (lower(nome));
+    `);
+  } catch (e) {
+    console.warn("solicitantes table check:", e);
+  }
+}
+function registerDemandasRoutes(app) {
+  function rowToDemanda(r) {
+    return {
+      id: r.id,
+      origem: r.origem,
+      numeroProcesso: r.numero_processo,
+      solicitanteNome: r.solicitante_nome,
+      solicitanteWhatsapp: r.solicitante_whatsapp,
+      solicitanteOrgao: r.solicitante_orgao,
+      dataSolicitacao: r.data_solicitacao,
+      tipo: r.tipo,
+      status: r.status,
+      observacoes: r.observacoes,
+      setorId: r.setor_id,
+      setorNome: r.setor_nome ?? null,
+      responsavelId: r.responsavel_id,
+      responsavelNome: r.responsavel_nome ?? null,
+      areaId: r.area_id,
+      areaEndereco: r.area_endereco ?? null,
+      dadosEspecificos: r.dados_especificos,
+      dataConclusao: r.data_conclusao,
+      createdBy: r.created_by,
+      createdAt: r.created_at,
+      updatedAt: r.updated_at
+    };
+  }
+  app.get("/api/demandas", requireAuth, async (req, res) => {
+    try {
+      const { status, tipo, origem, setor_id } = req.query;
+      const pool = getPool();
+      const conditions = [];
+      const vals = [];
+      let i = 1;
+      if (status) {
+        conditions.push(`d.status=$${i++}`);
+        vals.push(status);
+      }
+      if (tipo) {
+        conditions.push(`d.tipo=$${i++}`);
+        vals.push(tipo);
+      }
+      if (origem) {
+        conditions.push(`d.origem=$${i++}`);
+        vals.push(origem);
+      }
+      if (setor_id) {
+        conditions.push(`d.setor_id=$${i++}`);
+        vals.push(setor_id);
+      }
+      const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+      const { rows } = await pool.query(`
+        SELECT d.*,
+               s.nome AS setor_nome,
+               u.nome AS responsavel_nome,
+               sa.endereco AS area_endereco
+        FROM demandas d
+        LEFT JOIN setores s ON s.id = d.setor_id
+        LEFT JOIN users u ON u.id = d.responsavel_id
+        LEFT JOIN service_areas sa ON sa.id = d.area_id
+        ${where}
+        ORDER BY d.created_at DESC
+        LIMIT 200
+      `, vals);
+      res.json(rows.map(rowToDemanda));
+    } catch (error) {
+      res.status(500).json({ error: "Erro ao buscar demandas" });
+    }
+  });
+  app.get("/api/demandas/:id", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const pool = getPool();
+      const { rows } = await pool.query(`
+        SELECT d.*,
+               s.nome AS setor_nome,
+               u.nome AS responsavel_nome,
+               sa.endereco AS area_endereco
+        FROM demandas d
+        LEFT JOIN setores s ON s.id = d.setor_id
+        LEFT JOIN users u ON u.id = d.responsavel_id
+        LEFT JOIN service_areas sa ON sa.id = d.area_id
+        WHERE d.id=$1
+      `, [id]);
+      if (!rows.length) return res.status(404).json({ error: "Demanda n\xE3o encontrada" });
+      res.json(rowToDemanda(rows[0]));
+    } catch (error) {
+      res.status(500).json({ error: "Erro ao buscar demanda" });
+    }
+  });
+  app.post("/api/demandas", requireAuth, async (req, res) => {
+    try {
+      const {
+        origem,
+        numeroProcesso,
+        solicitanteNome,
+        solicitanteWhatsapp,
+        solicitanteOrgao,
+        dataSolicitacao,
+        tipo,
+        status = "aberta",
+        observacoes,
+        setorId,
+        responsavelId,
+        areaId,
+        dadosEspecificos
+      } = req.body;
+      if (!origem || !solicitanteNome || !dataSolicitacao || !tipo) {
+        return res.status(400).json({ error: "Campos obrigat\xF3rios ausentes" });
+      }
+      const pool = getPool();
+      const { rows } = await pool.query(`
+        INSERT INTO demandas
+          (origem, numero_processo, solicitante_nome, solicitante_whatsapp, solicitante_orgao,
+           data_solicitacao, tipo, status, observacoes, setor_id, responsavel_id, area_id,
+           dados_especificos, created_by)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+        RETURNING *
+      `, [
+        origem,
+        numeroProcesso ?? null,
+        solicitanteNome,
+        solicitanteWhatsapp ?? null,
+        solicitanteOrgao ?? null,
+        dataSolicitacao,
+        tipo,
+        status,
+        observacoes ?? null,
+        setorId ?? null,
+        responsavelId ?? null,
+        areaId ?? null,
+        dadosEspecificos ? JSON.stringify(dadosEspecificos) : null,
+        req.session.userId ?? null
+      ]);
+      const demanda = rows[0];
+      await pool.query(
+        `INSERT INTO solicitantes (nome, whatsapp, orgao)
+         SELECT $1, $2, $3
+         WHERE NOT EXISTS (SELECT 1 FROM solicitantes WHERE lower(nome) = lower($1))`,
+        [solicitanteNome, solicitanteWhatsapp ?? null, solicitanteOrgao ?? null]
+      );
+      if (responsavelId) {
+        await createNotificacao(
+          responsavelId,
+          `Nova demanda: ${tipo}`,
+          `${solicitanteNome}${solicitanteOrgao ? ` (${solicitanteOrgao})` : ""} \u2014 ${origem}`,
+          demanda.id
+        );
+      }
+      res.json(rowToDemanda(demanda));
+    } catch (error) {
+      console.error("Erro ao criar demanda:", error);
+      res.status(500).json({ error: "Erro ao criar demanda" });
+    }
+  });
+  app.patch("/api/demandas/:id", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const {
+        origem,
+        numeroProcesso,
+        solicitanteNome,
+        solicitanteWhatsapp,
+        solicitanteOrgao,
+        dataSolicitacao,
+        tipo,
+        status,
+        observacoes,
+        setorId,
+        responsavelId,
+        areaId,
+        dadosEspecificos
+      } = req.body;
+      const sets = [];
+      const vals = [];
+      let i = 1;
+      const addField = (col, val) => {
+        sets.push(`${col}=$${i++}`);
+        vals.push(val);
+      };
+      if (origem !== void 0) addField("origem", origem);
+      if (numeroProcesso !== void 0) addField("numero_processo", numeroProcesso ?? null);
+      if (solicitanteNome !== void 0) addField("solicitante_nome", solicitanteNome);
+      if (solicitanteWhatsapp !== void 0) addField("solicitante_whatsapp", solicitanteWhatsapp ?? null);
+      if (solicitanteOrgao !== void 0) addField("solicitante_orgao", solicitanteOrgao ?? null);
+      if (dataSolicitacao !== void 0) addField("data_solicitacao", dataSolicitacao);
+      if (tipo !== void 0) addField("tipo", tipo);
+      if (status !== void 0) {
+        addField("status", status);
+        if (status === "concluida") addField("data_conclusao", (/* @__PURE__ */ new Date()).toISOString());
+      }
+      if (observacoes !== void 0) addField("observacoes", observacoes ?? null);
+      if (setorId !== void 0) addField("setor_id", setorId ?? null);
+      if (responsavelId !== void 0) addField("responsavel_id", responsavelId ?? null);
+      if (areaId !== void 0) addField("area_id", areaId ?? null);
+      if (dadosEspecificos !== void 0) addField("dados_especificos", dadosEspecificos ? JSON.stringify(dadosEspecificos) : null);
+      if (!sets.length) return res.status(400).json({ error: "Nenhum campo para atualizar" });
+      sets.push(`updated_at=NOW()`);
+      vals.push(id);
+      const pool = getPool();
+      const { rows } = await pool.query(
+        `UPDATE demandas SET ${sets.join(", ")} WHERE id=$${i} RETURNING *`,
+        vals
+      );
+      if (!rows.length) return res.status(404).json({ error: "Demanda n\xE3o encontrada" });
+      res.json(rowToDemanda(rows[0]));
+    } catch (error) {
+      res.status(500).json({ error: "Erro ao atualizar demanda" });
+    }
+  });
+  app.delete("/api/demandas/:id", requireRole("admin", "gestor"), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const pool = getPool();
+      await pool.query("DELETE FROM demandas WHERE id=$1", [id]);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Erro ao excluir demanda" });
+    }
+  });
+  app.get("/api/notificacoes", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId;
+      const pool = getPool();
+      const { rows } = await pool.query(
+        `SELECT * FROM notificacoes WHERE usuario_id=$1 ORDER BY created_at DESC LIMIT 50`,
+        [userId]
+      );
+      res.json(rows.map((r) => ({
+        id: r.id,
+        usuarioId: r.usuario_id,
+        titulo: r.titulo,
+        mensagem: r.mensagem,
+        tipo: r.tipo,
+        referenciaId: r.referencia_id,
+        lida: r.lida,
+        createdAt: r.created_at
+      })));
+    } catch (error) {
+      res.status(500).json({ error: "Erro ao buscar notifica\xE7\xF5es" });
+    }
+  });
+  app.get("/api/notificacoes/nao-lidas", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId;
+      const pool = getPool();
+      const { rows } = await pool.query(
+        `SELECT COUNT(*) FROM notificacoes WHERE usuario_id=$1 AND lida=false`,
+        [userId]
+      );
+      res.json({ count: parseInt(rows[0].count) });
+    } catch (error) {
+      res.status(500).json({ error: "Erro ao contar notifica\xE7\xF5es" });
+    }
+  });
+  app.patch("/api/notificacoes/:id/lida", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const userId = req.session.userId;
+      const pool = getPool();
+      await pool.query(
+        `UPDATE notificacoes SET lida=true WHERE id=$1 AND usuario_id=$2`,
+        [id, userId]
+      );
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Erro ao marcar notifica\xE7\xE3o" });
+    }
+  });
+  app.patch("/api/notificacoes/lida-todas", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId;
+      const pool = getPool();
+      await pool.query(
+        `UPDATE notificacoes SET lida=true WHERE usuario_id=$1 AND lida=false`,
+        [userId]
+      );
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Erro ao marcar notifica\xE7\xF5es" });
+    }
+  });
+  app.get("/api/solicitantes", requireAuth, async (req, res) => {
+    try {
+      const q = String(req.query.q ?? "");
+      const pool = getPool();
+      const { rows } = await pool.query(
+        `SELECT id, nome, whatsapp, orgao FROM solicitantes
+         WHERE lower(nome) LIKE lower($1)
+         ORDER BY nome LIMIT 8`,
+        [`%${q}%`]
+      );
+      res.json(rows);
+    } catch (error) {
+      res.status(500).json({ error: "Erro ao buscar solicitantes" });
+    }
+  });
+}
+
+// server/routes/rocagem.ts
+import { z as z2 } from "zod";
+import * as fs from "fs";
+import * as path from "path";
+async function ensureContratoConfigTable() {
+  try {
+    const pool = getPool();
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS contrato_config (
+        id SERIAL PRIMARY KEY,
+        lote INTEGER NOT NULL UNIQUE,
+        regiao VARCHAR(100),
+        processo_admin VARCHAR(100),
+        pregao_eletronico VARCHAR(100),
+        numero_contrato VARCHAR(100),
+        contratada_nome VARCHAR(200),
+        contratada_endereco VARCHAR(300),
+        diretor_nome VARCHAR(150),
+        gerente_nome VARCHAR(150),
+        fiscal_nome VARCHAR(150),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+  } catch (e) {
+    console.warn("contrato_config table check:", e);
+  }
 }
 function convertToSupabaseCSV(areas) {
   if (areas.length === 0) {
@@ -1164,177 +2207,7 @@ function convertToSupabaseCSV(areas) {
   }
   return csv;
 }
-function requireAuth(req, res, next) {
-  if (!req.session.userId) {
-    return res.status(401).json({ error: "N\xE3o autenticado" });
-  }
-  next();
-}
-function requireRole(...roles) {
-  return (req, res, next) => {
-    if (!req.session.userId) {
-      return res.status(401).json({ error: "N\xE3o autenticado" });
-    }
-    if (!roles.includes(req.session.userRole || "")) {
-      return res.status(403).json({ error: "Sem permiss\xE3o" });
-    }
-    next();
-  };
-}
-async function ensureAdminExists() {
-  const existing = await storage.getUserByEmail("admin@cmtu.londrina.pr.gov.br");
-  if (!existing) {
-    const hashedPassword = await bcrypt.hash("admin123", 10);
-    await storage.createUser({
-      nome: "Administrador",
-      email: "admin@cmtu.londrina.pr.gov.br",
-      senha: hashedPassword,
-      role: "admin",
-      ativo: true
-    });
-    console.log("\u{1F464} Usu\xE1rio admin padr\xE3o criado (admin@cmtu.londrina.pr.gov.br / admin123)");
-  }
-}
-async function registerRoutes(app) {
-  await ensureAdminExists();
-  app.post("/api/auth/login", async (req, res) => {
-    try {
-      const { email, senha } = req.body;
-      if (!email || !senha) {
-        return res.status(400).json({ error: "Email e senha s\xE3o obrigat\xF3rios" });
-      }
-      const user = await storage.getUserByEmail(email);
-      if (!user || !user.ativo) {
-        return res.status(401).json({ error: "Email ou senha inv\xE1lidos" });
-      }
-      const valid = await bcrypt.compare(senha, user.senha);
-      if (!valid) {
-        return res.status(401).json({ error: "Email ou senha inv\xE1lidos" });
-      }
-      req.session.userId = user.id;
-      req.session.userRole = user.role;
-      req.session.userName = user.nome;
-      res.json({
-        id: user.id,
-        nome: user.nome,
-        email: user.email,
-        role: user.role
-      });
-    } catch (error) {
-      console.error("Login error:", error);
-      res.status(500).json({ error: "Erro ao fazer login" });
-    }
-  });
-  app.post("/api/auth/logout", (req, res) => {
-    req.session.destroy((err) => {
-      if (err) {
-        return res.status(500).json({ error: "Erro ao fazer logout" });
-      }
-      res.json({ success: true });
-    });
-  });
-  app.get("/api/auth/me", async (req, res) => {
-    if (!req.session.userId) {
-      return res.status(401).json({ error: "N\xE3o autenticado" });
-    }
-    const user = await storage.getUserById(req.session.userId);
-    if (!user) {
-      return res.status(401).json({ error: "Usu\xE1rio n\xE3o encontrado" });
-    }
-    res.json({
-      id: user.id,
-      nome: user.nome,
-      email: user.email,
-      role: user.role
-    });
-  });
-  app.post("/api/auth/change-password", requireAuth, async (req, res) => {
-    try {
-      const { senhaAtual, novaSenha } = req.body;
-      if (!senhaAtual || !novaSenha) {
-        return res.status(400).json({ error: "Senha atual e nova senha s\xE3o obrigat\xF3rias" });
-      }
-      if (novaSenha.length < 4) {
-        return res.status(400).json({ error: "A nova senha deve ter pelo menos 4 caracteres" });
-      }
-      const user = await storage.getUserById(req.session.userId);
-      if (!user) {
-        return res.status(404).json({ error: "Usu\xE1rio n\xE3o encontrado" });
-      }
-      const valid = await bcrypt.compare(senhaAtual, user.senha);
-      if (!valid) {
-        return res.status(401).json({ error: "Senha atual incorreta" });
-      }
-      const hashedPassword = await bcrypt.hash(novaSenha, 10);
-      await storage.updateUser(user.id, { senha: hashedPassword });
-      res.json({ success: true });
-    } catch (error) {
-      console.error("Change password error:", error);
-      res.status(500).json({ error: "Erro ao alterar senha" });
-    }
-  });
-  app.get("/api/users", requireRole("admin"), async (req, res) => {
-    try {
-      const allUsers = await storage.getAllUsers();
-      res.json(allUsers.map((u) => ({ id: u.id, nome: u.nome, email: u.email, role: u.role, ativo: u.ativo })));
-    } catch (error) {
-      res.status(500).json({ error: "Erro ao buscar usu\xE1rios" });
-    }
-  });
-  app.post("/api/users", requireRole("admin"), async (req, res) => {
-    try {
-      const { nome, email, senha, role } = req.body;
-      if (!nome || !email || !senha || !role) {
-        return res.status(400).json({ error: "Todos os campos s\xE3o obrigat\xF3rios" });
-      }
-      const existing = await storage.getUserByEmail(email);
-      if (existing) {
-        return res.status(400).json({ error: "Email j\xE1 cadastrado" });
-      }
-      const hashedPassword = await bcrypt.hash(senha, 10);
-      const user = await storage.createUser({
-        nome,
-        email,
-        senha: hashedPassword,
-        role,
-        ativo: true
-      });
-      res.json({ id: user.id, nome: user.nome, email: user.email, role: user.role, ativo: user.ativo });
-    } catch (error) {
-      res.status(500).json({ error: "Erro ao criar usu\xE1rio" });
-    }
-  });
-  app.patch("/api/users/:id", requireRole("admin"), async (req, res) => {
-    try {
-      const id = parseInt(req.params.id);
-      const { nome, email, senha, role, ativo } = req.body;
-      const updateData = {};
-      if (nome !== void 0) updateData.nome = nome;
-      if (email !== void 0) updateData.email = email;
-      if (role !== void 0) updateData.role = role;
-      if (ativo !== void 0) updateData.ativo = ativo;
-      if (senha) updateData.senha = await bcrypt.hash(senha, 10);
-      const user = await storage.updateUser(id, updateData);
-      if (!user) {
-        return res.status(404).json({ error: "Usu\xE1rio n\xE3o encontrado" });
-      }
-      res.json({ id: user.id, nome: user.nome, email: user.email, role: user.role, ativo: user.ativo });
-    } catch (error) {
-      res.status(500).json({ error: "Erro ao atualizar usu\xE1rio" });
-    }
-  });
-  app.delete("/api/users/:id", requireRole("admin"), async (req, res) => {
-    try {
-      const id = parseInt(req.params.id);
-      const deleted = await storage.deleteUser(id);
-      if (!deleted) {
-        return res.status(404).json({ error: "Usu\xE1rio n\xE3o encontrado" });
-      }
-      res.json({ success: true });
-    } catch (error) {
-      res.status(500).json({ error: "Erro ao deletar usu\xE1rio" });
-    }
-  });
+function registerRocagemRoutes(app) {
   app.delete("/api/areas/:id", requireAuth, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
@@ -1430,9 +2303,11 @@ async function registerRoutes(app) {
       res.status(500).json({ error: "Falha ao exportar CSV" });
     }
   });
-  app.get("/api/areas/rocagem", async (req, res) => {
+  app.get("/api/areas/rocagem", requireAuth, async (req, res) => {
     try {
-      const areas = await storage.getAllAreas("rocagem");
+      let areas = await storage.getAllAreas("rocagem");
+      const loteRestrito = loteRestritoDoEncarregado(req);
+      if (loteRestrito) areas = areas.filter((a) => a.lote === loteRestrito);
       res.json(areas);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch ro\xE7agem areas" });
@@ -1442,6 +2317,8 @@ async function registerRoutes(app) {
     try {
       const boundsParam = req.query.bounds;
       let areas = await storage.getAllAreas("rocagem");
+      const loteRestrito = loteRestritoDoEncarregado(req);
+      if (loteRestrito) areas = areas.filter((a) => a.lote === loteRestrito);
       if (boundsParam) {
         try {
           const bounds = JSON.parse(boundsParam);
@@ -1479,14 +2356,16 @@ async function registerRoutes(app) {
       res.status(500).json({ error: "Failed to fetch light areas" });
     }
   });
-  app.get("/api/areas/search", async (req, res) => {
+  app.get("/api/areas/search", requireAuth, async (req, res) => {
     try {
       const query = (req.query.q || "").trim();
       if (!query) {
         res.json([]);
         return;
       }
-      const results = await storage.searchAreas(query, "rocagem", 50);
+      let results = await storage.searchAreas(query, "rocagem", 50);
+      const loteRestrito = loteRestritoDoEncarregado(req);
+      if (loteRestrito) results = results.filter((a) => a.lote === loteRestrito);
       res.json(results);
     } catch (error) {
       console.error("Error searching areas:", error);
@@ -1502,10 +2381,12 @@ async function registerRoutes(app) {
       const allAreas = await storage.getAllAreas("rocagem");
       const fromDate = /* @__PURE__ */ new Date(from + "T00:00:00");
       const toDate = /* @__PURE__ */ new Date(to + "T23:59:59");
+      const loteRestrito = loteRestritoDoEncarregado(req);
       const matchingAreas = allAreas.filter((area) => {
         if (!area.ultimaRocagem) return false;
         const mowDate = new Date(area.ultimaRocagem);
         if (mowDate < fromDate || mowDate > toDate) return false;
+        if (loteRestrito && area.lote !== loteRestrito) return false;
         if (lote && typeof lote === "string" && lote !== "all") {
           if (area.lote !== parseInt(lote)) return false;
         }
@@ -1547,11 +2428,16 @@ async function registerRoutes(app) {
       res.status(500).json({ error: "Falha ao buscar \xE1reas por per\xEDodo" });
     }
   });
-  app.get("/api/areas/:id", async (req, res) => {
+  app.get("/api/areas/:id", requireAuth, async (req, res) => {
     try {
       const areaId = parseInt(req.params.id);
       const area = await storage.getAreaById(areaId);
       if (!area) {
+        res.status(404).json({ error: "Area not found" });
+        return;
+      }
+      const loteRestrito = loteRestritoDoEncarregado(req);
+      if (loteRestrito && area.lote !== loteRestrito) {
         res.status(404).json({ error: "Area not found" });
         return;
       }
@@ -1704,7 +2590,7 @@ async function registerRoutes(app) {
       res.status(500).json({ error: "Failed to fetch configuration" });
     }
   });
-  app.patch("/api/config", requireAuth, async (req, res) => {
+  app.patch("/api/config", requireRole("admin", "gestor"), async (req, res) => {
     try {
       const configSchema = z2.object({
         mowingProductionRate: z2.object({
@@ -1959,10 +2845,6 @@ async function registerRoutes(app) {
   });
   app.delete("/api/areas/:id/history/:index", requireAuth, async (req, res) => {
     try {
-      if (req.session.userRole !== "admin") {
-        res.status(403).json({ error: "Apenas administradores podem excluir hist\xF3rico" });
-        return;
-      }
       const areaId = parseInt(req.params.id);
       const idx = parseInt(req.params.index);
       const area = await storage.getAreaById(areaId);
@@ -2064,6 +2946,48 @@ async function registerRoutes(app) {
       res.json(updated);
     } catch (error) {
       res.status(500).json({ error: "Erro ao excluir foto" });
+    }
+  });
+  app.post("/api/areas/:id/registrar-rocagem", requireAuth, async (req, res) => {
+    try {
+      const areaId = parseInt(req.params.id);
+      const area = await storage.getAreaById(areaId);
+      if (!area) {
+        res.status(404).json({ error: "Area not found" });
+        return;
+      }
+      const loteRestrito = loteRestritoDoEncarregado(req);
+      if (loteRestrito && area.lote !== loteRestrito) {
+        res.status(404).json({ error: "Area not found" });
+        return;
+      }
+      const schema = z2.object({ data: z2.string().min(1).optional() });
+      const { data } = schema.parse(req.body ?? {});
+      const dataServico = data || (/* @__PURE__ */ new Date()).toISOString().split("T")[0];
+      const registradoPor = req.session.userName || void 0;
+      await storage.updateArea(areaId, {
+        status: "Conclu\xEDdo",
+        dataRegistro: (/* @__PURE__ */ new Date()).toISOString(),
+        manualSchedule: false,
+        ...registradoPor ? { registradoPor } : {}
+      });
+      await storage.addHistoryEntry(areaId, {
+        date: dataServico,
+        type: "completed",
+        status: "Conclu\xEDdo",
+        observation: registradoPor ? `Ro\xE7agem conclu\xEDda por ${registradoPor}` : "Ro\xE7agem conclu\xEDda"
+      });
+      const areaAtualizada = await storage.getAreaById(areaId);
+      const sync = syncFromHistory(areaAtualizada?.history ?? []);
+      const final = await storage.updateArea(areaId, sync);
+      res.json(final);
+    } catch (error) {
+      if (error instanceof z2.ZodError) {
+        res.status(400).json({ error: "Dados inv\xE1lidos", details: error.errors });
+      } else {
+        console.error("Error registering rocagem:", error);
+        res.status(500).json({ error: "Falha ao registrar ro\xE7agem" });
+      }
     }
   });
   app.post("/api/areas/register-daily", requireAuth, async (req, res) => {
@@ -2315,6 +3239,1295 @@ async function registerRoutes(app) {
       res.status(500).json({ error: "Falha ao calcular estat\xEDsticas" });
     }
   });
+  app.get("/api/ordens", requireAuth, async (req, res) => {
+    try {
+      const sb = getSupabase();
+      let query = sb.from("ordens_servico").select("*").order("created_at", { ascending: false });
+      const loteRestrito = loteRestritoDoEncarregado(req);
+      if (loteRestrito) query = query.eq("lote", loteRestrito);
+      const { data, error } = await query;
+      if (error) throw error;
+      res.json(data);
+    } catch (error) {
+      res.status(500).json({ error: "Erro ao buscar ordens" });
+    }
+  });
+  app.get("/api/ordens/:id", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const sb = getSupabase();
+      const { data: ordem, error: e1 } = await sb.from("ordens_servico").select("*").eq("id", id).single();
+      if (e1) throw e1;
+      const loteRestrito = loteRestritoDoEncarregado(req);
+      if (loteRestrito && ordem.lote !== loteRestrito) {
+        res.status(404).json({ error: "Ordem n\xE3o encontrada" });
+        return;
+      }
+      const { data: areaLinks, error: e2 } = await sb.from("ordens_servico_areas").select("area_id").eq("ordem_id", id);
+      if (e2) throw e2;
+      const areaIds = areaLinks.map((r) => r.area_id);
+      let areas = [];
+      if (areaIds.length > 0) {
+        const { data: areaData, error: e3 } = await sb.from("service_areas").select("id, tipo, endereco, bairro, metragem_m2").in("id", areaIds).order("id");
+        if (e3) throw e3;
+        areas = areaData;
+      }
+      res.json({ ...ordem, areas });
+    } catch (error) {
+      res.status(500).json({ error: "Erro ao buscar ordem" });
+    }
+  });
+  app.post("/api/ordens", requireRole("admin", "fiscal"), async (req, res) => {
+    try {
+      const { numero, lote, mes_referencia, data_emissao, emitido_por, observacao, area_ids } = req.body;
+      if (!numero || !lote || !mes_referencia || !data_emissao || !area_ids?.length) {
+        return res.status(400).json({ error: "Campos obrigat\xF3rios faltando" });
+      }
+      const sb = getSupabase();
+      const { data: ordem, error: e1 } = await sb.from("ordens_servico").insert({ numero, lote, mes_referencia, data_emissao, emitido_por: emitido_por || req.session.userName, observacao }).select().single();
+      if (e1) throw e1;
+      const links = area_ids.map((area_id) => ({ ordem_id: ordem.id, area_id }));
+      const { error: e2 } = await sb.from("ordens_servico_areas").insert(links);
+      if (e2) throw e2;
+      await logAudit(
+        req.session.userId,
+        req.session.userName || "desconhecido",
+        "criou",
+        "ordem_servico",
+        ordem.id,
+        `OS ${numero} \u2014 Lote ${lote}`,
+        null,
+        { numero, lote, mes_referencia, data_emissao, observacao, area_ids }
+      );
+      res.status(201).json(ordem);
+    } catch (error) {
+      console.error("Erro ao criar ordem:", error);
+      res.status(500).json({ error: "Erro ao criar ordem de servi\xE7o" });
+    }
+  });
+  app.patch("/api/ordens/:id", requireRole("admin", "fiscal"), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { numero, lote, mes_referencia, data_emissao, observacao, area_ids } = req.body;
+      const sb = getSupabase();
+      const { data: anterior } = await sb.from("ordens_servico").select("*").eq("id", id).single();
+      const updateData = {};
+      if (numero !== void 0) updateData.numero = numero;
+      if (lote !== void 0) updateData.lote = lote;
+      if (mes_referencia !== void 0) updateData.mes_referencia = mes_referencia;
+      if (data_emissao !== void 0) updateData.data_emissao = data_emissao;
+      if (observacao !== void 0) updateData.observacao = observacao;
+      if (Object.keys(updateData).length > 0) {
+        const { error: e1 } = await sb.from("ordens_servico").update(updateData).eq("id", id);
+        if (e1) throw e1;
+      }
+      if (area_ids !== void 0) {
+        const { error: e2 } = await sb.from("ordens_servico_areas").delete().eq("ordem_id", id);
+        if (e2) throw e2;
+        if (area_ids.length > 0) {
+          const links = area_ids.map((area_id) => ({ ordem_id: id, area_id }));
+          const { error: e3 } = await sb.from("ordens_servico_areas").insert(links);
+          if (e3) throw e3;
+        }
+      }
+      await logAudit(
+        req.session.userId,
+        req.session.userName || "desconhecido",
+        "editou",
+        "ordem_servico",
+        id,
+        `OS ${anterior?.numero || id} \u2014 Lote ${anterior?.lote || "?"}`,
+        anterior,
+        { ...updateData, area_ids }
+      );
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Erro ao atualizar ordem:", error);
+      res.status(500).json({ error: "Erro ao atualizar ordem de servi\xE7o" });
+    }
+  });
+  app.delete("/api/ordens/:id", requireRole("admin", "gestor", "fiscal"), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const sb = getSupabase();
+      const { data: anterior } = await sb.from("ordens_servico").select("*").eq("id", id).single();
+      const { error } = await sb.from("ordens_servico").delete().eq("id", id);
+      if (error) throw error;
+      await logAudit(
+        req.session.userId,
+        req.session.userName || "desconhecido",
+        "excluiu",
+        "ordem_servico",
+        id,
+        `OS ${anterior?.numero || id} \u2014 Lote ${anterior?.lote || "?"}`,
+        anterior,
+        null
+      );
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Erro ao excluir ordem" });
+    }
+  });
+  app.get("/api/contrato-config/:lote", requireAuth, async (req, res) => {
+    try {
+      const lote = parseInt(req.params.lote);
+      const pool = getPool();
+      const result = await pool.query(
+        "SELECT * FROM contrato_config WHERE lote = $1",
+        [lote]
+      );
+      res.json(result.rows[0] ?? { lote });
+    } catch (error) {
+      res.status(500).json({ error: "Erro ao buscar configura\xE7\xE3o do contrato" });
+    }
+  });
+  app.put("/api/contrato-config/:lote", requireRole("admin", "gestor"), async (req, res) => {
+    try {
+      const lote = parseInt(req.params.lote);
+      const {
+        regiao,
+        processo_admin,
+        pregao_eletronico,
+        numero_contrato,
+        contratada_nome,
+        contratada_endereco,
+        diretor_nome,
+        gerente_nome,
+        fiscal_nome
+      } = req.body;
+      const pool = getPool();
+      await pool.query(`
+        INSERT INTO contrato_config
+          (lote, regiao, processo_admin, pregao_eletronico, numero_contrato,
+           contratada_nome, contratada_endereco, diretor_nome, gerente_nome, fiscal_nome, updated_at)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, NOW())
+        ON CONFLICT (lote) DO UPDATE SET
+          regiao = EXCLUDED.regiao,
+          processo_admin = EXCLUDED.processo_admin,
+          pregao_eletronico = EXCLUDED.pregao_eletronico,
+          numero_contrato = EXCLUDED.numero_contrato,
+          contratada_nome = EXCLUDED.contratada_nome,
+          contratada_endereco = EXCLUDED.contratada_endereco,
+          diretor_nome = EXCLUDED.diretor_nome,
+          gerente_nome = EXCLUDED.gerente_nome,
+          fiscal_nome = EXCLUDED.fiscal_nome,
+          updated_at = NOW()
+      `, [
+        lote,
+        regiao,
+        processo_admin,
+        pregao_eletronico,
+        numero_contrato,
+        contratada_nome,
+        contratada_endereco,
+        diretor_nome,
+        gerente_nome,
+        fiscal_nome
+      ]);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Erro ao salvar configura\xE7\xE3o do contrato:", error);
+      res.status(500).json({ error: "Erro ao salvar configura\xE7\xE3o do contrato" });
+    }
+  });
+  app.get("/api/cronogramas", requireAuth, async (req, res) => {
+    try {
+      const sb = getSupabase();
+      const { data, error } = await sb.from("cronogramas_semanais").select("*").order("semana_inicio", { ascending: false });
+      if (error) throw error;
+      res.json(data);
+    } catch (error) {
+      res.status(500).json({ error: "Erro ao buscar cronogramas" });
+    }
+  });
+  app.get("/api/cronogramas/:id", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const sb = getSupabase();
+      const { data: cronograma, error: e1 } = await sb.from("cronogramas_semanais").select("*").eq("id", id).single();
+      if (e1) throw e1;
+      const { data: areaLinks, error: e2 } = await sb.from("cronograma_areas").select("area_id").eq("cronograma_id", id);
+      if (e2) throw e2;
+      const areaIds = areaLinks.map((r) => r.area_id);
+      let areas = [];
+      if (areaIds.length > 0) {
+        const { data: areaData, error: e3 } = await sb.from("service_areas").select("id, tipo, endereco, bairro, metragem_m2, lat, lng").in("id", areaIds).order("id");
+        if (e3) throw e3;
+        areas = areaData;
+      }
+      res.json({ ...cronograma, areas });
+    } catch (error) {
+      res.status(500).json({ error: "Erro ao buscar cronograma" });
+    }
+  });
+  app.post("/api/cronogramas", requireRole("admin", "fiscal"), async (req, res) => {
+    try {
+      const { lote, semana_inicio, semana_fim, observacao, area_ids } = req.body;
+      if (!lote || !semana_inicio || !semana_fim || !area_ids?.length) {
+        return res.status(400).json({ error: "Campos obrigat\xF3rios faltando" });
+      }
+      const sb = getSupabase();
+      const { data: cronograma, error: e1 } = await sb.from("cronogramas_semanais").insert({ lote, semana_inicio, semana_fim, observacao, criado_por: req.session.userName }).select().single();
+      if (e1) throw e1;
+      const links = area_ids.map((area_id) => ({ cronograma_id: cronograma.id, area_id }));
+      const { error: e2 } = await sb.from("cronograma_areas").insert(links);
+      if (e2) throw e2;
+      await logAudit(
+        req.session.userId,
+        req.session.userName || "desconhecido",
+        "criou",
+        "cronograma",
+        cronograma.id,
+        `Cronograma Lote ${lote} \u2014 ${semana_inicio} a ${semana_fim}`,
+        null,
+        { lote, semana_inicio, semana_fim, observacao, area_ids }
+      );
+      res.status(201).json(cronograma);
+    } catch (error) {
+      console.error("Erro ao criar cronograma:", error);
+      res.status(500).json({ error: "Erro ao criar cronograma" });
+    }
+  });
+  app.patch("/api/cronogramas/:id", requireRole("admin", "fiscal"), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { lote, semana_inicio, semana_fim, observacao, area_ids } = req.body;
+      const sb = getSupabase();
+      const { data: anterior } = await sb.from("cronogramas_semanais").select("*").eq("id", id).single();
+      const updateData = { updated_at: (/* @__PURE__ */ new Date()).toISOString() };
+      if (lote !== void 0) updateData.lote = lote;
+      if (semana_inicio !== void 0) updateData.semana_inicio = semana_inicio;
+      if (semana_fim !== void 0) updateData.semana_fim = semana_fim;
+      if (observacao !== void 0) updateData.observacao = observacao;
+      const { error: e1 } = await sb.from("cronogramas_semanais").update(updateData).eq("id", id);
+      if (e1) throw e1;
+      if (area_ids !== void 0) {
+        const { error: e2 } = await sb.from("cronograma_areas").delete().eq("cronograma_id", id);
+        if (e2) throw e2;
+        if (area_ids.length > 0) {
+          const links = area_ids.map((area_id) => ({ cronograma_id: id, area_id }));
+          const { error: e3 } = await sb.from("cronograma_areas").insert(links);
+          if (e3) throw e3;
+        }
+      }
+      await logAudit(
+        req.session.userId,
+        req.session.userName || "desconhecido",
+        "editou",
+        "cronograma",
+        id,
+        `Cronograma Lote ${anterior?.lote || "?"} \u2014 ${anterior?.semana_inicio || ""} a ${anterior?.semana_fim || ""}`,
+        anterior,
+        { ...updateData, area_ids }
+      );
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Erro ao atualizar cronograma:", error);
+      res.status(500).json({ error: "Erro ao atualizar cronograma" });
+    }
+  });
+  app.delete("/api/cronogramas/:id", requireRole("admin", "gestor", "fiscal"), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const sb = getSupabase();
+      const { data: anterior } = await sb.from("cronogramas_semanais").select("*").eq("id", id).single();
+      const { error } = await sb.from("cronogramas_semanais").delete().eq("id", id);
+      if (error) throw error;
+      await logAudit(
+        req.session.userId,
+        req.session.userName || "desconhecido",
+        "excluiu",
+        "cronograma",
+        id,
+        `Cronograma Lote ${anterior?.lote || "?"} \u2014 ${anterior?.semana_inicio || ""} a ${anterior?.semana_fim || ""}`,
+        anterior,
+        null
+      );
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Erro ao excluir cronograma" });
+    }
+  });
+  app.get("/api/public/cronograma/:lote", async (req, res) => {
+    try {
+      const lote = parseInt(req.params.lote);
+      const sb = getSupabase();
+      let cronograma = null;
+      if (req.query.id) {
+        const { data, error } = await sb.from("cronogramas_semanais").select("*").eq("id", req.query.id).eq("lote", lote).single();
+        if (error) throw error;
+        cronograma = data;
+      } else {
+        const now = /* @__PURE__ */ new Date();
+        const todayStr = now.toISOString().split("T")[0];
+        const diaSemana = now.getDay();
+        const mostrarProximaSemana = diaSemana === 0 || diaSemana >= 5;
+        if (mostrarProximaSemana) {
+          const { data: proxima, error: ep } = await sb.from("cronogramas_semanais").select("*").eq("lote", lote).gt("semana_inicio", todayStr).order("semana_inicio", { ascending: true }).limit(1);
+          if (ep) throw ep;
+          cronograma = proxima?.[0] ?? null;
+        }
+        if (!cronograma) {
+          const { data: atual, error: ea } = await sb.from("cronogramas_semanais").select("*").eq("lote", lote).lte("semana_inicio", todayStr).gte("semana_fim", todayStr).order("created_at", { ascending: false }).limit(1);
+          if (ea) throw ea;
+          cronograma = atual?.[0] ?? null;
+        }
+        if (!cronograma) {
+          const { data: recente, error: er } = await sb.from("cronogramas_semanais").select("*").eq("lote", lote).order("semana_inicio", { ascending: false }).limit(1);
+          if (er) throw er;
+          cronograma = recente?.[0] ?? null;
+        }
+      }
+      if (!cronograma) {
+        return res.json({ cronograma: null, areas: [] });
+      }
+      const { data: areaLinks, error: e2 } = await sb.from("cronograma_areas").select("area_id").eq("cronograma_id", cronograma.id);
+      if (e2) throw e2;
+      const areaIds = areaLinks.map((r) => r.area_id);
+      let areas = [];
+      if (areaIds.length > 0) {
+        const { data: areaData, error: e3 } = await sb.from("service_areas").select("id, tipo, endereco, bairro, metragem_m2, lat, lng").in("id", areaIds).order("id");
+        if (e3) throw e3;
+        areas = areaData;
+      }
+      res.json({ cronograma, areas });
+    } catch (error) {
+      console.error("Erro na rota p\xFAblica de cronograma:", error);
+      res.status(500).json({ error: "Erro ao buscar cronograma" });
+    }
+  });
+}
+
+// server/routes/varricao.ts
+async function ensureVarricaoLocaisTable() {
+  try {
+    const pool = getPool();
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS varricao_locais (
+        id SERIAL PRIMARY KEY,
+        nome TEXT NOT NULL,
+        complemento TEXT,
+        regiao VARCHAR(100),
+        tipo VARCHAR(50),
+        secao VARCHAR(50) NOT NULL DEFAULT 'varricao',
+        metragem_unica NUMERIC,
+        frequencia VARCHAR(30) NOT NULL DEFAULT 'diario',
+        dias_semana JSONB,
+        lat DOUBLE PRECISION,
+        lng DOUBLE PRECISION,
+        geocode_status VARCHAR(20) DEFAULT 'pendente',
+        ativo BOOLEAN DEFAULT true,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_varricao_locais_secao ON varricao_locais (secao);
+      CREATE INDEX IF NOT EXISTS idx_varricao_locais_regiao ON varricao_locais (regiao);
+    `);
+  } catch (e) {
+    console.warn("varricao_locais table check:", e);
+  }
+}
+async function ensureVarricaoConfigTable() {
+  try {
+    const pool = getPool();
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS varricao_config (
+        id INTEGER PRIMARY KEY DEFAULT 1,
+        metragem_maxima_varricao NUMERIC,
+        metragem_maxima_lavacao NUMERIC,
+        updated_at TIMESTAMPTZ DEFAULT NOW(),
+        CONSTRAINT varricao_config_singleton CHECK (id = 1)
+      );
+    `);
+  } catch (e) {
+    console.warn("varricao_config table check:", e);
+  }
+}
+var SECOES_POR_CATEGORIA = {
+  varricao: ["varricao", "varricao_2turno"],
+  lavacao: ["lavagem_vias_noturna", "lavagem_pracas_noturna", "lavagem_vias_diurna", "lavagem_pracas_diurna"],
+  sanitario: ["sanitarios"]
+};
+function secaoCategoria(secao) {
+  if (secao.startsWith("lavagem")) return "lavacao";
+  if (secao === "sanitarios") return "sanitario";
+  return "varricao";
+}
+async function ensureVarricaoOrdensTable() {
+  try {
+    const pool = getPool();
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS varricao_ordens (
+        id SERIAL PRIMARY KEY,
+        numero VARCHAR(50) NOT NULL,
+        mes_referencia VARCHAR(7) NOT NULL,
+        data_emissao DATE NOT NULL,
+        emitido_por VARCHAR(150),
+        observacao TEXT,
+        status VARCHAR(20) NOT NULL DEFAULT 'rascunho',
+        finalizado_por VARCHAR(150),
+        finalizado_em TIMESTAMPTZ,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+      ALTER TABLE varricao_ordens ADD COLUMN IF NOT EXISTS status VARCHAR(20) NOT NULL DEFAULT 'rascunho';
+      ALTER TABLE varricao_ordens ADD COLUMN IF NOT EXISTS finalizado_por VARCHAR(150);
+      ALTER TABLE varricao_ordens ADD COLUMN IF NOT EXISTS finalizado_em TIMESTAMPTZ;
+      ALTER TABLE varricao_ordens ADD COLUMN IF NOT EXISTS categoria VARCHAR(20) NOT NULL DEFAULT 'varricao';
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_varricao_ordens_mes_categoria ON varricao_ordens (mes_referencia, categoria);
+      CREATE TABLE IF NOT EXISTS varricao_ordens_locais (
+        id SERIAL PRIMARY KEY,
+        ordem_id INTEGER NOT NULL REFERENCES varricao_ordens(id) ON DELETE CASCADE,
+        local_id INTEGER REFERENCES varricao_locais(id) ON DELETE SET NULL,
+        nome TEXT NOT NULL,
+        complemento TEXT,
+        regiao VARCHAR(100),
+        tipo VARCHAR(50),
+        secao VARCHAR(50) NOT NULL,
+        metragem_unica NUMERIC,
+        dias JSONB NOT NULL,
+        dias_texto VARCHAR(400),
+        metragem_total NUMERIC
+      );
+      CREATE INDEX IF NOT EXISTS idx_varricao_ordens_mes ON varricao_ordens (mes_referencia);
+      CREATE INDEX IF NOT EXISTS idx_varricao_ordens_locais_ordem ON varricao_ordens_locais (ordem_id);
+    `);
+  } catch (e) {
+    console.warn("varricao_ordens table check:", e);
+  }
+}
+function diasDoMesParaLocal(local, ano, mes) {
+  const ultimoDia = new Date(ano, mes, 0).getDate();
+  const dias = [];
+  for (let d = 1; d <= ultimoDia; d++) {
+    const diaSemana = new Date(ano, mes - 1, d).getDay();
+    const programado = local.frequencia === "diario" ? diaSemana >= 1 && diaSemana <= 6 : (local.dias_semana ?? []).includes(diaSemana);
+    if (programado) dias.push(d);
+  }
+  return dias;
+}
+function formatarDiasTexto(dias, frequencia) {
+  if (frequencia === "diario") return "Di\xE1rio (seg. a s\xE1b.)";
+  if (dias.length === 0) return "\u2014";
+  const strs = dias.map((d) => String(d).padStart(2, "0"));
+  if (strs.length === 1) return strs[0];
+  return strs.slice(0, -1).join(", ") + " e " + strs[strs.length - 1];
+}
+function levenshtein(a, b) {
+  const m = a.length, n = b.length;
+  if (m === 0) return n;
+  if (n === 0) return m;
+  const dp = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+  for (let i = 0; i <= m; i++) dp[i][0] = i;
+  for (let j = 0; j <= n; j++) dp[0][j] = j;
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      dp[i][j] = a[i - 1] === b[j - 1] ? dp[i - 1][j - 1] : 1 + Math.min(dp[i - 1][j - 1], dp[i - 1][j], dp[i][j - 1]);
+    }
+  }
+  return dp[m][n];
+}
+function normalizarNome(s) {
+  return s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
+}
+function calcularLocaisDoMes(locais, ano, mes) {
+  return locais.map((l) => {
+    const dias = diasDoMesParaLocal(l, ano, mes);
+    const metragemUnica = l.metragem_unica != null ? Number(l.metragem_unica) : null;
+    return {
+      localId: l.id,
+      nome: l.nome,
+      complemento: l.complemento,
+      regiao: l.regiao,
+      tipo: l.tipo,
+      secao: l.secao,
+      metragemUnica,
+      dias,
+      diasTexto: formatarDiasTexto(dias, l.frequencia),
+      metragemTotal: metragemUnica != null ? metragemUnica * dias.length : 0
+    };
+  }).filter((l) => l.dias.length > 0);
+}
+function detectarDuplicatas(locais) {
+  const duplicatas = [];
+  const identidades = locais.map((l) => ({
+    id: l.localId,
+    label: `${l.nome}${l.complemento ? ` (${l.complemento})` : ""}`,
+    norm: normalizarNome(`${l.nome} ${l.complemento ?? ""}`)
+  }));
+  for (let i = 0; i < identidades.length; i++) {
+    for (let j = i + 1; j < identidades.length; j++) {
+      const dist = levenshtein(identidades[i].norm, identidades[j].norm);
+      if (dist <= 2) {
+        duplicatas.push({
+          nomeA: identidades[i].label,
+          nomeB: identidades[j].label,
+          localIdA: identidades[i].id,
+          localIdB: identidades[j].id,
+          distancia: dist
+        });
+      }
+    }
+  }
+  return duplicatas;
+}
+function subtotais(locais, campo) {
+  const m = /* @__PURE__ */ new Map();
+  locais.forEach((l) => {
+    const chave = l[campo] ?? "Sem defini\xE7\xE3o";
+    if (!m.has(chave)) m.set(chave, { quantidade: 0, metragemTotal: 0 });
+    const acc = m.get(chave);
+    acc.quantidade++;
+    acc.metragemTotal += l.metragemTotal;
+  });
+  return Array.from(m.entries()).map(([chave, v]) => ({ chave, ...v })).sort((a, b) => b.metragemTotal - a.metragemTotal);
+}
+async function idsBaseParaNovaOrdem(pool, categoria, referenciaId) {
+  let base = null;
+  if (referenciaId) {
+    const { rows } = await pool.query(
+      `SELECT id, numero, mes_referencia FROM varricao_ordens WHERE id=$1 AND status='finalizada' AND categoria=$2`,
+      [referenciaId, categoria]
+    );
+    base = rows[0] ?? null;
+  } else {
+    const { rows } = await pool.query(
+      `SELECT id, numero, mes_referencia FROM varricao_ordens WHERE status='finalizada' AND categoria=$1 ORDER BY mes_referencia DESC, created_at DESC LIMIT 1`,
+      [categoria]
+    );
+    base = rows[0] ?? null;
+  }
+  const secoesDaCategoria = SECOES_POR_CATEGORIA[categoria];
+  if (!base) return { ids: null, referencia: null };
+  const { rows: daBase } = await pool.query(
+    `SELECT local_id FROM varricao_ordens_locais WHERE ordem_id=$1 AND local_id IS NOT NULL`,
+    [base.id]
+  );
+  const ids = new Set(daBase.map((r) => r.local_id));
+  const { rows: jaFinalizadosAlgumaVez } = await pool.query(`
+    SELECT DISTINCT l.local_id FROM varricao_ordens_locais l
+    JOIN varricao_ordens o ON o.id = l.ordem_id
+    WHERE o.status='finalizada' AND o.categoria=$1 AND l.local_id IS NOT NULL
+  `, [categoria]);
+  const idsJaVistos = new Set(jaFinalizadosAlgumaVez.map((r) => r.local_id));
+  const { rows: todosAtivos } = await pool.query(
+    `SELECT id FROM varricao_locais WHERE ativo IS NOT FALSE AND secao = ANY($1::text[])`,
+    [secoesDaCategoria]
+  );
+  todosAtivos.forEach((l) => {
+    if (!idsJaVistos.has(l.id)) ids.add(l.id);
+  });
+  return {
+    ids: Array.from(ids),
+    referencia: { id: base.id, numero: base.numero, mesReferencia: base.mes_referencia }
+  };
+}
+function totaisPorCategoria(locais) {
+  const totais = { varricao: 0, lavacao: 0, sanitario: 0 };
+  locais.forEach((l) => {
+    totais[secaoCategoria(l.secao)] += l.metragemTotal;
+  });
+  return totais;
+}
+async function ensureVarricaoFotosTable() {
+  try {
+    const pool = getPool();
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS varricao_fotos (
+        id SERIAL PRIMARY KEY,
+        local_id INTEGER NOT NULL REFERENCES varricao_locais(id) ON DELETE CASCADE,
+        url TEXT NOT NULL,
+        data_servico DATE NOT NULL,
+        lat DOUBLE PRECISION,
+        lng DOUBLE PRECISION,
+        enviado_por_id INTEGER,
+        enviado_por_nome VARCHAR(150),
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_varricao_fotos_data ON varricao_fotos (data_servico);
+      CREATE INDEX IF NOT EXISTS idx_varricao_fotos_local ON varricao_fotos (local_id);
+    `);
+  } catch (e) {
+    console.warn("varricao_fotos table check:", e);
+  }
+}
+function registerVarricaoRoutes(app) {
+  app.get("/api/varricao/locais", requireAuth, async (req, res) => {
+    try {
+      const pool = getPool();
+      const { rows } = await pool.query(
+        `SELECT * FROM varricao_locais ORDER BY regiao, nome`
+      );
+      res.json(rows);
+    } catch (error) {
+      res.status(500).json({ error: "Erro ao buscar locais de varri\xE7\xE3o" });
+    }
+  });
+  app.post("/api/varricao/locais", requireAuth, async (req, res) => {
+    try {
+      const {
+        nome,
+        complemento,
+        regiao,
+        tipo,
+        secao,
+        metragemUnica,
+        frequencia,
+        diasSemana,
+        lat,
+        lng
+      } = req.body;
+      if (!nome || !String(nome).trim()) {
+        return res.status(400).json({ error: "Nome do local \xE9 obrigat\xF3rio" });
+      }
+      const pool = getPool();
+      const { rows } = await pool.query(
+        `INSERT INTO varricao_locais
+           (nome, complemento, regiao, tipo, secao, metragem_unica, frequencia, dias_semana, lat, lng, geocode_status)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+         RETURNING *`,
+        [
+          String(nome).trim(),
+          complemento || null,
+          regiao || null,
+          tipo || null,
+          secao || "varricao",
+          metragemUnica ?? null,
+          frequencia || "diario",
+          diasSemana ? JSON.stringify(diasSemana) : null,
+          lat ?? null,
+          lng ?? null,
+          lat != null && lng != null ? "manual" : "pendente"
+        ]
+      );
+      res.status(201).json(rows[0]);
+    } catch (error) {
+      console.error("Erro ao criar local de varri\xE7\xE3o:", error);
+      res.status(500).json({ error: "Erro ao criar local" });
+    }
+  });
+  app.patch("/api/varricao/locais/:id", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const campos = {
+        nome: "nome",
+        complemento: "complemento",
+        regiao: "regiao",
+        tipo: "tipo",
+        secao: "secao",
+        metragemUnica: "metragem_unica",
+        frequencia: "frequencia",
+        lat: "lat",
+        lng: "lng",
+        geocodeStatus: "geocode_status",
+        ativo: "ativo"
+      };
+      const sets = [];
+      const vals = [];
+      for (const [key, col] of Object.entries(campos)) {
+        if (key in req.body) {
+          vals.push(req.body[key]);
+          sets.push(`${col}=$${vals.length}`);
+        }
+      }
+      if ("diasSemana" in req.body) {
+        vals.push(req.body.diasSemana ? JSON.stringify(req.body.diasSemana) : null);
+        sets.push(`dias_semana=$${vals.length}`);
+      }
+      if ("lat" in req.body && "lng" in req.body && !("geocodeStatus" in req.body)) {
+        sets.push(`geocode_status='manual'`);
+      }
+      if (sets.length === 0) {
+        return res.status(400).json({ error: "Nenhum campo para atualizar" });
+      }
+      sets.push("updated_at=NOW()");
+      vals.push(id);
+      const pool = getPool();
+      const { rows } = await pool.query(
+        `UPDATE varricao_locais SET ${sets.join(", ")} WHERE id=$${vals.length} RETURNING *`,
+        vals
+      );
+      if (!rows.length) return res.status(404).json({ error: "Local n\xE3o encontrado" });
+      res.json(rows[0]);
+    } catch (error) {
+      console.error("Erro ao atualizar local de varri\xE7\xE3o:", error);
+      res.status(500).json({ error: "Erro ao atualizar local" });
+    }
+  });
+  app.delete("/api/varricao/locais/:id", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const pool = getPool();
+      const { rowCount } = await pool.query("DELETE FROM varricao_locais WHERE id=$1", [id]);
+      if (!rowCount) return res.status(404).json({ error: "Local n\xE3o encontrado" });
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Erro ao excluir local" });
+    }
+  });
+  app.get("/api/varricao/ordens/preview", requireAuth, async (req, res) => {
+    try {
+      const mes = String(req.query.mes ?? "");
+      const m = mes.match(/^(\d{4})-(\d{2})$/);
+      if (!m) return res.status(400).json({ error: "Informe o m\xEAs no formato YYYY-MM" });
+      const ano = parseInt(m[1]), mesNum = parseInt(m[2]);
+      const categoria = String(req.query.categoria ?? "");
+      if (categoria !== "varricao" && categoria !== "lavacao") {
+        return res.status(400).json({ error: "Informe a categoria: varricao ou lavacao" });
+      }
+      const referenciaId = req.query.referenciaId ? parseInt(String(req.query.referenciaId)) : void 0;
+      const pool = getPool();
+      const { ids: idsBase, referencia } = await idsBaseParaNovaOrdem(pool, categoria, referenciaId);
+      const secoesDaCategoria = SECOES_POR_CATEGORIA[categoria];
+      const { rows: locaisRaw } = idsBase ? await pool.query(
+        "SELECT * FROM varricao_locais WHERE id = ANY($1::int[]) AND ativo IS NOT FALSE ORDER BY regiao, nome",
+        [idsBase]
+      ) : await pool.query(
+        "SELECT * FROM varricao_locais WHERE secao = ANY($1::text[]) AND ativo IS NOT FALSE ORDER BY regiao, nome",
+        [secoesDaCategoria]
+      );
+      const locais = calcularLocaisDoMes(locaisRaw, ano, mesNum);
+      const duplicatas = detectarDuplicatas(locais);
+      const totalMetragem = locais.reduce((s, l) => s + l.metragemTotal, 0);
+      const { rows: existente } = await pool.query(
+        "SELECT id, numero, status FROM varricao_ordens WHERE mes_referencia=$1 AND categoria=$2",
+        [mes, categoria]
+      );
+      res.json({
+        mesReferencia: mes,
+        categoria,
+        locais,
+        duplicatas,
+        subtotaisRegiao: subtotais(locais, "regiao"),
+        subtotaisSecao: subtotais(locais, "secao"),
+        totaisPorCategoria: totaisPorCategoria(locais),
+        totalLocais: locais.length,
+        totalMetragem,
+        ordemExistente: existente[0] ?? null,
+        referenciaUsada: referencia
+      });
+    } catch (error) {
+      console.error("Erro ao gerar pr\xE9via da OS de varri\xE7\xE3o:", error);
+      res.status(500).json({ error: "Erro ao calcular a pr\xE9via" });
+    }
+  });
+  app.get("/api/varricao/config", requireAuth, async (req, res) => {
+    try {
+      const pool = getPool();
+      const { rows } = await pool.query("SELECT * FROM varricao_config WHERE id=1");
+      res.json(rows[0] ?? { metragem_maxima_varricao: null, metragem_maxima_lavacao: null });
+    } catch (error) {
+      res.status(500).json({ error: "Erro ao buscar configura\xE7\xE3o" });
+    }
+  });
+  app.put("/api/varricao/config", requireRole("admin", "gestor"), async (req, res) => {
+    try {
+      const { metragemMaximaVarricao, metragemMaximaLavacao } = req.body;
+      const pool = getPool();
+      const { rows } = await pool.query(
+        `INSERT INTO varricao_config (id, metragem_maxima_varricao, metragem_maxima_lavacao, updated_at)
+         VALUES (1, $1, $2, NOW())
+         ON CONFLICT (id) DO UPDATE SET
+           metragem_maxima_varricao = EXCLUDED.metragem_maxima_varricao,
+           metragem_maxima_lavacao = EXCLUDED.metragem_maxima_lavacao,
+           updated_at = NOW()
+         RETURNING *`,
+        [metragemMaximaVarricao ?? null, metragemMaximaLavacao ?? null]
+      );
+      res.json(rows[0]);
+    } catch (error) {
+      res.status(500).json({ error: "Erro ao salvar configura\xE7\xE3o" });
+    }
+  });
+  app.get("/api/varricao/ordens", requireAuth, async (req, res) => {
+    try {
+      const pool = getPool();
+      const { rows } = await pool.query(`
+        SELECT o.*, COUNT(l.id)::int AS total_locais, COALESCE(SUM(l.metragem_total), 0) AS total_metragem
+        FROM varricao_ordens o
+        LEFT JOIN varricao_ordens_locais l ON l.ordem_id = o.id
+        GROUP BY o.id
+        ORDER BY o.mes_referencia DESC, o.created_at DESC
+      `);
+      res.json(rows);
+    } catch (error) {
+      res.status(500).json({ error: "Erro ao buscar ordens de servi\xE7o" });
+    }
+  });
+  app.get("/api/varricao/ordens/combinado", requireAuth, async (req, res) => {
+    try {
+      const mes = String(req.query.mes ?? "");
+      const m = mes.match(/^(\d{4})-(\d{2})$/);
+      if (!m) return res.status(400).json({ error: "Informe o m\xEAs no formato YYYY-MM" });
+      const ano = parseInt(m[1]), mesNum = parseInt(m[2]);
+      const pool = getPool();
+      const { rows: ordensDoMes } = await pool.query(
+        `SELECT * FROM varricao_ordens WHERE mes_referencia=$1 AND categoria IN ('varricao','lavacao')`,
+        [mes]
+      );
+      const ordemVarricao = ordensDoMes.find((o) => o.categoria === "varricao") ?? null;
+      const ordemLavacao = ordensDoMes.find((o) => o.categoria === "lavacao") ?? null;
+      const faltando = [];
+      if (!ordemVarricao || ordemVarricao.status !== "finalizada") faltando.push("Varri\xE7\xE3o");
+      if (!ordemLavacao || ordemLavacao.status !== "finalizada") faltando.push("Lava\xE7\xE3o");
+      if (faltando.length) {
+        return res.status(400).json({
+          error: `Finalize a OS de ${faltando.join(" e ")} deste m\xEAs antes de gerar o documento combinado.`,
+          faltando
+        });
+      }
+      const [{ rows: locaisVarricaoRaw }, { rows: locaisLavacaoRaw }] = await Promise.all([
+        pool.query("SELECT * FROM varricao_ordens_locais WHERE ordem_id=$1", [ordemVarricao.id]),
+        pool.query("SELECT * FROM varricao_ordens_locais WHERE ordem_id=$1", [ordemLavacao.id])
+      ]);
+      const mapear = (l) => ({
+        localId: l.local_id,
+        nome: l.nome,
+        complemento: l.complemento,
+        regiao: l.regiao,
+        tipo: l.tipo,
+        secao: l.secao,
+        metragemUnica: l.metragem_unica != null ? Number(l.metragem_unica) : null,
+        dias: l.dias,
+        diasTexto: l.dias_texto,
+        metragemTotal: l.metragem_total != null ? Number(l.metragem_total) : 0
+      });
+      const { rows: sanitariosRaw } = await pool.query(
+        "SELECT * FROM varricao_locais WHERE secao = ANY($1::text[]) AND ativo IS NOT FALSE",
+        [SECOES_POR_CATEGORIA.sanitario]
+      );
+      const locaisSanitarios = calcularLocaisDoMes(sanitariosRaw, ano, mesNum);
+      const locais = [
+        ...locaisVarricaoRaw.map(mapear),
+        ...locaisLavacaoRaw.map(mapear),
+        ...locaisSanitarios
+      ];
+      const totalMetragem = locais.reduce((s, l) => s + l.metragemTotal, 0);
+      res.json({
+        mesReferencia: mes,
+        ordem: {
+          numero: `Varri\xE7\xE3o ${ordemVarricao.numero} \xB7 Lava\xE7\xE3o ${ordemLavacao.numero}`,
+          mes_referencia: mes,
+          data_emissao: (/* @__PURE__ */ new Date()).toISOString().split("T")[0],
+          emitido_por: req.session.userName ?? null,
+          observacao: null,
+          status: "finalizada",
+          finalizado_por: null,
+          finalizado_em: null,
+          created_at: (/* @__PURE__ */ new Date()).toISOString()
+        },
+        locais,
+        subtotaisRegiao: subtotais(locais, "regiao"),
+        subtotaisSecao: subtotais(locais, "secao"),
+        totaisPorCategoria: totaisPorCategoria(locais),
+        totalLocais: locais.length,
+        totalMetragem
+      });
+    } catch (error) {
+      console.error("Erro ao gerar documento combinado:", error);
+      res.status(500).json({ error: "Erro ao gerar o documento combinado" });
+    }
+  });
+  app.get("/api/varricao/ordens/:id", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const pool = getPool();
+      const { rows: ordens } = await pool.query("SELECT * FROM varricao_ordens WHERE id=$1", [id]);
+      if (!ordens.length) return res.status(404).json({ error: "Ordem de servi\xE7o n\xE3o encontrada" });
+      const { rows: locaisRaw } = await pool.query(
+        "SELECT * FROM varricao_ordens_locais WHERE ordem_id=$1 ORDER BY regiao, nome",
+        [id]
+      );
+      const locais = locaisRaw.map((l) => ({
+        localId: l.local_id,
+        nome: l.nome,
+        complemento: l.complemento,
+        regiao: l.regiao,
+        tipo: l.tipo,
+        secao: l.secao,
+        metragemUnica: l.metragem_unica != null ? Number(l.metragem_unica) : null,
+        dias: l.dias,
+        diasTexto: l.dias_texto,
+        metragemTotal: l.metragem_total != null ? Number(l.metragem_total) : 0
+      }));
+      const totalMetragem = locais.reduce((s, l) => s + l.metragemTotal, 0);
+      res.json({
+        ordem: ordens[0],
+        mesReferencia: ordens[0].mes_referencia,
+        locais,
+        subtotaisRegiao: subtotais(locais, "regiao"),
+        subtotaisSecao: subtotais(locais, "secao"),
+        totaisPorCategoria: totaisPorCategoria(locais),
+        totalLocais: locais.length,
+        totalMetragem
+      });
+    } catch (error) {
+      res.status(500).json({ error: "Erro ao buscar ordem de servi\xE7o" });
+    }
+  });
+  app.post("/api/varricao/ordens", requireRole("admin", "fiscal"), async (req, res) => {
+    try {
+      const { numero, mesReferencia, categoria, dataEmissao, observacao, locais: locaisEscolhidos } = req.body;
+      if (!numero || !mesReferencia || !dataEmissao) {
+        return res.status(400).json({ error: "N\xFAmero, m\xEAs de refer\xEAncia e data de emiss\xE3o s\xE3o obrigat\xF3rios" });
+      }
+      if (categoria !== "varricao" && categoria !== "lavacao") {
+        return res.status(400).json({ error: "Categoria inv\xE1lida \u2014 deve ser varricao ou lavacao" });
+      }
+      if (!Array.isArray(locaisEscolhidos) || locaisEscolhidos.length === 0) {
+        return res.status(400).json({ error: "Selecione ao menos um local para esta ordem de servi\xE7o" });
+      }
+      const mMes = String(mesReferencia).match(/^(\d{4})-(\d{2})$/);
+      if (!mMes) return res.status(400).json({ error: "M\xEAs de refer\xEAncia inv\xE1lido" });
+      const diasUteisDoMes = diasDoMesParaLocal(
+        { frequencia: "diario", dias_semana: null },
+        parseInt(mMes[1]),
+        parseInt(mMes[2])
+      );
+      const pool = getPool();
+      const { rows: jaExiste } = await pool.query(
+        "SELECT id, numero FROM varricao_ordens WHERE mes_referencia=$1 AND categoria=$2",
+        [mesReferencia, categoria]
+      );
+      if (jaExiste.length) {
+        return res.status(409).json({
+          error: `J\xE1 existe a OS ${jaExiste[0].numero} para este m\xEAs/categoria. Edite-a em vez de criar outra.`,
+          ordemExistenteId: jaExiste[0].id
+        });
+      }
+      const secoesPermitidas = new Set(SECOES_POR_CATEGORIA[categoria]);
+      const idsUnicos = Array.from(new Set(locaisEscolhidos.map((l) => Number(l.localId))));
+      const { rows: locaisRaw } = await pool.query(
+        "SELECT * FROM varricao_locais WHERE id = ANY($1::int[])",
+        [idsUnicos]
+      );
+      const porId = new Map(locaisRaw.map((l) => [l.id, l]));
+      const locais = [];
+      for (const item of locaisEscolhidos) {
+        const local = porId.get(Number(item.localId));
+        if (!local || !secoesPermitidas.has(local.secao)) continue;
+        const dias = Array.isArray(item.dias) ? item.dias.filter((d) => Number.isInteger(d) && d >= 1 && d <= 31).sort((a, b) => a - b) : [];
+        if (dias.length === 0) continue;
+        const metragemUnica = local.metragem_unica != null ? Number(local.metragem_unica) : null;
+        const ehDiarioCompleto = dias.length === diasUteisDoMes.length && dias.every((d, i) => d === diasUteisDoMes[i]);
+        locais.push({
+          localId: local.id,
+          nome: local.nome,
+          complemento: local.complemento,
+          regiao: local.regiao,
+          tipo: local.tipo,
+          secao: local.secao,
+          metragemUnica,
+          dias,
+          diasTexto: formatarDiasTexto(dias, ehDiarioCompleto ? "diario" : "semanal"),
+          metragemTotal: metragemUnica != null ? metragemUnica * dias.length : 0
+        });
+      }
+      if (locais.length === 0) {
+        return res.status(400).json({ error: "Nenhum local v\xE1lido informado" });
+      }
+      const { rows: ordemRows } = await pool.query(
+        `INSERT INTO varricao_ordens (numero, mes_referencia, categoria, data_emissao, emitido_por, observacao, status)
+         VALUES ($1,$2,$3,$4,$5,$6,'rascunho') RETURNING *`,
+        [numero, mesReferencia, categoria, dataEmissao, req.session.userName ?? null, observacao || null]
+      );
+      const ordem = ordemRows[0];
+      for (const l of locais) {
+        await pool.query(
+          `INSERT INTO varricao_ordens_locais
+             (ordem_id, local_id, nome, complemento, regiao, tipo, secao, metragem_unica, dias, dias_texto, metragem_total)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+          [
+            ordem.id,
+            l.localId,
+            l.nome,
+            l.complemento,
+            l.regiao,
+            l.tipo,
+            l.secao,
+            l.metragemUnica,
+            JSON.stringify(l.dias),
+            l.diasTexto,
+            l.metragemTotal
+          ]
+        );
+      }
+      res.status(201).json(ordem);
+    } catch (error) {
+      console.error("Erro ao emitir ordem de servi\xE7o de varri\xE7\xE3o:", error);
+      res.status(500).json({ error: "Erro ao emitir a ordem de servi\xE7o" });
+    }
+  });
+  app.patch("/api/varricao/ordens/:id", requireRole("admin", "fiscal"), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { numero, dataEmissao, observacao, locais: locaisEscolhidos } = req.body;
+      if (!Array.isArray(locaisEscolhidos) || locaisEscolhidos.length === 0) {
+        return res.status(400).json({ error: "Selecione ao menos um local para esta ordem de servi\xE7o" });
+      }
+      const pool = getPool();
+      const { rows: existentes } = await pool.query("SELECT * FROM varricao_ordens WHERE id=$1", [id]);
+      if (!existentes.length) return res.status(404).json({ error: "Ordem de servi\xE7o n\xE3o encontrada" });
+      if (existentes[0].status === "finalizada") {
+        return res.status(400).json({
+          error: "Esta OS j\xE1 foi finalizada e n\xE3o pode mais ser editada diretamente. Ajustes durante o m\xEAs precisam de outro processo."
+        });
+      }
+      const mesReferencia = existentes[0].mes_referencia;
+      const categoriaDaOrdem = existentes[0].categoria;
+      const secoesPermitidas = new Set(SECOES_POR_CATEGORIA[categoriaDaOrdem]);
+      const mMes = String(mesReferencia).match(/^(\d{4})-(\d{2})$/);
+      const diasUteisDoMes = diasDoMesParaLocal(
+        { frequencia: "diario", dias_semana: null },
+        parseInt(mMes[1]),
+        parseInt(mMes[2])
+      );
+      const idsUnicos = Array.from(new Set(locaisEscolhidos.map((l) => Number(l.localId))));
+      const { rows: locaisRaw } = await pool.query(
+        "SELECT * FROM varricao_locais WHERE id = ANY($1::int[])",
+        [idsUnicos]
+      );
+      const porId = new Map(locaisRaw.map((l) => [l.id, l]));
+      const locais = [];
+      for (const item of locaisEscolhidos) {
+        const local = porId.get(Number(item.localId));
+        if (!local || !secoesPermitidas.has(local.secao)) continue;
+        const dias = Array.isArray(item.dias) ? item.dias.filter((d) => Number.isInteger(d) && d >= 1 && d <= 31).sort((a, b) => a - b) : [];
+        if (dias.length === 0) continue;
+        const metragemUnica = local.metragem_unica != null ? Number(local.metragem_unica) : null;
+        const ehDiarioCompleto = dias.length === diasUteisDoMes.length && dias.every((d, i) => d === diasUteisDoMes[i]);
+        locais.push({
+          localId: local.id,
+          nome: local.nome,
+          complemento: local.complemento,
+          regiao: local.regiao,
+          tipo: local.tipo,
+          secao: local.secao,
+          metragemUnica,
+          dias,
+          diasTexto: formatarDiasTexto(dias, ehDiarioCompleto ? "diario" : "semanal"),
+          metragemTotal: metragemUnica != null ? metragemUnica * dias.length : 0
+        });
+      }
+      if (locais.length === 0) {
+        return res.status(400).json({ error: "Nenhum local v\xE1lido informado" });
+      }
+      const sets = [];
+      const vals = [];
+      if (numero !== void 0) {
+        vals.push(numero);
+        sets.push(`numero=$${vals.length}`);
+      }
+      if (dataEmissao !== void 0) {
+        vals.push(dataEmissao);
+        sets.push(`data_emissao=$${vals.length}`);
+      }
+      if (observacao !== void 0) {
+        vals.push(observacao || null);
+        sets.push(`observacao=$${vals.length}`);
+      }
+      if (sets.length > 0) {
+        vals.push(id);
+        await pool.query(`UPDATE varricao_ordens SET ${sets.join(", ")} WHERE id=$${vals.length}`, vals);
+      }
+      await pool.query("DELETE FROM varricao_ordens_locais WHERE ordem_id=$1", [id]);
+      for (const l of locais) {
+        await pool.query(
+          `INSERT INTO varricao_ordens_locais
+             (ordem_id, local_id, nome, complemento, regiao, tipo, secao, metragem_unica, dias, dias_texto, metragem_total)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+          [
+            id,
+            l.localId,
+            l.nome,
+            l.complemento,
+            l.regiao,
+            l.tipo,
+            l.secao,
+            l.metragemUnica,
+            JSON.stringify(l.dias),
+            l.diasTexto,
+            l.metragemTotal
+          ]
+        );
+      }
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Erro ao atualizar ordem de servi\xE7o de varri\xE7\xE3o:", error);
+      res.status(500).json({ error: "Erro ao atualizar a ordem de servi\xE7o" });
+    }
+  });
+  app.post("/api/varricao/ordens/:id/finalizar", requireRole("admin", "fiscal"), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const pool = getPool();
+      const { rows } = await pool.query(
+        `UPDATE varricao_ordens
+         SET status='finalizada', finalizado_por=$1, finalizado_em=NOW()
+         WHERE id=$2 AND status='rascunho'
+         RETURNING *`,
+        [req.session.userName ?? null, id]
+      );
+      if (!rows.length) {
+        return res.status(400).json({ error: "OS n\xE3o encontrada ou j\xE1 finalizada" });
+      }
+      res.json(rows[0]);
+    } catch (error) {
+      res.status(500).json({ error: "Erro ao finalizar a ordem de servi\xE7o" });
+    }
+  });
+  app.delete("/api/varricao/ordens/:id", requireRole("admin", "gestor", "fiscal"), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const pool = getPool();
+      const { rowCount } = await pool.query("DELETE FROM varricao_ordens WHERE id=$1", [id]);
+      if (!rowCount) return res.status(404).json({ error: "Ordem de servi\xE7o n\xE3o encontrada" });
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Erro ao excluir ordem de servi\xE7o" });
+    }
+  });
+  app.post("/api/varricao/fotos", requireAuth, upload.single("photo"), async (req, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ error: "Nenhuma foto enviada" });
+      const localId = parseInt(req.body.localId);
+      if (!localId) return res.status(400).json({ error: "Local \xE9 obrigat\xF3rio" });
+      const dataServico = req.body.dataServico || (/* @__PURE__ */ new Date()).toISOString().split("T")[0];
+      const lat = req.body.lat ? parseFloat(req.body.lat) : null;
+      const lng = req.body.lng ? parseFloat(req.body.lng) : null;
+      const pool = getPool();
+      const { rows: locais } = await pool.query(
+        "SELECT id FROM varricao_locais WHERE id=$1",
+        [localId]
+      );
+      if (!locais.length) return res.status(404).json({ error: "Local n\xE3o encontrado" });
+      const ext = (req.file.originalname.split(".").pop() || "jpg").toLowerCase();
+      const filePath = `varricao/${localId}/${Date.now()}.${ext}`;
+      const supabase = getSupabase();
+      const { error: uploadError } = await supabase.storage.from("fotos").upload(filePath, req.file.buffer, { contentType: req.file.mimetype, upsert: false });
+      if (uploadError) {
+        console.error("Supabase upload error (varricao):", uploadError);
+        return res.status(500).json({ error: uploadError.message });
+      }
+      const { data: { publicUrl } } = supabase.storage.from("fotos").getPublicUrl(filePath);
+      const { rows } = await pool.query(
+        `INSERT INTO varricao_fotos (local_id, url, data_servico, lat, lng, enviado_por_id, enviado_por_nome)
+         VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+        [localId, publicUrl, dataServico, lat, lng, req.session.userId ?? null, req.session.userName ?? null]
+      );
+      res.status(201).json(rows[0]);
+    } catch (error) {
+      console.error("Erro no upload de foto de varri\xE7\xE3o:", error);
+      res.status(500).json({ error: "Erro ao enviar a foto" });
+    }
+  });
+  app.delete("/api/varricao/fotos/:id", requireRole("admin", "gestor", "fiscal"), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const pool = getPool();
+      const { rows } = await pool.query("SELECT url FROM varricao_fotos WHERE id=$1", [id]);
+      if (!rows.length) return res.status(404).json({ error: "Foto n\xE3o encontrada" });
+      const marker = `/storage/v1/object/public/fotos/`;
+      const idx = rows[0].url.indexOf(marker);
+      if (idx >= 0) {
+        const filePath = decodeURIComponent(rows[0].url.slice(idx + marker.length));
+        const supabase = getSupabase();
+        await supabase.storage.from("fotos").remove([filePath]);
+      }
+      await pool.query("DELETE FROM varricao_fotos WHERE id=$1", [id]);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Erro ao excluir foto de varri\xE7\xE3o:", error);
+      res.status(500).json({ error: "Erro ao excluir a foto" });
+    }
+  });
+  app.get("/api/varricao/fotos", requireAuth, async (req, res) => {
+    try {
+      const conds = [];
+      const vals = [];
+      if (req.query.dataInicio && req.query.dataFim) {
+        vals.push(String(req.query.dataInicio), String(req.query.dataFim));
+        conds.push(`f.data_servico BETWEEN $1 AND $2`);
+      } else {
+        const data = String(req.query.data ?? (/* @__PURE__ */ new Date()).toISOString().split("T")[0]);
+        vals.push(data);
+        conds.push(`f.data_servico = $1`);
+      }
+      if (req.query.localId) {
+        vals.push(parseInt(String(req.query.localId)));
+        conds.push(`f.local_id = $${vals.length}`);
+      }
+      if (req.query.minhas === "1") {
+        vals.push(req.session.userId);
+        conds.push(`f.enviado_por_id = $${vals.length}`);
+      }
+      const pool = getPool();
+      const { rows } = await pool.query(
+        `SELECT f.*, l.nome AS local_nome, l.complemento AS local_complemento, l.regiao AS local_regiao
+         FROM varricao_fotos f
+         JOIN varricao_locais l ON l.id = f.local_id
+         WHERE ${conds.join(" AND ")}
+         ORDER BY f.created_at DESC`,
+        vals
+      );
+      res.json(rows);
+    } catch (error) {
+      res.status(500).json({ error: "Erro ao buscar fotos" });
+    }
+  });
+}
+
+// server/routes.ts
+async function registerRoutes(app) {
+  await ensureSetoresTable();
+  await ensureUsersSetorColumn();
+  await ensureUsersContratoColumn();
+  await ensureAdminExists();
+  await ensureAuditLogTable();
+  await ensureDemandasTable();
+  await ensureNotificacoesTable();
+  await ensureSolicitantesTable();
+  await ensureContratoConfigTable();
+  await ensureVarricaoLocaisTable();
+  await ensureVarricaoFotosTable();
+  await ensureVarricaoOrdensTable();
+  await ensureVarricaoConfigTable();
+  app.use((req, res, next) => {
+    if (req.session?.userRole === "encarregado" && req.path.startsWith("/api/")) {
+      const contrato = req.session.userContrato || "";
+      let permitido = req.path.startsWith("/api/auth/");
+      if (!permitido && contrato === "varricao") {
+        permitido = req.path === "/api/varricao/locais" && req.method === "GET" || req.path.startsWith("/api/varricao/fotos");
+      }
+      if (!permitido && contrato.startsWith("rocagem")) {
+        permitido = req.method === "GET" && (req.path.startsWith("/api/areas") || req.path.startsWith("/api/ordens")) || req.method === "POST" && /^\/api\/areas\/\d+\/photos$/.test(req.path) || req.method === "POST" && /^\/api\/areas\/\d+\/registrar-rocagem$/.test(req.path);
+      }
+      if (!permitido) {
+        return res.status(403).json({ error: "Acesso restrito ao contrato do encarregado" });
+      }
+    }
+    next();
+  });
+  app.use((req, res, next) => {
+    if (req.session?.userRole === "demo" && ["POST", "PATCH", "PUT", "DELETE"].includes(req.method) && req.path.startsWith("/api/") && !req.path.startsWith("/api/auth/")) {
+      if (req.method === "DELETE") {
+        return res.json({ success: true, demo: true });
+      }
+      return res.status(req.method === "POST" ? 201 : 200).json({
+        id: 99999,
+        demo: true,
+        success: true,
+        created_at: (/* @__PURE__ */ new Date()).toISOString()
+      });
+    }
+    next();
+  });
+  registerAuthRoutes(app);
+  registerUserRoutes(app);
+  registerRocagemRoutes(app);
+  registerAuditRoutes(app);
+  registerDemandasRoutes(app);
+  registerVarricaoRoutes(app);
+  registerSetoresRoutes(app);
 }
 
 // server/vite.ts
@@ -2340,7 +4553,6 @@ async function setupVite(app, server) {
     allowedHosts: true
   };
   const vite = await createViteServer({
-    configFile: true,
     customLogger: {
       ...viteLogger,
       error: (msg, options) => {
