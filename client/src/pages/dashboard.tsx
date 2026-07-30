@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useMemo, useDeferredValue, useCallback } f
 import { DashboardMap, getVarricaoDisplayPos, type VarricaoLocalMapa } from "@/components/DashboardMap";
 import { VarricaoSearchBar } from "@/components/VarricaoSearchBar";
 import { VarricaoInfoCard } from "@/components/VarricaoInfoCard";
+import { VarricaoLocalFormDialog } from "@/components/VarricaoLocalFormDialog";
 import { AppSidebar } from "@/components/AppSidebar";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { MapInfoCard } from "@/components/MapInfoCard";
@@ -96,6 +97,10 @@ export default function Dashboard({ isPublicView = false }: DashboardProps) {
   const [showRelocationConfirm, setShowRelocationConfirm] = useState(false);
   const [pendingNewAreaCoords, setPendingNewAreaCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [showNewAreaConfirm, setShowNewAreaConfirm] = useState(false);
+  const [pendingNewVarricaoCoords, setPendingNewVarricaoCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [showNewVarricaoConfirm, setShowNewVarricaoConfirm] = useState(false);
+  const [newVarricaoCoords, setNewVarricaoCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [showNewVarricaoModal, setShowNewVarricaoModal] = useState(false);
   const [selectedVarricaoLocalId, setSelectedVarricaoLocalId] = useState<number | null>(null);
   const [showVarricaoCard, setShowVarricaoCard] = useState(false);
   const [relocatingVarricaoLocalId, setRelocatingVarricaoLocalId] = useState<number | null>(null);
@@ -504,9 +509,14 @@ export default function Dashboard({ isPublicView = false }: DashboardProps) {
   // handleMapClick é passado como dependência do useEffect de inicialização do mapa
   const handleMapClick = useCallback((lat: number, lng: number) => {
     if (isPublicView) return;
+    if (selectedService === 'varricao') {
+      setPendingNewVarricaoCoords({ lat, lng });
+      setShowNewVarricaoConfirm(true);
+      return;
+    }
     setPendingNewAreaCoords({ lat, lng });
     setShowNewAreaConfirm(true);
-  }, [isPublicView]);
+  }, [isPublicView, selectedService]);
 
   const handleConfirmNewArea = () => {
     if (pendingNewAreaCoords) {
@@ -520,6 +530,20 @@ export default function Dashboard({ isPublicView = false }: DashboardProps) {
   const handleCancelNewArea = () => {
     setShowNewAreaConfirm(false);
     setPendingNewAreaCoords(null);
+  };
+
+  const handleConfirmNewVarricaoLocal = () => {
+    if (pendingNewVarricaoCoords) {
+      setNewVarricaoCoords(pendingNewVarricaoCoords);
+      setShowNewVarricaoModal(true);
+    }
+    setShowNewVarricaoConfirm(false);
+    setPendingNewVarricaoCoords(null);
+  };
+
+  const handleCancelNewVarricaoLocal = () => {
+    setShowNewVarricaoConfirm(false);
+    setPendingNewVarricaoCoords(null);
   };
 
   const handleAreaUpdate = (updatedArea: ServiceArea) => {
@@ -899,6 +923,12 @@ export default function Dashboard({ isPublicView = false }: DashboardProps) {
                   lng={newAreaCoords.lng}
                 />
               )}
+              <VarricaoLocalFormDialog
+                open={showNewVarricaoModal}
+                onOpenChange={setShowNewVarricaoModal}
+                local={null}
+                coordenadasIniciais={newVarricaoCoords}
+              />
               <EditAreaModal
                 area={selectedArea}
                 open={showEditModal}
@@ -1231,6 +1261,29 @@ export default function Dashboard({ isPublicView = false }: DashboardProps) {
         </AlertDialogContent>
       </AlertDialog>
 
+      <AlertDialog open={showNewVarricaoConfirm} onOpenChange={setShowNewVarricaoConfirm}>
+        <AlertDialogContent data-testid="dialog-new-varricao-confirm" className="z-[9999]">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Adicionar Novo Local de Varrição?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Deseja cadastrar um novo local de varrição nesta localização?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="flex gap-2 justify-end">
+            <AlertDialogCancel onClick={handleCancelNewVarricaoLocal} data-testid="button-cancel-new-varricao">
+              Cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmNewVarricaoLocal}
+              className="bg-green-600 hover:bg-green-700"
+              data-testid="button-confirm-new-varricao"
+            >
+              Sim, Adicionar
+            </AlertDialogAction>
+          </div>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {newAreaCoords && (
         <NewAreaModal
           open={showNewAreaModal}
@@ -1239,6 +1292,13 @@ export default function Dashboard({ isPublicView = false }: DashboardProps) {
           lng={newAreaCoords.lng}
         />
       )}
+
+      <VarricaoLocalFormDialog
+        open={showNewVarricaoModal}
+        onOpenChange={setShowNewVarricaoModal}
+        local={null}
+        coordenadasIniciais={newVarricaoCoords}
+      />
 
       <EditAreaModal
         area={selectedArea}

@@ -32,6 +32,10 @@ interface VarricaoLocalFormDialogProps {
   onOpenChange: (open: boolean) => void;
   local: VarricaoLocalEditavel | null; // null = cadastrando um local novo
   regioesExistentes?: string[];
+  // Ao cadastrar (local=null) a partir de um clique no mapa, o local já nasce
+  // com a posição exata do clique em vez de cair no grupo "pendentes" pra
+  // arrastar depois.
+  coordenadasIniciais?: { lat: number; lng: number } | null;
 }
 
 const TIPOS = ["Praça", "Rua", "Travessa", "Alameda", "Canteiro", "Avenida", "Feira", "Sanitários"];
@@ -66,7 +70,9 @@ function formDoLocal(local: VarricaoLocalEditavel): FormState {
   };
 }
 
-export function VarricaoLocalFormDialog({ open, onOpenChange, local, regioesExistentes = [] }: VarricaoLocalFormDialogProps) {
+export function VarricaoLocalFormDialog({
+  open, onOpenChange, local, regioesExistentes = [], coordenadasIniciais = null,
+}: VarricaoLocalFormDialogProps) {
   const { toast } = useToast();
   const [form, setForm] = useState<FormState>(emptyForm);
 
@@ -78,7 +84,7 @@ export function VarricaoLocalFormDialog({ open, onOpenChange, local, regioesExis
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      const body = {
+      const body: Record<string, unknown> = {
         nome: form.nome.trim(),
         complemento: form.complemento.trim() || null,
         regiao: form.regiao.trim() || null,
@@ -88,6 +94,10 @@ export function VarricaoLocalFormDialog({ open, onOpenChange, local, regioesExis
         frequencia: form.frequencia,
         diasSemana: form.frequencia === "semanal" ? form.diasSemana : null,
       };
+      if (!local && coordenadasIniciais) {
+        body.lat = coordenadasIniciais.lat;
+        body.lng = coordenadasIniciais.lng;
+      }
       const res = local
         ? await apiRequest("PATCH", `/api/varricao/locais/${local.id}`, body)
         : await apiRequest("POST", "/api/varricao/locais", body);
