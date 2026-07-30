@@ -254,7 +254,7 @@ export function registerUserRoutes(app: Express): void {
       const { rows } = await pool.query(
         `INSERT INTO users (nome, email, senha, role, ativo, setor_id, contrato)
          VALUES ($1,$2,$3,$4,true,$5,$6) RETURNING id, nome, email, role, contrato, ativo, setor_id`,
-        [nome, email, hashedPassword, role, setorId ?? null, role === "encarregado" ? contrato : null]
+        [nome, email, hashedPassword, role, setorId ?? null, (role === "encarregado" || role === "fiscal") ? (contrato || null) : null]
       );
       const u = rows[0];
       res.json({ id: u.id, nome: u.nome, email: u.email, role: u.role, contrato: u.contrato, ativo: u.ativo, setorId: u.setor_id });

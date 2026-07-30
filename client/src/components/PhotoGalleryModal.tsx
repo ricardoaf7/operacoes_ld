@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Upload, X, Calendar, Image as ImageIcon, Loader2, ChevronLeft, ChevronRight, ZoomIn } from "lucide-react";
+import { Upload, X, Calendar, Image as ImageIcon, Loader2, ChevronLeft, ChevronRight, ZoomIn, Camera, Video } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -17,6 +17,16 @@ import { formatDateBR } from "@/lib/utils";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/use-auth";
+import { ehVideo } from "@/lib/varricao-utils";
+import { comprimirImagem, duracaoDoVideo, DURACAO_MAXIMA_VIDEO_S } from "@/lib/media-upload";
+import { enviarParaUrlAssinada } from "@/lib/supabase-upload";
+
+function contratoDaArea(lote: number | undefined | null): string | null {
+  if (lote === 1) return "rocagem_lote1";
+  if (lote === 2) return "rocagem_lote2";
+  return null;
+}
 
 interface PhotoGalleryModalProps {
   area: ServiceArea;
@@ -32,9 +42,29 @@ export function PhotoGalleryModal({
   readOnly = false,
 }: PhotoGalleryModalProps) {
   const { toast } = useToast();
+  const { user } = useAuth();
   const [isUploading, setIsUploading] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [photoDate, setPhotoDate] = useState(() => new Date().toISOString().split("T")[0]);
+  const [statusCaptura, setStatusCaptura] = useState<string | null>(null);
+  const fotoCaptureInputRef = useRef<HTMLInputElement>(null);
+  const videoCaptureInputRef = useRef<HTMLInputElement>(null);
+
+  // Fiscal vinculado a um contrato específico ("coordenador") só tira foto/vídeo
+  // das áreas desse contrato; sem contrato definido, mantém acesso amplo (admin
+  // e a maioria dos fiscais hoje não têm contrato, então não são afetados).
+  const podeCapturar = !user?.contrato || user.contrato === contratoDaArea(area.lote);
+
+  function pegarGps(): Promise<{ lat: number; lng: number } | null> {
+    return new Promise((resolve) => {
+      if (!navigator.geolocation) { resolve(null); return; }
+      navigator.geolocation.getCurrentPosition(
+        (p) => resolve({ lat: p.coords.latitude, lng: p.coords.longitude }),
+        () => resolve(null),
+        { enableHighAccuracy: true, timeout: 8000 }
+      );
+    });
+  }
 
   const { data: freshArea } = useQuery<ServiceArea>({
     queryKey: ["/api/areas", area.id],
@@ -122,6 +152,83 @@ export function PhotoGalleryModal({
     }
   };
 
+  // Segunda opção de envio, ao lado do upload de arquivo acima: tirar a foto
+  // na hora (com GPS/marca d'água, igual a tela do encarregado) — útil pro
+  // fiscal/coordenador que está em campo com o celular, sem precisar tirar a
+  // foto num app separado e depois vir escolher o arquivo aqui.
+  async function handleFotoCapturada(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+
+    setStatusCaptura("Processando foto...");
+    try {
+      const gps = await pegarGps();
+      const agora = new Date();
+      const linhas = [
+        liveArea.endereco + (liveArea.bairro ? ` (${liveArea.bairro})` : ""),
+        `${agora.toLocaleDateString("pt-BR")} ${agora.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}` +
+          (gps ? `  ·  GPS ${gps.lat.toFixed(6)}, ${gps.lng.toFixed(6)}` : "  ·  GPS indisponível"),
+      ];
+      const blob = await comprimirImagem(file, linhas);
+
+      setStatusCaptura("Enviando foto...");
+      const formData = new FormData();
+      formData.append("photo", blob, "foto.jpg");
+      formData.append("date", photoDate);
+      const res = await fetch(`/api/areas/${area.id}/photos`, {
+        method: "POST", body: formData, credentials: "include",
+      });
+      if (!res.ok) throw new Error("Falha ao enviar a foto");
+
+      toast({ title: "Foto enviada!" });
+      queryClient.invalidateQueries({ queryKey: ["/api/areas", area.id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/areas/rocagem"] });
+    } catch (error) {
+      console.error("Erro ao capturar foto:", error);
+      toast({ variant: "destructive", title: "Não foi possível enviar a foto", description: "Tente novamente." });
+    } finally {
+      setStatusCaptura(null);
+    }
+  }
+
+  async function handleVideoCapturado(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+
+    setStatusCaptura("Verificando vídeo...");
+    try {
+      const duracao = await duracaoDoVideo(file);
+      if (duracao > DURACAO_MAXIMA_VIDEO_S + 1) {
+        toast({
+          variant: "destructive",
+          title: "Vídeo muito longo",
+          description: `O vídeo tem ${Math.round(duracao)}s — o máximo permitido é ${DURACAO_MAXIMA_VIDEO_S}s.`,
+        });
+        return;
+      }
+
+      setStatusCaptura("Enviando vídeo...");
+      const ext = (file.name.split(".").pop() || "mp4").toLowerCase();
+      const res = await apiRequest("POST", `/api/areas/${area.id}/video-url?ext=${ext}`);
+      const { token, path } = await res.json();
+      await enviarParaUrlAssinada(path, token, file);
+
+      setStatusCaptura("Registrando...");
+      await apiRequest("POST", `/api/areas/${area.id}/video-registrar`, { path, date: photoDate });
+
+      toast({ title: "Vídeo enviado!" });
+      queryClient.invalidateQueries({ queryKey: ["/api/areas", area.id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/areas/rocagem"] });
+    } catch (error) {
+      console.error("Erro ao capturar vídeo:", error);
+      toast({ variant: "destructive", title: "Não foi possível enviar o vídeo", description: "Tente novamente." });
+    } finally {
+      setStatusCaptura(null);
+    }
+  }
+
   const fotos = liveArea.fotos || [];
   const sortedFotos = [...fotos].sort(
     (a, b) => new Date(b.data).getTime() - new Date(a.data).getTime()
@@ -171,6 +278,39 @@ export function PhotoGalleryModal({
                   />
                 </label>
               </div>
+
+              {podeCapturar && (
+                statusCaptura ? (
+                  <div className="flex items-center justify-center gap-2 py-3 text-sm text-muted-foreground border rounded-lg">
+                    <Loader2 className="h-4 w-4 animate-spin" /> {statusCaptura}
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button
+                      type="button" variant="outline" className="h-10"
+                      onClick={() => fotoCaptureInputRef.current?.click()}
+                    >
+                      <Camera className="h-4 w-4 mr-2" /> Tirar Foto
+                    </Button>
+                    <Button
+                      type="button" variant="outline" className="h-10"
+                      onClick={() => videoCaptureInputRef.current?.click()}
+                    >
+                      <Video className="h-4 w-4 mr-2" /> Gravar Vídeo (até {DURACAO_MAXIMA_VIDEO_S}s)
+                    </Button>
+                    <input
+                      ref={fotoCaptureInputRef}
+                      type="file" accept="image/*" capture="environment"
+                      className="hidden" onChange={handleFotoCapturada}
+                    />
+                    <input
+                      ref={videoCaptureInputRef}
+                      type="file" accept="video/*" capture="environment"
+                      className="hidden" onChange={handleVideoCapturado}
+                    />
+                  </div>
+                )
+              )}
             </div>
 
             <Separator />
@@ -197,13 +337,21 @@ export function PhotoGalleryModal({
                 data-testid={`photo-card-${foto.url}`}
                 onClick={() => setLightboxIndex(index)}
               >
-                <img
-                  src={foto.url}
-                  alt="Galeria"
-                  className="w-full h-40 object-cover"
-                />
+                {ehVideo(foto.url) ? (
+                  <video src={foto.url} className="w-full h-40 object-cover bg-black" muted playsInline preload="metadata" />
+                ) : (
+                  <img
+                    src={foto.url}
+                    alt="Galeria"
+                    className="w-full h-40 object-cover"
+                  />
+                )}
                 <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
-                  <ZoomIn className="h-6 w-6 text-white drop-shadow-lg" />
+                  {ehVideo(foto.url) ? (
+                    <Video className="h-6 w-6 text-white drop-shadow-lg" />
+                  ) : (
+                    <ZoomIn className="h-6 w-6 text-white drop-shadow-lg" />
+                  )}
                 </div>
                 {!readOnly && (
                   <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -287,13 +435,23 @@ export function PhotoGalleryModal({
             </>
           )}
 
-          <img
-            src={sortedFotos[lightboxIndex].url}
-            alt="Visualização"
-            className="max-w-[90vw] max-h-[85vh] object-contain rounded-lg"
-            onClick={(e) => e.stopPropagation()}
-            data-testid="img-lightbox"
-          />
+          {ehVideo(sortedFotos[lightboxIndex].url) ? (
+            <video
+              src={sortedFotos[lightboxIndex].url}
+              controls autoPlay playsInline
+              className="max-w-[90vw] max-h-[85vh] rounded-lg"
+              onClick={(e) => e.stopPropagation()}
+              data-testid="video-lightbox"
+            />
+          ) : (
+            <img
+              src={sortedFotos[lightboxIndex].url}
+              alt="Visualização"
+              className="max-w-[90vw] max-h-[85vh] object-contain rounded-lg"
+              onClick={(e) => e.stopPropagation()}
+              data-testid="img-lightbox"
+            />
+          )}
 
           <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-2 text-white text-sm bg-black/60 px-4 py-2 rounded-full">
             <Calendar className="h-3.5 w-3.5" />

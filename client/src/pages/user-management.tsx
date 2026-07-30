@@ -95,7 +95,7 @@ export default function UserManagement() {
       const res = await apiRequest("POST", "/api/users", {
         nome, email, senha, role,
         setorId: setorId ? parseInt(setorId) : null,
-        contrato: role === "encarregado" ? contrato || null : null,
+        contrato: (role === "encarregado" || role === "fiscal") ? contrato || null : null,
       });
       if (!res.ok) {
         const err = await res.json();
@@ -119,7 +119,7 @@ export default function UserManagement() {
       const body: any = {
         id: editingUser.id, nome, email, role,
         setorId: setorId ? parseInt(setorId) : null,
-        contrato: role === "encarregado" ? contrato || null : null,
+        contrato: (role === "encarregado" || role === "fiscal") ? contrato || null : null,
       };
       if (senha) body.senha = senha;
       const res = await apiRequest("PATCH", `/api/users/${editingUser.id}`, body);
@@ -337,21 +337,26 @@ export default function UserManagement() {
                 </SelectContent>
               </Select>
             </div>
-            {role === "encarregado" && (
+            {(role === "encarregado" || role === "fiscal") && (
               <div className="space-y-2">
-                <label className="text-sm font-medium">Contrato *</label>
-                <Select value={contrato} onValueChange={setContrato}>
+                <label className="text-sm font-medium">
+                  Contrato {role === "encarregado" ? "*" : "(opcional)"}
+                </label>
+                <Select value={contrato} onValueChange={(v) => setContrato(v === "none" ? "" : v)}>
                   <SelectTrigger data-testid="select-user-contrato">
                     <SelectValue placeholder="Selecione o contrato..." />
                   </SelectTrigger>
                   <SelectContent className="z-[9999]">
+                    {role === "fiscal" && <SelectItem value="none">Sem contrato — acesso amplo</SelectItem>}
                     {Object.entries(CONTRATO_LABELS).map(([k, v]) => (
                       <SelectItem key={k} value={k}>{v}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
                 <p className="text-xs text-muted-foreground">
-                  O encarregado só enxerga as áreas, fotos e ordens de serviço deste contrato.
+                  {role === "encarregado"
+                    ? "O encarregado só enxerga as áreas, fotos e ordens de serviço deste contrato."
+                    : "Fiscal de um contrato específico (\"coordenador\"): a opção de tirar foto/gravar vídeo direto pelo celular fica restrita às áreas desse contrato. Sem contrato definido, o fiscal mantém acesso amplo como hoje."}
                 </p>
               </div>
             )}
