@@ -19,6 +19,8 @@ export interface VarricaoLocalMapa {
   tipo: string | null;
   secao: string;
   metragem_unica: string | null;
+  frequencia: string;
+  dias_semana: number[] | null;
   lat: number | null;
   lng: number | null;
   geocode_status: string;

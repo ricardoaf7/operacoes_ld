@@ -4,7 +4,8 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
-import { X, MapPin, Ruler, Move, CheckCircle2, AlertTriangle, ImageIcon } from "lucide-react";
+import { X, MapPin, Ruler, Move, CheckCircle2, AlertTriangle, ImageIcon, Pencil } from "lucide-react";
+import { VarricaoLocalFormDialog } from "./VarricaoLocalFormDialog";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -36,11 +37,13 @@ export function VarricaoInfoCard({ local, onClose, onAdjustPosition, isRelocatin
   const { toast } = useToast();
   const { user } = useAuth();
   const podeExcluir = user?.role === "admin" || user?.role === "gestor" || user?.role === "fiscal";
+  const podeEditar = podeExcluir;
   const hasCoords = local.lat != null && local.lng != null;
   // Padrão: últimas duas semanas
   const [inicio, setInicio] = useState(() => dataLocalISO(13));
   const [fim, setFim] = useState(() => dataLocalISO(0));
   const [fotoParaExcluir, setFotoParaExcluir] = useState<FotoLocal | null>(null);
+  const [editando, setEditando] = useState(false);
 
   const { data: fotos = [], isLoading: carregandoFotos } = useQuery<FotoLocal[]>({
     queryKey: ["/api/varricao/fotos", "local", local.id, inicio, fim],
@@ -85,6 +88,18 @@ export function VarricaoInfoCard({ local, onClose, onAdjustPosition, isRelocatin
             )}
           </div>
           <div className="flex items-center gap-0.5 -mt-1 -mr-1">
+            {podeEditar && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setEditando(true)}
+                className="h-6 w-6 text-muted-foreground"
+                title="Editar local"
+                data-testid="button-edit-varricao-local"
+              >
+                <Pencil className="h-3.5 w-3.5" />
+              </Button>
+            )}
             {hasCoords && !isRelocating && (
               <Button
                 variant="ghost"
@@ -233,6 +248,10 @@ export function VarricaoInfoCard({ local, onClose, onAdjustPosition, isRelocatin
           </AlertDialogContent>
         </AlertDialog>,
         document.body
+      )}
+
+      {podeEditar && (
+        <VarricaoLocalFormDialog open={editando} onOpenChange={setEditando} local={local} />
       )}
     </Card>
   );

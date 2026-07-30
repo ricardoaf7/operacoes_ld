@@ -4,7 +4,6 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -18,6 +17,7 @@ import {
 import { Link } from "wouter";
 import { correspondeBusca } from "@/lib/search-utils";
 import { CATEGORIA_LABELS, categoriaDaSecao, SECAO_LABELS, type VarricaoCategoria } from "@/lib/varricao-utils";
+import { VarricaoLocalFormDialog, DIAS } from "@/components/VarricaoLocalFormDialog";
 
 interface VarricaoLocal {
   id: number;
@@ -37,30 +37,11 @@ interface VarricaoLocal {
 
 const SECOES = SECAO_LABELS;
 
-const TIPOS = ["Praça", "Rua", "Travessa", "Alameda", "Canteiro", "Avenida", "Feira", "Sanitários"];
-const DIAS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
-
 function labelFrequencia(l: VarricaoLocal) {
   if (l.frequencia === "diario") return "Diário (seg–sáb)";
   if (l.dias_semana?.length) return l.dias_semana.map((d) => DIAS[d]).join(" + ");
   return "Semanal";
 }
-
-interface FormState {
-  nome: string;
-  complemento: string;
-  regiao: string;
-  tipo: string;
-  secao: string;
-  metragem: string;
-  frequencia: string;
-  diasSemana: number[];
-}
-
-const emptyForm: FormState = {
-  nome: "", complemento: "", regiao: "", tipo: "", secao: "varricao",
-  metragem: "", frequencia: "diario", diasSemana: [],
-};
 
 export default function VarricaoLocaisPage() {
   const { toast } = useToast();
@@ -69,8 +50,7 @@ export default function VarricaoLocaisPage() {
   const [filtroRegiao, setFiltroRegiao] = useState("");
   const [filtroSecao, setFiltroSecao] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [editingId, setEditingId] = useState<number | null>(null);
-  const [form, setForm] = useState<FormState>(emptyForm);
+  const [editingLocal, setEditingLocal] = useState<VarricaoLocal | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<VarricaoLocal | null>(null);
 
   const { data: locais = [], isLoading } = useQuery<VarricaoLocal[]>({
@@ -112,33 +92,6 @@ export default function VarricaoLocaisPage() {
     setFiltroSecao(""); // seções disponíveis mudam por aba
   }
 
-  const saveMutation = useMutation({
-    mutationFn: async () => {
-      const body = {
-        nome: form.nome.trim(),
-        complemento: form.complemento.trim() || null,
-        regiao: form.regiao.trim() || null,
-        tipo: form.tipo || null,
-        secao: form.secao,
-        metragemUnica: form.metragem ? parseFloat(form.metragem.replace(",", ".")) : null,
-        frequencia: form.frequencia,
-        diasSemana: form.frequencia === "semanal" ? form.diasSemana : null,
-      };
-      const res = editingId
-        ? await apiRequest("PATCH", `/api/varricao/locais/${editingId}`, body)
-        : await apiRequest("POST", "/api/varricao/locais", body);
-      if (!res.ok) throw new Error((await res.json()).error);
-      return res.json();
-    },
-    onSuccess: () => {
-      toast({ title: editingId ? "Local atualizado!" : "Local cadastrado!" });
-      queryClient.invalidateQueries({ queryKey: ["/api/varricao/locais"] });
-      setDialogOpen(false);
-    },
-    onError: (e: Error) =>
-      toast({ variant: "destructive", title: "Erro", description: e.message }),
-  });
-
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => {
       const res = await apiRequest("DELETE", `/api/varricao/locais/${id}`);
@@ -154,38 +107,14 @@ export default function VarricaoLocaisPage() {
   });
 
   function abrirNovo() {
-    setEditingId(null);
-    setForm(emptyForm);
+    setEditingLocal(null);
     setDialogOpen(true);
   }
 
   function abrirEdicao(l: VarricaoLocal) {
-    setEditingId(l.id);
-    setForm({
-      nome: l.nome,
-      complemento: l.complemento ?? "",
-      regiao: l.regiao ?? "",
-      tipo: l.tipo ?? "",
-      secao: l.secao,
-      metragem: l.metragem_unica ? String(l.metragem_unica) : "",
-      frequencia: l.frequencia,
-      diasSemana: l.dias_semana ?? [],
-    });
+    setEditingLocal(l);
     setDialogOpen(true);
   }
-
-  function toggleDia(d: number) {
-    setForm((f) => ({
-      ...f,
-      diasSemana: f.diasSemana.includes(d)
-        ? f.diasSemana.filter((x) => x !== d)
-        : [...f.diasSemana, d].sort(),
-    }));
-  }
-
-  const canSave =
-    form.nome.trim() &&
-    (form.frequencia !== "semanal" || form.diasSemana.length > 0);
 
   return (
     <div className="min-h-screen bg-background p-4 md:p-6">
@@ -366,127 +295,12 @@ export default function VarricaoLocaisPage() {
         </p>
       </div>
 
-      {/* Modal criar/editar */}
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{editingId ? "Editar Local" : "Novo Local"}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3 pt-1">
-            <div>
-              <Label>Nome do local *</Label>
-              <Input
-                className="mt-1"
-                placeholder='Ex.: "Rua Goiás"'
-                value={form.nome}
-                onChange={(e) => setForm({ ...form, nome: e.target.value })}
-              />
-            </div>
-            <div>
-              <Label>Complemento (trecho / referência)</Label>
-              <Input
-                className="mt-1"
-                placeholder='Ex.: "Av. Higienópolis até Av. Duque de Caxias"'
-                value={form.complemento}
-                onChange={(e) => setForm({ ...form, complemento: e.target.value })}
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label>Região</Label>
-                <Input
-                  className="mt-1"
-                  placeholder="Ex.: Centro"
-                  value={form.regiao}
-                  onChange={(e) => setForm({ ...form, regiao: e.target.value })}
-                  list="regioes-existentes"
-                />
-                <datalist id="regioes-existentes">
-                  {regioes.map((r) => <option key={r} value={r} />)}
-                </datalist>
-              </div>
-              <div>
-                <Label>Tipo</Label>
-                <Select value={form.tipo || "none"} onValueChange={(v) => setForm({ ...form, tipo: v === "none" ? "" : v })}>
-                  <SelectTrigger className="mt-1">
-                    <SelectValue placeholder="Selecione..." />
-                  </SelectTrigger>
-                  <SelectContent className="z-[9999]">
-                    <SelectItem value="none">Sem tipo</SelectItem>
-                    {TIPOS.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label>Seção</Label>
-                <Select value={form.secao} onValueChange={(v) => setForm({ ...form, secao: v })}>
-                  <SelectTrigger className="mt-1">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="z-[9999]">
-                    {Object.entries(SECOES).map(([k, v]) => (
-                      <SelectItem key={k} value={k}>{v}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label>Metragem (m/l ou m²)</Label>
-                <Input
-                  className="mt-1"
-                  placeholder="Ex.: 1100"
-                  value={form.metragem}
-                  onChange={(e) => setForm({ ...form, metragem: e.target.value })}
-                />
-              </div>
-            </div>
-            <div>
-              <Label>Frequência</Label>
-              <Select value={form.frequencia} onValueChange={(v) => setForm({ ...form, frequencia: v })}>
-                <SelectTrigger className="mt-1">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="z-[9999]">
-                  <SelectItem value="diario">Diário (segunda a sábado)</SelectItem>
-                  <SelectItem value="semanal">Dias fixos da semana</SelectItem>
-                </SelectContent>
-              </Select>
-              {form.frequencia === "semanal" && (
-                <div className="flex gap-1.5 mt-2 flex-wrap">
-                  {DIAS.map((d, i) => (
-                    <button
-                      key={d}
-                      type="button"
-                      onClick={() => toggleDia(i)}
-                      className={`px-2.5 py-1.5 text-xs rounded-md border transition-colors ${
-                        form.diasSemana.includes(i)
-                          ? "bg-primary text-primary-foreground border-primary"
-                          : "bg-background hover:bg-muted"
-                      }`}
-                    >
-                      {d}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-            <div className="flex gap-2 pt-2">
-              <Button variant="outline" className="flex-1" onClick={() => setDialogOpen(false)}>
-                Cancelar
-              </Button>
-              <Button
-                className="flex-1"
-                disabled={!canSave || saveMutation.isPending}
-                onClick={() => saveMutation.mutate()}
-              >
-                {saveMutation.isPending ? "Salvando..." : "Salvar"}
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <VarricaoLocalFormDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        local={editingLocal}
+        regioesExistentes={regioes}
+      />
 
       {/* Confirmação de exclusão */}
       <Dialog open={!!deleteConfirm} onOpenChange={(v) => !v && setDeleteConfirm(null)}>
