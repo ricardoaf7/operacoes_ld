@@ -17,7 +17,7 @@ import {
 import type { ServiceArea } from "@shared/schema";
 import { formatDateBR } from "@/lib/utils";
 import { useMutation } from "@tanstack/react-query";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, comVerTudo } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { PhotoGalleryModal } from "@/components/PhotoGalleryModal";
@@ -60,7 +60,7 @@ export function MapInfoCard({ area, onClose, onRegisterMowing, onSetManualForeca
     if (fullArea) return;
     setLoadingHistory(true);
     try {
-      const res = await fetch(`/api/areas/${area.id}`);
+      const res = await fetch(comVerTudo(`/api/areas/${area.id}`));
       if (res.ok) {
         const data = await res.json();
         setFullArea(data);
@@ -85,7 +85,7 @@ export function MapInfoCard({ area, onClose, onRegisterMowing, onSetManualForeca
     mutationFn: (idx: number) =>
       apiRequest("DELETE", `/api/areas/${area.id}/history/${idx}`),
     onSuccess: async () => {
-      const res = await fetch(`/api/areas/${area.id}`);
+      const res = await fetch(comVerTudo(`/api/areas/${area.id}`));
       if (res.ok) setFullArea(await res.json());
       queryClient.invalidateQueries({ queryKey: ["/api/areas/rocagem"] });
       setDeleteHistoryIdx(null);
@@ -102,7 +102,7 @@ export function MapInfoCard({ area, onClose, onRegisterMowing, onSetManualForeca
         observation,
       }),
     onSuccess: async () => {
-      const res = await fetch(`/api/areas/${area.id}`);
+      const res = await fetch(comVerTudo(`/api/areas/${area.id}`));
       if (res.ok) setFullArea(await res.json());
       queryClient.invalidateQueries({ queryKey: ["/api/areas/rocagem"] });
       setEditingHistoryIdx(null);

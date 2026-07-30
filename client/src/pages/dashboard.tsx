@@ -17,7 +17,7 @@ import { SidebarProvider, SidebarTrigger, SidebarInset } from "@/components/ui/s
 import { BottomSheet, type BottomSheetState } from "@/components/BottomSheet";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, comVerTudo, setModoVisualizacao } from "@/lib/queryClient";
 import type { ServiceArea, AppConfig } from "@shared/schema";
 import type { FilterCriteria } from "@/components/FilterPanel";
 import type { TimeRangeFilter } from "@/components/MapLegend";
@@ -36,6 +36,7 @@ import { ChangePasswordDialog } from "@/components/ChangePasswordDialog";
 import { NotificationBell } from "@/components/NotificationBell";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
+import { useModoVisualizacao } from "@/hooks/use-modo-visualizacao";
 import { useLocation } from "wouter";
 import {
   DropdownMenu,
@@ -76,6 +77,28 @@ export default function Dashboard({ isPublicView = false }: DashboardProps) {
   const [showEditModal, setShowEditModal] = useState(false);
   const [newAreaCoords, setNewAreaCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [selectedService, setSelectedService] = useState<string>('');
+
+  // "Modo Visualização" — fiscal de contrato ("coordenador") pode ligar isso
+  // pra consultar o serviço/lote que não é o dele, sem poder editar nada.
+  // Estado vive fora do React (queryClient.ts) porque App.tsx (gate de rota)
+  // também precisa dele e não é ancestral do Dashboard — ver useModoVisualizacao.
+  const modoVisualizacao = useModoVisualizacao();
+  const contratoFiscal = user?.role === "fiscal" ? (user.contrato ?? null) : null;
+  const podeUsarModoVisualizacao = !!contratoFiscal;
+
+  const toggleModoVisualizacao = useCallback(() => {
+    const novo = !modoVisualizacao;
+    setModoVisualizacao(novo);
+    if (!novo && contratoFiscal) {
+      const servicoProprio = contratoFiscal === "varricao" ? "varricao" : "rocagem";
+      setSelectedService((atual) => (atual && atual !== servicoProprio ? servicoProprio : atual));
+    }
+    queryClient.invalidateQueries({ queryKey: ["/api/areas/light"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/areas/rocagem"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/varricao/locais"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/ordens"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/cronogramas"] });
+  }, [modoVisualizacao, contratoFiscal]);
   const [bottomSheetState, setBottomSheetState] = useState<BottomSheetState>("minimized");
   const [filters, setFilters] = useState<FilterCriteria>({
     search: "",
@@ -228,7 +251,7 @@ export default function Dashboard({ isPublicView = false }: DashboardProps) {
   const { data: rocagemAreas = [] } = useQuery<ServiceArea[]>({
     queryKey: ["/api/areas/light", "rocagem"],
     queryFn: async () => {
-      const res = await fetch(`/api/areas/light?servico=rocagem`);
+      const res = await fetch(comVerTudo(`/api/areas/light?servico=rocagem`));
       if (!res.ok) throw new Error("Failed to fetch areas");
       return res.json();
     },
@@ -239,7 +262,7 @@ export default function Dashboard({ isPublicView = false }: DashboardProps) {
   const { data: varricaoLocais = [] } = useQuery<VarricaoLocalMapa[]>({
     queryKey: ["/api/varricao/locais"],
     queryFn: async () => {
-      const res = await fetch("/api/varricao/locais", { credentials: "include" });
+      const res = await fetch(comVerTudo("/api/varricao/locais"), { credentials: "include" });
       if (!res.ok) throw new Error("Falha ao carregar locais de varrição");
       return res.json();
     },
@@ -263,7 +286,7 @@ export default function Dashboard({ isPublicView = false }: DashboardProps) {
   const { data: periodAreaIds } = useQuery<{ ids: number[]; count: number }>({
     queryKey: ['/api/areas/by-period', statsPeriod?.from, statsPeriod?.to],
     queryFn: async () => {
-      const res = await fetch(`/api/areas/by-period?from=${statsPeriod!.from}&to=${statsPeriod!.to}`);
+      const res = await fetch(comVerTudo(`/api/areas/by-period?from=${statsPeriod!.from}&to=${statsPeriod!.to}`));
       if (!res.ok) throw new Error('Failed to fetch period areas');
       return res.json();
     },
@@ -910,6 +933,9 @@ export default function Dashboard({ isPublicView = false }: DashboardProps) {
                 onShowExportDialog={() => setShowExportDialog(true)}
                 onChangePassword={() => setShowChangePassword(true)}
                 onLogout={handleLogout}
+                podeUsarModoVisualizacao={podeUsarModoVisualizacao}
+                modoVisualizacao={modoVisualizacao}
+                onToggleModoVisualizacao={toggleModoVisualizacao}
               />
             </BottomSheet>
           )}
@@ -1053,8 +1079,11 @@ export default function Dashboard({ isPublicView = false }: DashboardProps) {
           onShowExportDialog={() => setShowExportDialog(true)}
           onChangePassword={() => setShowChangePassword(true)}
           onLogout={handleLogout}
+          podeUsarModoVisualizacao={podeUsarModoVisualizacao}
+          modoVisualizacao={modoVisualizacao}
+          onToggleModoVisualizacao={toggleModoVisualizacao}
         />
-        
+
         <SidebarInset className="flex-1 overflow-hidden flex flex-col">
           <header className="flex items-center h-20 px-4 border-b border-sidebar-border bg-background">
             <SidebarTrigger data-testid="button-sidebar-toggle" />

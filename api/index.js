@@ -1251,12 +1251,15 @@ function requireAuth(req, res, next) {
   }
   next();
 }
-function loteRestritoDoEncarregado(req) {
-  if (req.session?.userRole !== "encarregado") return null;
-  const contrato = req.session.userContrato || "";
+function loteRestritoDoUsuario(req) {
+  const role = req.session?.userRole;
+  if (role !== "encarregado" && role !== "fiscal") return null;
+  const contrato = req.session?.userContrato || "";
+  if (!contrato) return null;
+  if (role === "fiscal" && req.query.verTudo === "1") return null;
   if (contrato === "rocagem_lote1") return 1;
   if (contrato === "rocagem_lote2") return 2;
-  return null;
+  return 0;
 }
 function requireRole(...roles) {
   return (req, res, next) => {
@@ -2361,8 +2364,9 @@ function registerRocagemRoutes(app) {
   app.get("/api/areas/rocagem", requireAuth, async (req, res) => {
     try {
       let areas = await storage.getAllAreas("rocagem");
-      const loteRestrito = loteRestritoDoEncarregado(req);
-      if (loteRestrito) areas = areas.filter((a) => a.lote === loteRestrito);
+      const loteRestrito = loteRestritoDoUsuario(req);
+      if (loteRestrito === 0) areas = [];
+      else if (loteRestrito) areas = areas.filter((a) => a.lote === loteRestrito);
       res.json(areas);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch ro\xE7agem areas" });
@@ -2372,8 +2376,9 @@ function registerRocagemRoutes(app) {
     try {
       const boundsParam = req.query.bounds;
       let areas = await storage.getAllAreas("rocagem");
-      const loteRestrito = loteRestritoDoEncarregado(req);
-      if (loteRestrito) areas = areas.filter((a) => a.lote === loteRestrito);
+      const loteRestrito = loteRestritoDoUsuario(req);
+      if (loteRestrito === 0) areas = [];
+      else if (loteRestrito) areas = areas.filter((a) => a.lote === loteRestrito);
       if (boundsParam) {
         try {
           const bounds = JSON.parse(boundsParam);
@@ -2419,8 +2424,9 @@ function registerRocagemRoutes(app) {
         return;
       }
       let results = await storage.searchAreas(query, "rocagem", 50);
-      const loteRestrito = loteRestritoDoEncarregado(req);
-      if (loteRestrito) results = results.filter((a) => a.lote === loteRestrito);
+      const loteRestrito = loteRestritoDoUsuario(req);
+      if (loteRestrito === 0) results = [];
+      else if (loteRestrito) results = results.filter((a) => a.lote === loteRestrito);
       res.json(results);
     } catch (error) {
       console.error("Error searching areas:", error);
@@ -2436,12 +2442,12 @@ function registerRocagemRoutes(app) {
       const allAreas = await storage.getAllAreas("rocagem");
       const fromDate = /* @__PURE__ */ new Date(from + "T00:00:00");
       const toDate = /* @__PURE__ */ new Date(to + "T23:59:59");
-      const loteRestrito = loteRestritoDoEncarregado(req);
+      const loteRestrito = loteRestritoDoUsuario(req);
       const matchingAreas = allAreas.filter((area) => {
         if (!area.ultimaRocagem) return false;
         const mowDate = new Date(area.ultimaRocagem);
         if (mowDate < fromDate || mowDate > toDate) return false;
-        if (loteRestrito && area.lote !== loteRestrito) return false;
+        if (loteRestrito !== null && area.lote !== loteRestrito) return false;
         if (lote && typeof lote === "string" && lote !== "all") {
           if (area.lote !== parseInt(lote)) return false;
         }
@@ -2536,8 +2542,8 @@ function registerRocagemRoutes(app) {
         res.status(404).json({ error: "Area not found" });
         return;
       }
-      const loteRestrito = loteRestritoDoEncarregado(req);
-      if (loteRestrito && area.lote !== loteRestrito) {
+      const loteRestrito = loteRestritoDoUsuario(req);
+      if (loteRestrito !== null && area.lote !== loteRestrito) {
         res.status(404).json({ error: "Area not found" });
         return;
       }
@@ -3031,8 +3037,8 @@ function registerRocagemRoutes(app) {
         res.status(404).json({ error: "Area not found" });
         return;
       }
-      const loteRestrito = loteRestritoDoEncarregado(req);
-      if (loteRestrito && area.lote !== loteRestrito) {
+      const loteRestrito = loteRestritoDoUsuario(req);
+      if (loteRestrito !== null && area.lote !== loteRestrito) {
         res.status(404).json({ error: "Area not found" });
         return;
       }
@@ -3057,8 +3063,8 @@ function registerRocagemRoutes(app) {
         res.status(404).json({ error: "Area not found" });
         return;
       }
-      const loteRestrito = loteRestritoDoEncarregado(req);
-      if (loteRestrito && area.lote !== loteRestrito) {
+      const loteRestrito = loteRestritoDoUsuario(req);
+      if (loteRestrito !== null && area.lote !== loteRestrito) {
         res.status(404).json({ error: "Area not found" });
         return;
       }
@@ -3107,8 +3113,8 @@ function registerRocagemRoutes(app) {
         res.status(404).json({ error: "Area not found" });
         return;
       }
-      const loteRestrito = loteRestritoDoEncarregado(req);
-      if (loteRestrito && area.lote !== loteRestrito) {
+      const loteRestrito = loteRestritoDoUsuario(req);
+      if (loteRestrito !== null && area.lote !== loteRestrito) {
         res.status(404).json({ error: "Area not found" });
         return;
       }
@@ -3398,8 +3404,9 @@ function registerRocagemRoutes(app) {
     try {
       const sb = getSupabase();
       let query = sb.from("ordens_servico").select("*").order("created_at", { ascending: false });
-      const loteRestrito = loteRestritoDoEncarregado(req);
-      if (loteRestrito) query = query.eq("lote", loteRestrito);
+      const loteRestrito = loteRestritoDoUsuario(req);
+      if (loteRestrito === 0) query = query.eq("lote", -1);
+      else if (loteRestrito) query = query.eq("lote", loteRestrito);
       const { data, error } = await query;
       if (error) throw error;
       res.json(data);
@@ -3413,8 +3420,8 @@ function registerRocagemRoutes(app) {
       const sb = getSupabase();
       const { data: ordem, error: e1 } = await sb.from("ordens_servico").select("*").eq("id", id).single();
       if (e1) throw e1;
-      const loteRestrito = loteRestritoDoEncarregado(req);
-      if (loteRestrito && ordem.lote !== loteRestrito) {
+      const loteRestrito = loteRestritoDoUsuario(req);
+      if (loteRestrito !== null && ordem.lote !== loteRestrito) {
         res.status(404).json({ error: "Ordem n\xE3o encontrada" });
         return;
       }
@@ -3588,7 +3595,11 @@ function registerRocagemRoutes(app) {
   app.get("/api/cronogramas", requireAuth, async (req, res) => {
     try {
       const sb = getSupabase();
-      const { data, error } = await sb.from("cronogramas_semanais").select("*").order("semana_inicio", { ascending: false });
+      let query = sb.from("cronogramas_semanais").select("*").order("semana_inicio", { ascending: false });
+      const loteRestrito = loteRestritoDoUsuario(req);
+      if (loteRestrito === 0) query = query.eq("lote", -1);
+      else if (loteRestrito) query = query.eq("lote", loteRestrito);
+      const { data, error } = await query;
       if (error) throw error;
       res.json(data);
     } catch (error) {
@@ -3601,6 +3612,11 @@ function registerRocagemRoutes(app) {
       const sb = getSupabase();
       const { data: cronograma, error: e1 } = await sb.from("cronogramas_semanais").select("*").eq("id", id).single();
       if (e1) throw e1;
+      const loteRestrito = loteRestritoDoUsuario(req);
+      if (loteRestrito !== null && cronograma.lote !== loteRestrito) {
+        res.status(404).json({ error: "Cronograma n\xE3o encontrado" });
+        return;
+      }
       const { data: areaLinks, error: e2 } = await sb.from("cronograma_areas").select("area_id").eq("cronograma_id", id);
       if (e2) throw e2;
       const areaIds = areaLinks.map((r) => r.area_id);
@@ -4756,6 +4772,17 @@ async function registerRoutes(app) {
       }
       if (!permitido) {
         return res.status(403).json({ error: "Acesso restrito a este perfil" });
+      }
+    }
+    next();
+  });
+  app.use((req, res, next) => {
+    if (req.session?.userRole === "fiscal" && req.session.userContrato && req.path.startsWith("/api/") && req.query.verTudo !== "1") {
+      const contrato = req.session.userContrato;
+      const ehRotaVarricao = req.path.startsWith("/api/varricao/");
+      const ehRotaRocagem = req.path.startsWith("/api/areas") || req.path.startsWith("/api/ordens") || req.path.startsWith("/api/cronogramas");
+      if (contrato === "varricao" && ehRotaRocagem || contrato.startsWith("rocagem") && ehRotaVarricao) {
+        return res.status(403).json({ error: "Acesso restrito ao contrato do fiscal" });
       }
     }
     next();

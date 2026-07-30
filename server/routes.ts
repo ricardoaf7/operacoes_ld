@@ -77,6 +77,38 @@ export async function registerRoutes(app: Express): Promise<void> {
     next();
   });
 
+  // Middleware: fiscal vinculado a um contrato específico ("fiscal de
+  // contrato" / coordenador) fica bloqueado do domínio que não é dele —
+  // Roçagem × Varrição. Diferente do middleware acima (lista de permissão
+  // bem estreita, pensada só pro encarregado terceirizado), este é uma
+  // lista de BLOQUEIO: o fiscal mantém acesso normal a tudo que já usava
+  // (demandas, setores, configurações), só perde o serviço que não é dele.
+  // "Modo Visualização" (?verTudo=1) desliga esse bloqueio temporariamente
+  // pra ele poder consultar — sem editar — o que não é dele.
+  app.use((req, res, next) => {
+    if (
+      req.session?.userRole === "fiscal" &&
+      req.session.userContrato &&
+      req.path.startsWith("/api/") &&
+      req.query.verTudo !== "1"
+    ) {
+      const contrato = req.session.userContrato;
+      const ehRotaVarricao = req.path.startsWith("/api/varricao/");
+      const ehRotaRocagem =
+        req.path.startsWith("/api/areas") ||
+        req.path.startsWith("/api/ordens") ||
+        req.path.startsWith("/api/cronogramas");
+
+      if (
+        (contrato === "varricao" && ehRotaRocagem) ||
+        (contrato.startsWith("rocagem") && ehRotaVarricao)
+      ) {
+        return res.status(403).json({ error: "Acesso restrito ao contrato do fiscal" });
+      }
+    }
+    next();
+  });
+
   // Middleware: bloqueia gravações para usuário demo (retorna sucesso sem salvar)
   app.use((req, res, next) => {
     if (

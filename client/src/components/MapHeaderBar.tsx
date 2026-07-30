@@ -7,6 +7,7 @@ import { useQuery } from '@tanstack/react-query';
 import type { TimeRangeFilter } from './MapLegend';
 import type { ServiceArea } from '@shared/schema';
 import { rankearBusca } from '@/lib/search-utils';
+import { comVerTudo } from '@/lib/queryClient';
 
 export interface GeocodedResult {
   display_name: string;
@@ -153,7 +154,7 @@ export function MapHeaderBar({
     queryKey: ['/api/areas/search', deferredSearchQuery],
     queryFn: async () => {
       if (!deferredSearchQuery.trim()) return [];
-      const res = await fetch(`/api/areas/search?q=${encodeURIComponent(deferredSearchQuery)}&servico=rocagem`);
+      const res = await fetch(comVerTudo(`/api/areas/search?q=${encodeURIComponent(deferredSearchQuery)}&servico=rocagem`));
       if (!res.ok) return [];
       return res.json();
     },

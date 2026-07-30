@@ -29,10 +29,12 @@ import AuditoriaPage from "@/pages/auditoria";
 import NotFound from "@/pages/not-found";
 import { DemoBanner } from "@/components/DemoBanner";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { useModoVisualizacao } from "@/hooks/use-modo-visualizacao";
 import { Loader2 } from "lucide-react";
 
 function AuthenticatedRoutes() {
   const { user, isLoading } = useAuth();
+  const modoVisualizacao = useModoVisualizacao();
 
   if (isLoading) {
     return (
@@ -56,6 +58,13 @@ function AuthenticatedRoutes() {
     return <TransparenciaPage />;
   }
 
+  // Fiscal de contrato ("coordenador") não acessa direto pela URL o serviço
+  // que não é dele fora do Modo Visualização — mesma regra que já esconde
+  // esses itens do menu lateral.
+  const contratoFiscal = user.role === "fiscal" ? (user.contrato ?? null) : null;
+  const escondeRocagem = !!contratoFiscal && contratoFiscal === "varricao" && !modoVisualizacao;
+  const escondeVarricao = !!contratoFiscal && contratoFiscal.startsWith("rocagem") && !modoVisualizacao;
+
   return (
     <>
       {user.role === "demo" && <DemoBanner />}
@@ -63,16 +72,34 @@ function AuthenticatedRoutes() {
         <Switch>
           <Route path="/">{() => <Dashboard />}</Route>
           <Route path="/relatorios" component={RelatoriosPage} />
-          <Route path="/relatorios/rocagens" component={RelatorioRocagensPage} />
-          <Route path="/ordem-servico" component={OrdemServicoPage} />
-          <Route path="/cronograma" component={CronogramaPage} />
+          {!escondeRocagem && (
+            <Route path="/relatorios/rocagens" component={RelatorioRocagensPage} />
+          )}
+          {!escondeRocagem && (
+            <Route path="/ordem-servico" component={OrdemServicoPage} />
+          )}
+          {!escondeRocagem && (
+            <Route path="/cronograma" component={CronogramaPage} />
+          )}
           <Route path="/demandas" component={DemandasPage} />
-          <Route path="/varricao/locais" component={VarricaoLocaisPage} />
-          <Route path="/varricao/cobertura" component={VarricaoCoberturaPage} />
-          <Route path="/varricao/ordens/nova" component={VarricaoOrdemNovaPage} />
-          <Route path="/varricao/configuracoes" component={VarricaoConfiguracoesPage} />
-          <Route path="/varricao/ordens/:id" component={VarricaoOrdemDetalhePage} />
-          <Route path="/varricao/ordens" component={VarricaoOrdensPage} />
+          {!escondeVarricao && (
+            <Route path="/varricao/locais" component={VarricaoLocaisPage} />
+          )}
+          {!escondeVarricao && (
+            <Route path="/varricao/cobertura" component={VarricaoCoberturaPage} />
+          )}
+          {!escondeVarricao && (
+            <Route path="/varricao/ordens/nova" component={VarricaoOrdemNovaPage} />
+          )}
+          {!escondeVarricao && (
+            <Route path="/varricao/configuracoes" component={VarricaoConfiguracoesPage} />
+          )}
+          {!escondeVarricao && (
+            <Route path="/varricao/ordens/:id" component={VarricaoOrdemDetalhePage} />
+          )}
+          {!escondeVarricao && (
+            <Route path="/varricao/ordens" component={VarricaoOrdensPage} />
+          )}
           {(user.role === "admin" || user.role === "gestor") && (
             <Route path="/configuracoes" component={ConfiguracoesPage} />
           )}

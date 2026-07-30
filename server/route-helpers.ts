@@ -17,17 +17,30 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
   next();
 }
 
-// Se o requisitante é um encarregado vinculado a um lote específico da
-// Roçagem, devolve esse lote (1 ou 2) para restringir o que ele enxerga.
-// Para todo o resto (admin, gestor, fiscal, demo, público) devolve null —
-// a visão total/agregada continua livre, só o encarregado é escopado ao
-// próprio lote (antes vazava para o lote do colega).
-export function loteRestritoDoEncarregado(req: Request): 1 | 2 | null {
-  if (req.session?.userRole !== "encarregado") return null;
-  const contrato = req.session.userContrato || "";
+// Restrição de lote pra endpoints de Roçagem, aplicada a encarregado e a
+// fiscal de contrato ("coordenador"):
+//   1 | 2 -> escopado a esse lote
+//   0     -> bloqueia tudo (ex.: fiscal vinculado à Varrição pedindo dado de Roçagem)
+//   null  -> sem restrição (admin, gestor, demo, público, ou qualquer um
+//            sem contrato definido — a visão total/agregada continua livre)
+//
+// "Modo Visualização" (?verTudo=1): só o FISCAL pode pedir esse bypass — é
+// um modo de consulta opt-in que ele liga/desliga na própria tela. O
+// encarregado nunca ganha esse bypass, mesmo tentando pela URL: a restrição
+// dele é uma barreira de segurança de verdade (terceirizado), não um modo
+// de consulta.
+export function loteRestritoDoUsuario(req: Request): 1 | 2 | 0 | null {
+  const role = req.session?.userRole;
+  if (role !== "encarregado" && role !== "fiscal") return null;
+
+  const contrato = req.session?.userContrato || "";
+  if (!contrato) return null; // fiscal sem contrato definido: acesso amplo, como hoje
+
+  if (role === "fiscal" && req.query.verTudo === "1") return null;
+
   if (contrato === "rocagem_lote1") return 1;
   if (contrato === "rocagem_lote2") return 2;
-  return null;
+  return 0; // contrato de outro serviço (ex.: varricao) — bloqueia toda a Roçagem
 }
 
 export function requireRole(...roles: string[]) {

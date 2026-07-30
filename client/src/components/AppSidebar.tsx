@@ -15,6 +15,8 @@ import {
   LogOut,
   Shield,
   ImageIcon,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { Link } from "wouter";
 import { useState } from "react";
@@ -58,6 +60,9 @@ interface AppSidebarProps {
   onShowExportDialog?: () => void;
   onChangePassword?: () => void;
   onLogout?: () => void;
+  podeUsarModoVisualizacao?: boolean;
+  modoVisualizacao?: boolean;
+  onToggleModoVisualizacao?: () => void;
 }
 
 export function AppSidebar({
@@ -77,6 +82,9 @@ export function AppSidebar({
   onShowExportDialog,
   onChangePassword,
   onLogout,
+  podeUsarModoVisualizacao = false,
+  modoVisualizacao = false,
+  onToggleModoVisualizacao,
 }: AppSidebarProps) {
   const { theme } = useTheme();
   const { user } = useAuth();
@@ -87,6 +95,13 @@ export function AppSidebar({
       onServiceSelect(selectedService === service ? '' : service);
     }
   };
+
+  // Fiscal vinculado a um contrato específico ("coordenador") só vê o
+  // serviço dele no Modo Trabalho — o outro só aparece com o Modo
+  // Visualização ligado (ver, sem editar).
+  const contratoFiscal = user?.role === "fiscal" ? (user.contrato ?? null) : null;
+  const escondeRocagem = !!contratoFiscal && contratoFiscal === "varricao" && !modoVisualizacao;
+  const escondeVarricao = !!contratoFiscal && contratoFiscal.startsWith("rocagem") && !modoVisualizacao;
 
   const header = standalone ? (
     <div className="flex items-center justify-between gap-3">
@@ -121,6 +136,27 @@ export function AppSidebar({
           Zeladoria em Tempo Real
         </span>
       </div>
+      {podeUsarModoVisualizacao && (
+        <button
+          onClick={onToggleModoVisualizacao}
+          title={
+            modoVisualizacao
+              ? "Voltar ao seu contrato (com edição)"
+              : "Ver todos os contratos e serviços (sem poder editar)"
+          }
+          className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-colors border ${
+            modoVisualizacao
+              ? "bg-amber-100 dark:bg-amber-950 border-amber-300 dark:border-amber-800 text-amber-800 dark:text-amber-300"
+              : "bg-muted/40 border-border/50 text-muted-foreground hover:text-foreground hover:bg-muted/60"
+          }`}
+          data-testid="button-toggle-modo-visualizacao"
+        >
+          {modoVisualizacao ? <Eye className="h-3.5 w-3.5 flex-shrink-0" /> : <EyeOff className="h-3.5 w-3.5 flex-shrink-0" />}
+          <span className="flex-1 text-left">
+            {modoVisualizacao ? "Modo Visualização ativo" : "Ver outros contratos"}
+          </span>
+        </button>
+      )}
       {user && (
         <div className="w-full pt-1.5 mt-0.5 border-t border-border/30">
           <div className="flex items-center justify-between gap-2">
@@ -193,13 +229,16 @@ export function AppSidebar({
             </AccordionTrigger>
             <AccordionContent className="pb-1 pt-1 px-1">
               <div className="space-y-0.5">
+                {!escondeRocagem && (
                 <ServiceButton
                   active={selectedService === "rocagem"}
                   onClick={() => handleServiceClick("rocagem")}
                   label="Capina e Roçagem"
                   testId="service-rocagem"
                 />
+                )}
 
+                {!escondeRocagem && (
                 <AnimatePresence initial={false}>
                   {selectedService === "rocagem" && (
                     <motion.div
@@ -286,6 +325,7 @@ export function AppSidebar({
                     </motion.div>
                   )}
                 </AnimatePresence>
+                )}
 
                 <ServiceButton
                   active={selectedService === "boa-praca"}
@@ -299,13 +339,16 @@ export function AppSidebar({
                   label="Manutenção Lagos"
                   testId="service-manutencao-lagos"
                 />
+                {!escondeVarricao && (
                 <ServiceButton
                   active={selectedService === "varricao"}
                   onClick={() => handleServiceClick("varricao")}
                   label="Varrição"
                   testId="service-varricao"
                 />
+                )}
 
+                {!escondeVarricao && (
                 <AnimatePresence initial={false}>
                   {selectedService === "varricao" && (
                     <motion.div
@@ -346,6 +389,7 @@ export function AppSidebar({
                     </motion.div>
                   )}
                 </AnimatePresence>
+                )}
 
                 <ServiceButton
                   active={selectedService === "podas"}
