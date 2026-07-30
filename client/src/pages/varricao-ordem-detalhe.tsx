@@ -3,6 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
+import { useModoVisualizacao } from "@/hooks/use-modo-visualizacao";
 import { useRoute, Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -44,7 +45,8 @@ function formatDataBR(iso: string): string {
 export default function VarricaoOrdemDetalhePage() {
   const { toast } = useToast();
   const { user } = useAuth();
-  const podeEditar = user?.role === "admin" || user?.role === "fiscal";
+  const modoVisualizacao = useModoVisualizacao();
+  const podeEditar = (user?.role === "admin" || user?.role === "fiscal") && !modoVisualizacao;
   const [, params] = useRoute("/varricao/ordens/:id");
   const id = params?.id;
 

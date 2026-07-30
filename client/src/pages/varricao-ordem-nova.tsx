@@ -19,6 +19,7 @@ import {
 } from "@/lib/varricao-ordens-types";
 import { calcularSubtotais } from "@/lib/varricao-ordens-utils";
 import { CATEGORIA_LABELS, categoriaDaSecao } from "@/lib/varricao-utils";
+import { useModoVisualizacao } from "@/hooks/use-modo-visualizacao";
 
 interface VarricaoLocalCompleto {
   id: number;
@@ -40,6 +41,7 @@ function proximoMesISO(): string {
 
 export default function VarricaoOrdemNovaPage() {
   const { toast } = useToast();
+  const modoVisualizacao = useModoVisualizacao();
   const [, navigate] = useLocation();
   const [mes, setMes] = useState(proximoMesISO());
   const [categoria, setCategoria] = useState<VarricaoOrdemCategoria>("varricao");
@@ -122,7 +124,7 @@ export default function VarricaoOrdemNovaPage() {
 
   const totalLocais = rascunho?.length ?? 0;
   const totalMetragem = (rascunho ?? []).reduce((s, l) => s + l.metragemTotal, 0);
-  const podeEmitir = numero.trim().length > 0 && dataEmissao && totalLocais > 0 && !preview?.ordemExistente;
+  const podeEmitir = numero.trim().length > 0 && dataEmissao && totalLocais > 0 && !preview?.ordemExistente && !modoVisualizacao;
 
   const payloadParaExportar: VarricaoOrdemPayload | null = rascunho
     ? {

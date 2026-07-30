@@ -3,6 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
+import { useModoVisualizacao } from "@/hooks/use-modo-visualizacao";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -48,7 +49,8 @@ function formatDataExtenso(iso: string): string {
 export default function VarricaoCoberturaPage() {
   const { toast } = useToast();
   const { user } = useAuth();
-  const podeExcluir = user?.role === "admin" || user?.role === "gestor" || user?.role === "fiscal";
+  const modoVisualizacao = useModoVisualizacao();
+  const podeExcluir = (user?.role === "admin" || user?.role === "gestor" || user?.role === "fiscal") && !modoVisualizacao;
 
   const [data, setData] = useState(() => dataLocalISO(0));
   const [filtroSecao, setFiltroSecao] = useState("");

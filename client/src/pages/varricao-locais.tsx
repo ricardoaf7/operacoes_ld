@@ -18,6 +18,7 @@ import { Link } from "wouter";
 import { correspondeBusca } from "@/lib/search-utils";
 import { CATEGORIA_LABELS, categoriaDaSecao, SECAO_LABELS, type VarricaoCategoria } from "@/lib/varricao-utils";
 import { VarricaoLocalFormDialog, DIAS } from "@/components/VarricaoLocalFormDialog";
+import { useModoVisualizacao } from "@/hooks/use-modo-visualizacao";
 
 interface VarricaoLocal {
   id: number;
@@ -45,6 +46,7 @@ function labelFrequencia(l: VarricaoLocal) {
 
 export default function VarricaoLocaisPage() {
   const { toast } = useToast();
+  const modoVisualizacao = useModoVisualizacao();
   const [busca, setBusca] = useState("");
   const [abaCategoria, setAbaCategoria] = useState<VarricaoCategoria | "todos">("todos");
   const [filtroRegiao, setFiltroRegiao] = useState("");
@@ -139,7 +141,7 @@ export default function VarricaoLocaisPage() {
               </p>
             </div>
           </div>
-          <Button onClick={abrirNovo}>
+          <Button onClick={abrirNovo} disabled={modoVisualizacao}>
             <Plus className="h-4 w-4 mr-2" />
             Novo Local
           </Button>
@@ -272,16 +274,20 @@ export default function VarricaoLocaisPage() {
                       )}
                     </td>
                     <td className="px-3 py-2.5 text-right whitespace-nowrap">
-                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => abrirEdicao(l)}>
-                        <Pencil className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button
-                        variant="ghost" size="icon"
-                        className="h-8 w-8 text-destructive"
-                        onClick={() => setDeleteConfirm(l)}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
+                      {!modoVisualizacao && (
+                        <>
+                          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => abrirEdicao(l)}>
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            variant="ghost" size="icon"
+                            className="h-8 w-8 text-destructive"
+                            onClick={() => setDeleteConfirm(l)}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </>
+                      )}
                     </td>
                   </tr>
                 ))}

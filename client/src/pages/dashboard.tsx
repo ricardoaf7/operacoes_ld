@@ -85,6 +85,18 @@ export default function Dashboard({ isPublicView = false }: DashboardProps) {
   const modoVisualizacao = useModoVisualizacao();
   const contratoFiscal = user?.role === "fiscal" ? (user.contrato ?? null) : null;
   const podeUsarModoVisualizacao = !!contratoFiscal;
+  // Read-only efetivo: view pública OU Modo Visualização ligado. Usado em
+  // props/condicionais de render (não em dependência de useCallback — pra
+  // isso, os handlers abaixo leem modoVisualizacaoRef.current).
+  const efetivamenteSoLeitura = isPublicView || modoVisualizacao;
+
+  // Ref porque o Modo Visualização liga/desliga em tempo real, e alguns
+  // handlers que o consultam são useCallback com deps estáveis de propósito
+  // (evita recriar o mapa Leaflet — ver comentário perto de handleMapClick).
+  const modoVisualizacaoRef = useRef(modoVisualizacao);
+  useEffect(() => {
+    modoVisualizacaoRef.current = modoVisualizacao;
+  }, [modoVisualizacao]);
 
   const toggleModoVisualizacao = useCallback(() => {
     const novo = !modoVisualizacao;
@@ -187,6 +199,7 @@ export default function Dashboard({ isPublicView = false }: DashboardProps) {
 
   // Handler para iniciar modo de relocação
   const handleStartRelocation = () => {
+    if (modoVisualizacaoRef.current) return;
     if (selectedArea) {
       setRelocatingAreaId(selectedArea.id);
       toast({
@@ -199,6 +212,7 @@ export default function Dashboard({ isPublicView = false }: DashboardProps) {
   // Handler quando o marcador é arrastado
   // IMPORTANTE: useCallback para evitar recriação do mapa ao re-render
   const handlePositionChange = useCallback((areaId: number, lat: number, lng: number) => {
+    if (modoVisualizacaoRef.current) return;
     setPendingRelocation({ areaId, lat, lng });
     setShowRelocationConfirm(true);
   }, []);
@@ -508,6 +522,7 @@ export default function Dashboard({ isPublicView = false }: DashboardProps) {
   };
 
   const handleOpenQuickRegister = () => {
+    if (modoVisualizacaoRef.current) return;
     // Salvar zoom e centro atuais antes de abrir o modal
     if (mapRef.current) {
       setSavedMapZoom(mapRef.current.getZoom());
@@ -519,11 +534,13 @@ export default function Dashboard({ isPublicView = false }: DashboardProps) {
   };
 
   const handleOpenManualForecast = () => {
+    if (modoVisualizacaoRef.current) return;
     setShowMapCard(false);
     setShowManualForecastModal(true);
   };
 
   const handleOpenEdit = () => {
+    if (modoVisualizacaoRef.current) return;
     setShowMapCard(false);
     setShowEditModal(true);
   };
@@ -540,7 +557,7 @@ export default function Dashboard({ isPublicView = false }: DashboardProps) {
   }, [selectedService]);
 
   const handleMapClick = useCallback((lat: number, lng: number) => {
-    if (isPublicView) return;
+    if (isPublicView || modoVisualizacaoRef.current) return;
     if (selectedServiceRef.current === 'varricao') {
       setPendingNewVarricaoCoords({ lat, lng });
       setShowNewVarricaoConfirm(true);
@@ -676,6 +693,7 @@ export default function Dashboard({ isPublicView = false }: DashboardProps) {
 
   // Botão explícito "Ajustar Posição" dentro do card
   const handleStartVarricaoRelocation = useCallback(() => {
+    if (modoVisualizacaoRef.current) return;
     if (selectedVarricaoLocalId) {
       setRelocatingVarricaoLocalId(selectedVarricaoLocalId);
       toast({
@@ -687,6 +705,7 @@ export default function Dashboard({ isPublicView = false }: DashboardProps) {
 
   // Clique no mapa (ou dragend do marcador) propondo uma nova posição
   const handleVarricaoPositionChange = useCallback((id: number, lat: number, lng: number) => {
+    if (modoVisualizacaoRef.current) return;
     const local = varricaoLocais.find((l) => l.id === id);
     const isFirstPlacement = !local || local.lat == null || local.lng == null;
 
@@ -890,12 +909,12 @@ export default function Dashboard({ isPublicView = false }: DashboardProps) {
               <MapInfoCard
                 area={selectedArea}
                 onClose={handleCloseMapCard}
-                onRegisterMowing={isPublicView ? undefined : handleOpenQuickRegister}
-                onSetManualForecast={isPublicView ? undefined : handleOpenManualForecast}
-                onEdit={isPublicView ? undefined : handleOpenEdit}
-                onChangeLocation={isPublicView ? undefined : handleStartRelocation}
+                onRegisterMowing={efetivamenteSoLeitura ? undefined : handleOpenQuickRegister}
+                onSetManualForecast={efetivamenteSoLeitura ? undefined : handleOpenManualForecast}
+                onEdit={efetivamenteSoLeitura ? undefined : handleOpenEdit}
+                onChangeLocation={efetivamenteSoLeitura ? undefined : handleStartRelocation}
                 isRelocating={relocatingAreaId === selectedArea.id}
-                isPublicView={isPublicView}
+                isPublicView={efetivamenteSoLeitura}
               />
             </div>
           )}

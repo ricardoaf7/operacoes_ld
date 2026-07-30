@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useModoVisualizacao } from "@/hooks/use-modo-visualizacao";
 import type { ServiceArea } from "@shared/schema";
 
 function formatDate(d: string) {
@@ -173,6 +174,7 @@ async function gerarPDFCronograma(c: any, areas: any[]): Promise<void> {
 }
 
 export default function CronogramaPage() {
+  const modoVisualizacao = useModoVisualizacao();
   const [activeTab, setActiveTab] = useState<"novo" | "historico">("novo");
   const [lote, setLote] = useState<number>(1);
   const [semanaInicio, setSemanaInicio] = useState("");
@@ -527,7 +529,7 @@ export default function CronogramaPage() {
               <div className="flex-1" />
               <button
                 onClick={handleSubmit}
-                disabled={isPending}
+                disabled={isPending || modoVisualizacao}
                 className="px-5 py-1.5 bg-emerald-600 text-white rounded-md text-sm font-medium hover:bg-emerald-700 active:scale-[0.97] transition-[background-color,transform] duration-150 disabled:opacity-60 flex items-center gap-1.5"
               >
                 {isPending ? (
@@ -806,20 +808,24 @@ export default function CronogramaPage() {
                       {generatingPdf === c.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <FileText className="h-3 w-3" />}
                       {generatingPdf === c.id ? "Gerando..." : "Gerar PDF"}
                     </button>
-                    <button
-                      onClick={() => handleEdit(c)}
-                      className="px-3 py-1.5 text-xs border rounded-md hover:bg-accent transition-colors flex items-center gap-1.5"
-                    >
-                      <Pencil className="h-3 w-3" />
-                      Editar
-                    </button>
-                    <button
-                      onClick={() => setConfirmDelete(c.id)}
-                      className="px-3 py-1.5 text-xs border border-red-200 text-red-600 rounded-md hover:bg-red-50 transition-colors flex items-center gap-1.5"
-                    >
-                      <Trash2 className="h-3 w-3" />
-                      Excluir
-                    </button>
+                    {!modoVisualizacao && (
+                      <>
+                        <button
+                          onClick={() => handleEdit(c)}
+                          className="px-3 py-1.5 text-xs border rounded-md hover:bg-accent transition-colors flex items-center gap-1.5"
+                        >
+                          <Pencil className="h-3 w-3" />
+                          Editar
+                        </button>
+                        <button
+                          onClick={() => setConfirmDelete(c.id)}
+                          className="px-3 py-1.5 text-xs border border-red-200 text-red-600 rounded-md hover:bg-red-50 transition-colors flex items-center gap-1.5"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                          Excluir
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
               ))

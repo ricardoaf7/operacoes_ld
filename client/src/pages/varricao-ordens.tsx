@@ -15,6 +15,7 @@ import { formatMesReferencia, formatMetragem, type VarricaoOrdemRegistro } from 
 import { VarricaoStatusBadge } from "@/components/VarricaoStatusBadge";
 import { CATEGORIA_LABELS } from "@/lib/varricao-utils";
 import { VarricaoDocumentoCombinadoDialog } from "@/components/VarricaoDocumentoCombinadoDialog";
+import { useModoVisualizacao } from "@/hooks/use-modo-visualizacao";
 
 function formatDataBR(iso: string): string {
   const [y, m, d] = iso.slice(0, 10).split("-");
@@ -24,8 +25,9 @@ function formatDataBR(iso: string): string {
 export default function VarricaoOrdensPage() {
   const { toast } = useToast();
   const { user } = useAuth();
-  const podeEmitir = user?.role === "admin" || user?.role === "fiscal";
-  const podeExcluir = user?.role === "admin" || user?.role === "gestor" || user?.role === "fiscal";
+  const modoVisualizacao = useModoVisualizacao();
+  const podeEmitir = (user?.role === "admin" || user?.role === "fiscal") && !modoVisualizacao;
+  const podeExcluir = (user?.role === "admin" || user?.role === "gestor" || user?.role === "fiscal") && !modoVisualizacao;
   const podeConfigurar = user?.role === "admin" || user?.role === "gestor";
   const [paraExcluir, setParaExcluir] = useState<VarricaoOrdemRegistro | null>(null);
   const [mostrarCombinado, setMostrarCombinado] = useState(false);

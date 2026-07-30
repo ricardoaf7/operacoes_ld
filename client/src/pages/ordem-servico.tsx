@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
+import { useModoVisualizacao } from "@/hooks/use-modo-visualizacao";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -48,6 +49,7 @@ const PAGE_SIZE = 50;
 export default function OrdemServicoPage() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const modoVisualizacao = useModoVisualizacao();
   const [tab, setTab] = useState<"nova" | "historico">("nova");
   const [lote, setLote] = useState<"1" | "2">("1");
   const [busca, setBusca] = useState("");
@@ -361,7 +363,7 @@ export default function OrdemServicoPage() {
                     </span>
                   )}
                 </span>
-                {(selectedIds.size > 0 || editandoId) && (
+                {(selectedIds.size > 0 || editandoId) && !modoVisualizacao && (
                   <Button onClick={() => setDialogOpen(true)} className="bg-emerald-600 hover:bg-emerald-700">
                     {editandoId ? <Pencil className="h-4 w-4 mr-2" /> : <Plus className="h-4 w-4 mr-2" />}
                     {editandoId ? "Salvar alterações" : "Emitir OS"}

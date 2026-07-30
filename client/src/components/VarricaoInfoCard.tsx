@@ -4,6 +4,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
+import { useModoVisualizacao } from "@/hooks/use-modo-visualizacao";
 import { X, MapPin, Ruler, Move, CheckCircle2, AlertTriangle, ImageIcon, Pencil } from "lucide-react";
 import { VarricaoLocalFormDialog } from "./VarricaoLocalFormDialog";
 import { Card, CardContent } from "@/components/ui/card";
@@ -36,7 +37,8 @@ interface VarricaoInfoCardProps {
 export function VarricaoInfoCard({ local, onClose, onAdjustPosition, isRelocating }: VarricaoInfoCardProps) {
   const { toast } = useToast();
   const { user } = useAuth();
-  const podeExcluir = user?.role === "admin" || user?.role === "gestor" || user?.role === "fiscal";
+  const modoVisualizacao = useModoVisualizacao();
+  const podeExcluir = (user?.role === "admin" || user?.role === "gestor" || user?.role === "fiscal") && !modoVisualizacao;
   const podeEditar = podeExcluir;
   const hasCoords = local.lat != null && local.lng != null;
   // Padrão: últimas duas semanas
@@ -100,7 +102,7 @@ export function VarricaoInfoCard({ local, onClose, onAdjustPosition, isRelocatin
                 <Pencil className="h-3.5 w-3.5" />
               </Button>
             )}
-            {hasCoords && !isRelocating && (
+            {hasCoords && !isRelocating && !modoVisualizacao && (
               <Button
                 variant="ghost"
                 size="icon"
