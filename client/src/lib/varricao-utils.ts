@@ -1,5 +1,13 @@
 // Utilitários compartilhados entre as telas de Varrição (mapa, encarregado, painel de cobertura)
 
+// Fotos e vídeos ficam salvos juntos (mesma tabela/array) — quem exibe decide
+// pela extensão do arquivo se mostra <img> ou <video>.
+const EXTENSOES_VIDEO = new Set(["mp4", "mov", "webm", "m4v", "avi"]);
+export function ehVideo(url: string): boolean {
+  const ext = url.split(".").pop()?.split("?")[0]?.toLowerCase() ?? "";
+  return EXTENSOES_VIDEO.has(ext);
+}
+
 export const SECAO_LABELS: Record<string, string> = {
   varricao: "Varrição",
   varricao_2turno: "Varrição — 2º turno",

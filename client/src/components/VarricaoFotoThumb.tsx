@@ -1,5 +1,5 @@
 import { Navigation, Trash2 } from "lucide-react";
-import { distanciaMetros, formatDataBR } from "@/lib/varricao-utils";
+import { distanciaMetros, formatDataBR, ehVideo } from "@/lib/varricao-utils";
 
 export interface VarricaoFoto {
   id: number;
@@ -24,6 +24,7 @@ export function VarricaoFotoThumb({ foto, localLat, localLng, podeExcluir, onExc
     ? distanciaMetros(localLat!, localLng!, foto.lat, foto.lng)
     : null;
   const distLonge = dist != null && dist > 100;
+  const isVideo = ehVideo(foto.url);
 
   return (
     <div className="relative group">
@@ -34,12 +35,22 @@ export function VarricaoFotoThumb({ foto, localLat, localLng, podeExcluir, onExc
         className="block"
         title={`${formatDataBR(foto.data_servico)}${foto.enviado_por_nome ? ` — ${foto.enviado_por_nome}` : ""}`}
       >
-        <img
-          src={foto.url}
-          alt={`Foto de ${formatDataBR(foto.data_servico)}`}
-          className="aspect-square object-cover rounded-md border border-border group-hover:opacity-85 transition-opacity"
-          loading="lazy"
-        />
+        {isVideo ? (
+          <video
+            src={foto.url}
+            className="aspect-square object-cover rounded-md border border-border group-hover:opacity-85 transition-opacity bg-black"
+            muted
+            playsInline
+            preload="metadata"
+          />
+        ) : (
+          <img
+            src={foto.url}
+            alt={`Foto de ${formatDataBR(foto.data_servico)}`}
+            className="aspect-square object-cover rounded-md border border-border group-hover:opacity-85 transition-opacity"
+            loading="lazy"
+          />
+        )}
         <span className="absolute bottom-0.5 right-0.5 bg-black/65 text-white text-[9px] px-1 rounded">
           {formatDataBR(foto.data_servico).slice(0, 5)}
         </span>

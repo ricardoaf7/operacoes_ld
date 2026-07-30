@@ -8,10 +8,25 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   Camera, LogOut, MapPin, Search, ChevronLeft, CheckCircle2,
-  Navigation, Loader2, ImageIcon, X, Clock, UploadCloud,
+  Navigation, Loader2, ImageIcon, X, Clock, UploadCloud, Video,
 } from "lucide-react";
 import { rankearBusca } from "@/lib/search-utils";
-import { SECAO_LABELS, distanciaMetros, formatDistancia, programadoNaData, dataLocalISO as dataLocalISOUtil } from "@/lib/varricao-utils";
+import { SECAO_LABELS, distanciaMetros, formatDistancia, programadoNaData, dataLocalISO as dataLocalISOUtil, ehVideo } from "@/lib/varricao-utils";
+import { enviarParaUrlAssinada } from "@/lib/supabase-upload";
+
+const DURACAO_MAXIMA_VIDEO_S = 30;
+
+// Lê a duração de um vídeo sem precisar subir/decodificar o arquivo inteiro
+function duracaoDoVideo(file: File): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const video = document.createElement("video");
+    video.preload = "metadata";
+    video.onloadedmetadata = () => { resolve(video.duration); URL.revokeObjectURL(url); };
+    video.onerror = () => { URL.revokeObjectURL(url); reject(new Error("Não foi possível ler o vídeo")); };
+    video.src = url;
+  });
+}
 
 const CONTRATO_LABELS: Record<string, string> = {
   rocagem_lote1: "Capina e Roçagem — Lote 1",
@@ -255,6 +270,7 @@ export default function EncarregadoPage() {
   const { user, logout } = useAuth();
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const videoInputRef = useRef<HTMLInputElement>(null);
 
   const modo: Modo | null =
     user?.contrato === "varricao" ? "varricao" :
@@ -267,6 +283,7 @@ export default function EncarregadoPage() {
   const [localSelecionado, setLocalSelecionado] = useState<ItemLista | null>(null);
   const [preview, setPreview] = useState<{ url: string; blob: Blob } | null>(null);
   const [processando, setProcessando] = useState(false);
+  const [statusVideo, setStatusVideo] = useState<string | null>(null);
 
   const contratoLabel = user?.contrato ? CONTRATO_LABELS[user.contrato] ?? user.contrato : null;
 
@@ -560,6 +577,68 @@ export default function EncarregadoPage() {
     }
   }
 
+  // Vídeo é grande demais pra passar pelo servidor (limite de payload da
+  // Vercel) — sobe DIRETO pro Supabase Storage com uma URL assinada que o
+  // servidor gera na hora. Não compressão nem marca d'água (diferente da
+  // foto) e, diferente da fila offline de fotos, exige internet no momento
+  // do envio — um vídeo de até 30s já é grande demais pra guardar no
+  // aparelho junto com as fotos pendentes.
+  async function handleVideoSelecionado(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file || !localSelecionado || !modo) return;
+
+    setStatusVideo("Verificando vídeo...");
+    try {
+      const duracao = await duracaoDoVideo(file);
+      if (duracao > DURACAO_MAXIMA_VIDEO_S + 1) {
+        toast({
+          variant: "destructive",
+          title: "Vídeo muito longo",
+          description: `O vídeo tem ${Math.round(duracao)}s — o máximo permitido é ${DURACAO_MAXIMA_VIDEO_S}s.`,
+        });
+        return;
+      }
+
+      setStatusVideo("Enviando vídeo...");
+      const ext = (file.name.split(".").pop() || "mp4").toLowerCase();
+      const dataServico = hojeLocal();
+
+      if (modo === "varricao") {
+        const res = await apiRequest("POST", `/api/varricao/locais/${localSelecionado.id}/video-url?ext=${ext}`);
+        const { token, path } = await res.json();
+        await enviarParaUrlAssinada(path, token, file);
+        setStatusVideo("Registrando...");
+        await apiRequest("POST", "/api/varricao/fotos/registrar-video", {
+          localId: localSelecionado.id, path, dataServico,
+          lat: gps?.lat ?? null, lng: gps?.lng ?? null,
+        });
+        queryClient.invalidateQueries({ queryKey: ["/api/varricao/fotos"] });
+      } else {
+        const res = await apiRequest("POST", `/api/areas/${localSelecionado.id}/video-url?ext=${ext}`);
+        const { token, path } = await res.json();
+        await enviarParaUrlAssinada(path, token, file);
+        setStatusVideo("Registrando...");
+        await apiRequest("POST", `/api/areas/${localSelecionado.id}/video-registrar`, {
+          path, date: dataServico,
+        });
+        queryClient.invalidateQueries({ queryKey: ["/api/areas/rocagem"] });
+      }
+
+      toast({ title: "Vídeo enviado!", description: localSelecionado.titulo });
+    } catch (err) {
+      toast({
+        variant: "destructive",
+        title: "Não foi possível enviar o vídeo",
+        description: erroDeRede(err)
+          ? "Sem internet no momento — tente novamente com sinal."
+          : "Tente gravar novamente.",
+      });
+    } finally {
+      setStatusVideo(null);
+    }
+  }
+
   // ---------- SEM CONTRATO RECONHECIDO ----------
   if (!modo) {
     return (
@@ -604,7 +683,12 @@ export default function EncarregadoPage() {
         </header>
 
         <main className="flex-1 flex flex-col p-4 gap-4">
-          {processando ? (
+          {statusVideo ? (
+            <div className="flex-none rounded-2xl border-2 border-dashed border-blue-500/50 bg-blue-500/5 py-14 flex flex-col items-center justify-center gap-3">
+              <Loader2 className="h-10 w-10 text-blue-600 animate-spin" />
+              <span className="font-medium text-blue-700 dark:text-blue-400">{statusVideo}</span>
+            </div>
+          ) : processando ? (
             <div className="flex-none rounded-2xl border-2 border-dashed border-emerald-500/50 bg-emerald-500/5 py-14 flex flex-col items-center justify-center gap-3">
               <Loader2 className="h-10 w-10 text-emerald-600 animate-spin" />
               <span className="font-medium text-emerald-700 dark:text-emerald-400">Processando foto...</span>
@@ -641,22 +725,27 @@ export default function EncarregadoPage() {
               </div>
             </>
           ) : (
-            <button
-              className="flex-none rounded-2xl border-2 border-dashed border-emerald-500/50 bg-emerald-500/5 py-14 flex flex-col items-center justify-center gap-3 active:bg-emerald-500/15 transition-colors"
-              onClick={() => fileInputRef.current?.click()}
-            >
-              <div className="h-16 w-16 rounded-full bg-emerald-600 flex items-center justify-center">
-                <Camera className="h-8 w-8 text-white" />
-              </div>
-              <span className="font-medium text-emerald-700 dark:text-emerald-400">Tirar Foto</span>
-              {gps ? (
-                <span className="text-xs text-muted-foreground flex items-center gap-1">
-                  <Navigation className="h-3 w-3" /> Localização será registrada
-                </span>
-              ) : (
-                <span className="text-xs text-amber-600">GPS indisponível — foto sem localização</span>
-              )}
-            </button>
+            <>
+              <button
+                className="flex-none rounded-2xl border-2 border-dashed border-emerald-500/50 bg-emerald-500/5 py-14 flex flex-col items-center justify-center gap-3 active:bg-emerald-500/15 transition-colors"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <div className="h-16 w-16 rounded-full bg-emerald-600 flex items-center justify-center">
+                  <Camera className="h-8 w-8 text-white" />
+                </div>
+                <span className="font-medium text-emerald-700 dark:text-emerald-400">Tirar Foto</span>
+                {gps ? (
+                  <span className="text-xs text-muted-foreground flex items-center gap-1">
+                    <Navigation className="h-3 w-3" /> Localização será registrada
+                  </span>
+                ) : (
+                  <span className="text-xs text-amber-600">GPS indisponível — foto sem localização</span>
+                )}
+              </button>
+              <Button variant="outline" className="h-11" onClick={() => videoInputRef.current?.click()}>
+                <Video className="h-4 w-4 mr-2" /> Gravar Vídeo (até {DURACAO_MAXIMA_VIDEO_S}s)
+              </Button>
+            </>
           )}
 
           {fotosDoLocal.length > 0 && !preview && (
@@ -665,14 +754,25 @@ export default function EncarregadoPage() {
                 Enviadas hoje ({fotosDoLocal.length})
               </p>
               <div className="grid grid-cols-3 gap-2">
-                {fotosDoLocal.map((f) => (
-                  <img
-                    key={f.key}
-                    src={f.url}
-                    alt="Foto enviada"
-                    className="aspect-square object-cover rounded-lg border border-border"
-                  />
-                ))}
+                {fotosDoLocal.map((f) =>
+                  ehVideo(f.url) ? (
+                    <video
+                      key={f.key}
+                      src={f.url}
+                      className="aspect-square object-cover rounded-lg border border-border bg-black"
+                      muted
+                      playsInline
+                      preload="metadata"
+                    />
+                  ) : (
+                    <img
+                      key={f.key}
+                      src={f.url}
+                      alt="Foto enviada"
+                      className="aspect-square object-cover rounded-lg border border-border"
+                    />
+                  )
+                )}
               </div>
             </div>
           )}
@@ -685,6 +785,14 @@ export default function EncarregadoPage() {
           capture="environment"
           className="hidden"
           onChange={handleArquivoSelecionado}
+        />
+        <input
+          ref={videoInputRef}
+          type="file"
+          accept="video/*"
+          capture="environment"
+          className="hidden"
+          onChange={handleVideoSelecionado}
         />
       </div>
     );

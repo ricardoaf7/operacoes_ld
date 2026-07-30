@@ -5,6 +5,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { LogOut, ImageIcon, Loader2 } from "lucide-react";
+import { ehVideo } from "@/lib/varricao-utils";
 
 type Servico = "rocagem" | "varricao";
 
@@ -154,12 +155,22 @@ export default function TransparenciaPage() {
                 <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2 mt-2">
                   {grupo.fotos.map((f) => (
                     <a key={f.key} href={f.url} target="_blank" rel="noreferrer">
-                      <img
-                        src={f.url}
-                        alt={`Foto em ${grupo.titulo}`}
-                        className="aspect-square object-cover rounded-md border border-border"
-                        loading="lazy"
-                      />
+                      {ehVideo(f.url) ? (
+                        <video
+                          src={f.url}
+                          className="aspect-square object-cover rounded-md border border-border bg-black"
+                          muted
+                          playsInline
+                          preload="metadata"
+                        />
+                      ) : (
+                        <img
+                          src={f.url}
+                          alt={`Foto em ${grupo.titulo}`}
+                          className="aspect-square object-cover rounded-md border border-border"
+                          loading="lazy"
+                        />
+                      )}
                     </a>
                   ))}
                 </div>
