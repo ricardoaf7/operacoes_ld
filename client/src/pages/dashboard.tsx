@@ -507,16 +507,25 @@ export default function Dashboard({ isPublicView = false }: DashboardProps) {
 
   // IMPORTANTE: useCallback para evitar recriação do mapa ao re-render
   // handleMapClick é passado como dependência do useEffect de inicialização do mapa
+  // (por isso selectedService é lido via ref aqui embaixo, não como dependência
+  // direta do useCallback — colocá-lo na lista de dependências mudava a
+  // identidade da função a cada troca de serviço e recriava o mapa inteiro,
+  // deixando a troca Roçagem↔Varrição lenta/travada)
+  const selectedServiceRef = useRef(selectedService);
+  useEffect(() => {
+    selectedServiceRef.current = selectedService;
+  }, [selectedService]);
+
   const handleMapClick = useCallback((lat: number, lng: number) => {
     if (isPublicView) return;
-    if (selectedService === 'varricao') {
+    if (selectedServiceRef.current === 'varricao') {
       setPendingNewVarricaoCoords({ lat, lng });
       setShowNewVarricaoConfirm(true);
       return;
     }
     setPendingNewAreaCoords({ lat, lng });
     setShowNewAreaConfirm(true);
-  }, [isPublicView, selectedService]);
+  }, [isPublicView]);
 
   const handleConfirmNewArea = () => {
     if (pendingNewAreaCoords) {
