@@ -37,6 +37,7 @@ import { NotificationBell } from "@/components/NotificationBell";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { useModoVisualizacao } from "@/hooks/use-modo-visualizacao";
+import { CATEGORIA_LABELS, categoriaDaSecao, type VarricaoCategoria } from "@/lib/varricao-utils";
 import { useLocation } from "wouter";
 import {
   DropdownMenu,
@@ -57,6 +58,48 @@ const roleLabels: Record<string, string> = {
   gestor: "Gestor",
   fiscal: "Fiscal",
 };
+
+// Mesmas cores dos pinos no mapa (getVarricaoColor em DashboardMap.tsx) —
+// deixa isolar no mapa só Varrição, só Lavação ou só Sanitário.
+const CORES_CATEGORIA_VARRICAO: Record<VarricaoCategoria, string> = {
+  varricao: "#059669",
+  lavacao: "#0284c7",
+  sanitario: "#8b5cf6",
+};
+
+function VarricaoCategoriaFiltro({
+  valor,
+  onChange,
+}: {
+  valor: VarricaoCategoria | "todas";
+  onChange: (v: VarricaoCategoria | "todas") => void;
+}) {
+  const opcoes: { valor: VarricaoCategoria | "todas"; label: string; cor: string }[] = [
+    { valor: "todas", label: "Todas", cor: "#94a3b8" },
+    { valor: "varricao", label: CATEGORIA_LABELS.varricao, cor: CORES_CATEGORIA_VARRICAO.varricao },
+    { valor: "lavacao", label: CATEGORIA_LABELS.lavacao, cor: CORES_CATEGORIA_VARRICAO.lavacao },
+    { valor: "sanitario", label: CATEGORIA_LABELS.sanitario, cor: CORES_CATEGORIA_VARRICAO.sanitario },
+  ];
+  return (
+    <div className="flex items-center gap-1.5 px-3 py-1.5 overflow-x-auto">
+      {opcoes.map((o) => (
+        <button
+          key={o.valor}
+          onClick={() => onChange(o.valor)}
+          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border transition-colors flex-shrink-0 ${
+            valor === o.valor
+              ? "bg-accent text-accent-foreground border-accent-foreground/20"
+              : "bg-background hover:bg-accent/50 border-border"
+          }`}
+          data-testid={`filter-varricao-categoria-${o.valor}`}
+        >
+          <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: o.cor }} />
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 export default function Dashboard({ isPublicView = false }: DashboardProps) {
   const isMobile = useIsMobile();
@@ -292,6 +335,15 @@ export default function Dashboard({ isPublicView = false }: DashboardProps) {
       setRelocatingVarricaoLocalId(null);
     }
   }, [selectedService]);
+
+  // Isolar no mapa só uma categoria de Varrição (verde) / Lavação (azul) /
+  // Sanitário (roxo) — mesmas cores já usadas nos pinos (getVarricaoColor em
+  // DashboardMap.tsx). "Todas" continua mostrando os três juntos, como hoje.
+  const [filtroCategoriaVarricao, setFiltroCategoriaVarricao] = useState<VarricaoCategoria | "todas">("todas");
+  const varricaoLocaisFiltrados = useMemo(() => {
+    if (filtroCategoriaVarricao === "todas") return varricaoLocais;
+    return varricaoLocais.filter((l) => categoriaDaSecao(l.secao) === filtroCategoriaVarricao);
+  }, [varricaoLocais, filtroCategoriaVarricao]);
 
   const { data: config } = useQuery<AppConfig>({
     queryKey: ["/api/config"],
@@ -870,19 +922,22 @@ export default function Dashboard({ isPublicView = false }: DashboardProps) {
         )}
 
         {selectedService === 'varricao' && !isPublicView && (
-          <VarricaoSearchBar
-            locais={varricaoLocais}
-            onLocalSelect={handleVarricaoLocalSelect}
-            onGeocodeFlyTo={handleGeocodeFlyTo}
-            selectedLocalId={selectedVarricaoLocalId}
-            onClearSelection={clearVarricaoSelection}
-          />
+          <>
+            <VarricaoSearchBar
+              locais={varricaoLocaisFiltrados}
+              onLocalSelect={handleVarricaoLocalSelect}
+              onGeocodeFlyTo={handleGeocodeFlyTo}
+              selectedLocalId={selectedVarricaoLocalId}
+              onClearSelection={clearVarricaoSelection}
+            />
+            <VarricaoCategoriaFiltro valor={filtroCategoriaVarricao} onChange={setFiltroCategoriaVarricao} />
+          </>
         )}
 
         <main className="flex-1 overflow-hidden relative">
           <DashboardMap
             rocagemAreas={rocagemAreas}
-            varricaoLocais={varricaoLocais}
+            varricaoLocais={varricaoLocaisFiltrados}
             selectedVarricaoLocalId={selectedVarricaoLocalId}
             relocatingVarricaoLocalId={relocatingVarricaoLocalId}
             onVarricaoSelect={handleVarricaoMarkerClick}
@@ -1146,13 +1201,16 @@ export default function Dashboard({ isPublicView = false }: DashboardProps) {
         )}
 
           {selectedService === 'varricao' && (
-            <VarricaoSearchBar
-              locais={varricaoLocais}
-              onLocalSelect={handleVarricaoLocalSelect}
-              onGeocodeFlyTo={handleGeocodeFlyTo}
-              selectedLocalId={selectedVarricaoLocalId}
-              onClearSelection={clearVarricaoSelection}
-            />
+            <>
+              <VarricaoSearchBar
+                locais={varricaoLocaisFiltrados}
+                onLocalSelect={handleVarricaoLocalSelect}
+                onGeocodeFlyTo={handleGeocodeFlyTo}
+                selectedLocalId={selectedVarricaoLocalId}
+                onClearSelection={clearVarricaoSelection}
+              />
+              <VarricaoCategoriaFiltro valor={filtroCategoriaVarricao} onChange={setFiltroCategoriaVarricao} />
+            </>
           )}
 
           {selectedOsId && selectedOs && (
@@ -1177,7 +1235,7 @@ export default function Dashboard({ isPublicView = false }: DashboardProps) {
           <main className="flex-1 overflow-hidden relative">
             <DashboardMap
               rocagemAreas={rocagemAreas}
-              varricaoLocais={varricaoLocais}
+              varricaoLocais={varricaoLocaisFiltrados}
               selectedVarricaoLocalId={selectedVarricaoLocalId}
               relocatingVarricaoLocalId={relocatingVarricaoLocalId}
               onVarricaoSelect={handleVarricaoMarkerClick}
